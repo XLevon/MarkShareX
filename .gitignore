@@ -2,10 +2,8 @@
 node_modules/
 
 # 构建产物
-static/
 target/
 marksharex
-images/
 frontend/dist.tar.gz
 
 # 配置文件
