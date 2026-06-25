@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ post.title }} - {{ site_title | default(value="MarkShareX_用AI学AI") }}{% endblock %}
+{% block head %}
+    <link rel="canonical" href="{{ article_url | safe }}">
+    <meta name="description" content="{{ post.summary | default(value=site_description) }}">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="{{ post.title }}">
+    {% if post.summary | trim %}
+    <meta property="og:description" content="{{ post.summary }}">
+    {% else %}
+    <meta property="og:description" content="{{ site_description }}">
+    {% endif %}
+    <meta property="og:url" content="{{ article_url | safe }}">
+    {% if post.cover_image %}
+    <meta property="og:image" content="{{ post.cover_image | safe }}">
+    {% endif %}
+    <meta property="og:site_name" content="{{ site_title | default(value="MarkShareX_用AI学AI") }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ post.title }}">
+    {% if post.summary | trim %}
+    <meta name="twitter:description" content="{{ post.summary }}">
+    {% else %}
+    <meta name="twitter:description" content="{{ site_description }}">
+    {% endif %}
+    {% if post.cover_image %}
+    <meta name="twitter:image" content="{{ post.cover_image | safe }}">
+    {% endif %}
+    <!-- JSON-LD structured data for Google rich snippets -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": {{ post.title | json_encode | safe }},
+        "description": {{ post.summary | default(value=site_description) | json_encode | safe }},
+        "url": {{ article_url | json_encode | safe }},
+        "datePublished": {{ post.published_at | json_encode | safe }},
+        "dateModified": {{ post.created_at | json_encode | safe }},
+        "author": {
+            "@type": "Person",
+            "name": {{ site_title | default(value="MarkShareX_用AI学AI") | json_encode | safe }}
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": {{ site_title | default(value="MarkShareX_用AI学AI") | json_encode | safe }}
+        }{% if post.cover_image %},
+        "image": {{ post.cover_image | json_encode | safe }}{% endif %}{% if post.tags and post.tags | length > 0 %},
+        "keywords": {{ post.tags | join(sep=", ") | json_encode | safe }}{% endif %}
+    }
+    </script>
+{% endblock %}
+{% block content %}
+<article class="post">
+    <h1>{{ post.title }}</h1>
+    <div class="meta">
+        <time datetime="{{ post.published_at }}">{{ post.published_at | default(value=post.created_at) }}</time>
+        {% if post.category_name %}<span class="category">{{ post.category_name }}</span>{% endif %}
+        <span>{{ post.view_count }} 次阅读</span>
+    </div>
+    {% if post.cover_image %}
+    <img src="{{ post.cover_image | safe }}" alt="{{ post.title }}" style="max-width:100%;border-radius:6px;margin:16px 0;">
+    {% endif %}
+    <div class="content">
+        {{ post.content_html | safe }}
+    </div>
+    {% if post.tags %}
+    <div class="tags">
+        {% for tag in post.tags %}
+        <span class="tag">{{ tag }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+</article>
+{% endblock %}

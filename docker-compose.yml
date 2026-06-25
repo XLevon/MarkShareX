@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  marksharex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: XLevon/marksharex:latest
+    container_name: marksharex
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5023:5023"
+    environment:
+      - MARKSHAREX_SERVER_HOST=0.0.0.0
+      - MARKSHAREX_SERVER_PORT=5023
+      - MARKSHAREX_DATABASE_URL=sqlite:///data/marksharex.db?mode=rwc
+      - MARKSHAREX_DATA_DIR=/data
+      - MARKSHAREX_STORAGE_UPLOAD_DIR=/data/uploads
+    volumes:
+      # 持久化数据目录
+      - marksharex_data:/data
+      # 或：自定义映射目录
+      # - /root/.makesharex/data:/data
+    networks:
+      - marksharex_net
+
+volumes:
+  marksharex_data:
+    name: marksharex_data
+
+networks:
+  marksharex_net:
+    name: marksharex_net
+    driver: bridge

@@ -1,0 +1,25 @@
+# 依赖包
+node_modules/
+
+# 构建产物
+static/
+target/
+marksharex
+images/
+frontend/dist.tar.gz
+
+# 配置文件
+.env
+.env_M4
+config.toml
+
+# 运行时文件（服务生成）
+data/
+#!data/templates/
+
+# 其他
+/Prototype
+.drone.yml
+*.log
+.DS_Store
+*.db

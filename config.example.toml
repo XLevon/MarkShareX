@@ -1,0 +1,42 @@
+# ==============================================================================
+# MarkShareX 配置文件
+# ==============================================================================
+# 说明: 配置项可通过环境变量覆盖，格式: MARKSHAREX_<SECTION>_<KEY>
+# 例如: MARKSHAREX_SERVER_PORT=8080 会覆盖 server.port
+# ==============================================================================
+
+# ------------------------------ 全局配置 ------------------------------
+data_dir = "./data"
+
+# ------------------------------ 服务器配置 ------------------------------
+[server]
+host = "0.0.0.0"
+port = 5023
+base_url = "http://0.0.0.0:5023"
+
+# ------------------------------ 数据库配置 ------------------------------
+[database]
+url = "sqlite://./data/marksharex.db?mode=rwc"
+max_connections = 10
+min_connections = 1
+
+# ------------------------------ 认证配置 ------------------------------
+[auth]
+jwt_secret = "marksharex-dev-secret-key-2026"
+jwt_expire_seconds = 3600
+refresh_expire_seconds = 604800
+
+# ------------------------------ 存储配置 ------------------------------
+[storage]
+upload_dir = "./data/uploads"
+max_file_size = 20971520
+allowed_types = [
+    "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
+    "application/pdf",
+    "text/markdown", "text/plain",
+    "application/zip", "application/x-zip-compressed",
+    "application/gzip", "application/x-tar",
+    "application/x-7z-compressed", "application/x-rar-compressed",
+    "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/x-msvideo",
+    "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/flac",
+]

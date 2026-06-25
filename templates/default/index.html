@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ site_title | default(value="MarkShareX_用AI学AI") }} - 首页{% endblock %}
+{% block head %}
+    <link rel="canonical" href="{{ base_url | safe }}/">
+    <meta name="description" content="{{ site_description }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ site_title | default(value="MarkShareX_用AI学AI") }}">
+    <meta property="og:description" content="{{ site_description }}">
+    <meta property="og:url" content="{{ base_url | safe }}/">
+    <meta property="og:site_name" content="{{ site_title | default(value="MarkShareX_用AI学AI") }}">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": {{ site_title | default(value="MarkShareX_用AI学AI") | json_encode | safe }},
+        "description": {{ site_description | json_encode | safe }},
+        "url": {{ base_url | json_encode | safe }}
+    }
+    </script>
+{% endblock %}
+{% block content %}
+<div class="posts">
+    {% for post in posts %}
+    <article class="post-card">
+        <h2><a href="/post/{{ post.slug }}">{{ post.title }}</a></h2>
+        <div class="meta">
+            <time datetime="{{ post.published_at }}">{{ post.published_at | default(value=post.created_at) }}</time>
+            {% if post.category_name %}<span class="category">{{ post.category_name }}</span>{% endif %}
+        </div>
+        {% if post.summary %}<p>{{ post.summary }}</p>{% endif %}
+    </article>
+    {% else %}
+    <p style="text-align:center;color:#9ca3af;padding:48px 0;">暂无文章</p>
+    {% endfor %}
+</div>
+{% if pagination and pagination.pages > 1 %}
+<div class="pagination">
+    {% if pagination.page > 1 %}
+    <a href="/?page={{ pagination.page - 1 }}">上一页</a>
+    {% endif %}
+    <span>第 {{ pagination.page }} / {{ pagination.pages }} 页</span>
+    {% if pagination.page < pagination.pages %}
+    <a href="/?page={{ pagination.page + 1 }}">下一页</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

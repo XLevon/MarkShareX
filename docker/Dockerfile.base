@@ -1,0 +1,26 @@
+# ==============================================================================
+# MarkShareX 基础镜像
+# 使用方式: docker build -f docker/Dockerfile.base -t marksharex-base:latest .
+# 构建后主 Dockerfile 引用本地镜像，不再拉取 registry
+# ==============================================================================
+
+# ── 前端构建基础镜像 ──
+FROM node:20-alpine AS frontend-base
+# Alpine 的 node 镜像已包含 npm，无需额外操作
+# 如果想锁定 npm 版本:
+# RUN npm install -g npm@10
+
+# ── 后端构建基础镜像 ──
+FROM rust:1.95-slim AS backend-base
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── 运行时基础镜像 ──
+FROM debian:bookworm-slim AS runtime-base
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*

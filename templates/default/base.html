@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MarkShareX_用AI学AI{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        /* ── 与 SPA main.css 同源的 CSS 变量 ── */
+        :root {
+            /* Surface — 默认深色 */
+            --color-bg: #0f172a;
+            --color-bg-secondary: #1e293b;
+            --color-bg-card: #1e293b;
+            --color-bg-hover: #334155;
+            --color-border: #334155;
+            --color-border-light: #1e293b;
+
+            /* Text */
+            --color-text: #f1f5f9;
+            --color-text-secondary: #94a3b8;
+            --color-text-muted: #64748b;
+
+            /* Brand */
+            --color-primary: #818cf8;
+            --color-primary-hover: #6366f1;
+
+            /* Fonts */
+            --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+            --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+            --font-code: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font-body);
+            color: var(--color-text);
+            background: var(--color-bg);
+            line-height: 1.6;
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+        header {
+            background: var(--color-bg-card);
+            border-bottom: 1px solid var(--color-border);
+            padding: 16px 0;
+            margin-bottom: 24px;
+        }
+        header .container { display: flex; justify-content: space-between; align-items: center; }
+        header h1 a {
+            color: var(--color-text);
+            text-decoration: none;
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+        }
+        header nav a {
+            color: var(--color-text-secondary);
+            text-decoration: none;
+            margin-left: 16px;
+        }
+        header nav a:hover { color: var(--color-primary); }
+        main { min-height: 70vh; }
+        footer {
+            text-align: center;
+            padding: 32px 0;
+            color: var(--color-text-secondary);
+            border-top: 1px solid var(--color-border);
+            margin-top: 48px;
+        }
+        a { color: var(--color-primary); text-decoration: none; }
+        a:hover { color: var(--color-primary-hover); }
+        .post-card {
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+        .post-card h2 { font-size: 1.25rem; margin-bottom: 8px; }
+        .post-card h2 a { color: var(--color-text); }
+        .post-card .meta { color: var(--color-text-secondary); font-size: 0.875rem; margin-bottom: 8px; }
+        .post-card .meta span { margin-left: 12px; }
+        .post-card p { color: var(--color-text-secondary); }
+        .pagination { text-align: center; padding: 24px 0; }
+        .pagination a, .pagination span { margin: 0 8px; }
+        article.post {
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 32px;
+        }
+        article.post h1 { font-size: 1.75rem; margin-bottom: 12px; }
+        article.post .meta { color: var(--color-text-secondary); font-size: 0.875rem; margin-bottom: 24px; }
+        article.post .meta span { margin-left: 12px; }
+        article.post .content { line-height: 1.8; }
+        article.post .content h1, article.post .content h2, article.post .content h3 { margin: 1.5em 0 0.5em; }
+        article.post .content p { margin: 0.5em 0; }
+        article.post .content pre {
+            background: var(--color-bg-secondary);
+            color: var(--color-text);
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 1em 0;
+            font-family: var(--font-code);
+        }
+        article.post .content code {
+            background: var(--color-bg-secondary);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-family: var(--font-code);
+        }
+        article.post .content pre code { background: none; padding: 0; }
+        article.post .content img { max-width: 100%; border-radius: 6px; margin: 1em 0; }
+        article.post .content blockquote {
+            border-left: 3px solid var(--color-primary);
+            padding-left: 16px;
+            color: var(--color-text-secondary);
+            margin: 1em 0;
+        }
+        article.post .content ul, article.post .content ol { padding-left: 24px; margin: 0.5em 0; }
+        article.post .content table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+        article.post .content th, article.post .content td { border: 1px solid var(--color-border); padding: 8px 12px; text-align: left; }
+        article.post .content th { background: var(--color-bg-secondary); }
+        .tags { margin-top: 24px; }
+        .tag {
+            display: inline-block;
+            background: var(--color-primary);
+            color: var(--color-bg);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-right: 6px;
+        }
+        .back-to-top {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+        .back-to-top.visible { opacity: 1; pointer-events: auto; }
+        /* 代码块复制按钮 */
+        article.post .content pre { position: relative; }
+        .code-copy-btn {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            padding: 2px 8px;
+            font-size: 11px;
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            background: var(--color-bg);
+            color: var(--color-text-muted);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1;
+        }
+        article.post .content pre:hover .code-copy-btn { opacity: 1; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><a href="/">{{ site_title | default(value="MarkShareX") }}</a></h1>
+            <nav>
+                <a href="/">首页</a>
+            </nav>
+        </div>
+    </header>
+    <main>
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    <footer>
+        <div class="container">
+            <p>Powered by MarkShareX</p>
+        </div>
+    </footer>
+    <button class="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="回到顶部">↑</button>
+    <script>
+        const btn = document.querySelector('.back-to-top');
+        window.addEventListener('scroll', () => btn.classList.toggle('visible', scrollY > 300));
+
+        // 代码块复制按钮（仅登录用户）
+        (function() {
+            const token = localStorage.getItem('marksharex_token') || sessionStorage.getItem('marksharex_token');
+            if (!token) return;
+
+            const copyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+            const checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+            document.querySelectorAll('article.post .content pre code').forEach((block) => {
+                const pre = block.parentElement;
+                if (!pre || pre.querySelector('.code-copy-btn')) return;
+                const btn = document.createElement('button');
+                btn.className = 'code-copy-btn';
+                btn.innerHTML = copyIcon;
+                btn.title = '复制代码';
+                btn.onclick = async () => {
+                    const text = block.textContent || '';
+                    try { await navigator.clipboard.writeText(text); } catch {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.cssText = 'position:fixed;opacity:0;';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                    }
+                    btn.innerHTML = checkIcon;
+                    setTimeout(() => { btn.innerHTML = copyIcon; }, 2000);
+                };
+                pre.appendChild(btn);
+            });
+        })();
+
+        // 未登录时引导登录
+        (function() {
+            const token = localStorage.getItem('marksharex_token') || sessionStorage.getItem('marksharex_token');
+            if (token) return;
+            const content = document.querySelector('article.post .content');
+            if (!content) return;
+
+            function promptLogin() {
+                if (confirm('登录后可复制代码，是否前往登录？')) {
+                    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+                }
+            }
+
+            content.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                promptLogin();
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                    const tag = e.target.tagName;
+                    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                    e.preventDefault();
+                    promptLogin();
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

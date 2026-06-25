@@ -1,0 +1,116 @@
+//! OpenAPI 文档 — utoipa + Scalar
+//!
+//! 生成 `/api/v1/openapi.json`（机器可读）和 `/scalar`（交互式 UI）。
+//! AI agent 可直接消费 openapi.json；MCP Server 可用标准 OpenAPI→MCP 工具桥接。
+
+use utoipa::OpenApi;
+
+use crate::controllers::{
+    admin::AdminUserResponse,
+    auth::{LoginResponse, UserResponse},
+    author_applications::ApplicationResponse,
+    categories::CategoryResponse,
+    categories::ReorderRequest,
+    changelog::ChangelogResponse,
+    comments::CommentResponse,
+    files::FileResponse,
+    network_resources::NetworkResourceResponse,
+    ops::{HealthResponse, LogQueryResponse, StatsResponse},
+    posts::{AdjacentPostsResponse, AuthorInfo, LikeStatusResponse, PostResponse, SearchResponse},
+    profile::{ApiKeyResponse, ProfileResponse, SiteManagerResponse},
+    settings::SettingsResponse,
+    setup::SetupResponse,
+    tags::TagResponse,
+};
+
+use crate::controllers::{
+    admin, analytics, auth, author_applications, categories, changelog, comments,
+    files, import_export, network_resources, ops, posts, profile, settings, setup, tags,
+};
+
+/// 聚合所有 API 路径和模型
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "MarkShareX API",
+        version = "0.4.0",
+        description = "轻量自托管 Markdown 博客系统 — 完整 REST API",
+        contact(
+            name = "MarkShareX",
+            url = "https://github.com/XLevon/MarkShareX",
+        ),
+    ),
+    components(schemas(
+        PostResponse, AdjacentPostsResponse, AuthorInfo, LikeStatusResponse, SearchResponse,
+        CategoryResponse, TagResponse, FileResponse, CommentResponse,
+        ReorderRequest,
+        SettingsResponse, SetupResponse, LoginResponse, UserResponse,
+        AdminUserResponse, ProfileResponse, SiteManagerResponse, ApiKeyResponse,
+        NetworkResourceResponse, ApplicationResponse, ChangelogResponse,
+        LogQueryResponse, HealthResponse, StatsResponse,
+    )),
+    tags(
+        (name = "Admin", description = "管理后台"),
+        (name = "Analytics", description = "数据统计"),
+        (name = "Applications", description = "作者申请"),
+        (name = "Auth", description = "认证与授权"),
+        (name = "Categories", description = "分类管理"),
+        (name = "Changelog", description = "版本更新说明"),
+        (name = "Comments", description = "评论管理"),
+        (name = "Files", description = "文件上传与管理"),
+        (name = "Import/Export", description = "导入导出"),
+        (name = "Network Resources", description = "网络资源库"),
+        (name = "Posts", description = "文章管理"),
+        (name = "Profile", description = "个人资料"),
+        (name = "Settings", description = "站点设置"),
+        (name = "Tags", description = "标签管理"),
+        (name = "Ops", description = "运维管理"),
+        (name = "Setup", description = "系统初始化"),
+    ),
+    paths(
+        admin::create_user, admin::delete_user, admin::list_login_logs,
+        admin::list_read_logs, admin::list_users,
+        admin::update_user, admin::update_user_role, admin::update_user_status,
+        analytics::get_like_records, analytics::get_post_views,
+        analytics::get_total_comments, analytics::get_total_likes,
+        analytics::get_total_views, analytics::get_trend,
+        analytics::get_today_likes, analytics::get_today_posts,
+        auth::login, auth::refresh, auth::register,
+        author_applications::approve_application,
+        author_applications::get_application_status,
+        author_applications::get_pending_count,
+        author_applications::reject_application,
+        author_applications::submit_application,
+        categories::create_category, categories::delete_category,
+        categories::list_admin_categories, categories::list_categories,
+        categories::update_category, categories::reorder_categories,
+        changelog::create_changelog, changelog::delete_changelog,
+        changelog::get_latest_version, changelog::list_changelogs,
+        changelog::list_public_changelogs, changelog::update_changelog,
+        comments::create_comment, comments::list_all_comments,
+        comments::list_post_comments, comments::pending_count,
+        comments::update_comment_status,
+        files::batch_delete_files, files::batch_upload,
+        files::check_md5_exists, files::delete_file,
+        files::list_files, files::list_unreferenced_files,
+        files::upload_file,
+        import_export::export_posts, import_export::import_markdown,
+        network_resources::batch_resolve, network_resources::create_resource,
+        network_resources::delete_resource, network_resources::ensure_resource,
+        network_resources::get_references, network_resources::list_resources,
+        network_resources::resolve_resource, network_resources::update_resource,
+        posts::create_post, posts::delete_post, posts::get_adjacent_posts,
+        posts::get_like_status, posts::get_post, posts::get_post_by_slug,
+        posts::list_admin_posts, posts::list_authors, posts::list_posts,
+        posts::record_read_log, posts::toggle_like,
+        posts::unified_search, posts::update_post,
+        profile::change_password, profile::get_site_manager_info,
+        profile::get_api_key, profile::get_profile,
+        profile::regenerate_api_key, profile::update_profile,
+        settings::get_settings, settings::update_settings,
+        setup::setup, setup::setup_status,
+        tags::create_tag, tags::delete_tag, tags::list_tags, tags::update_tag,
+        ops::get_logs, ops::get_health, ops::get_stats
+    ),
+)]
+pub struct ApiDoc;
