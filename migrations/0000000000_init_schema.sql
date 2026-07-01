@@ -330,6 +330,101 @@ CREATE TABLE IF NOT EXISTS _migrations (
     executed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 19. 咨询信息表
+CREATE TABLE IF NOT EXISTS news (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    summary VARCHAR(500) NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    content_html TEXT NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    published_at DATETIME,
+    user_id INTEGER,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);
+CREATE INDEX IF NOT EXISTS idx_news_sort_order ON news(sort_order);
+CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at);
+
+-- 20-22. AI 模块
+CREATE TABLE IF NOT EXISTS ai_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL DEFAULT '',
+    provider_type VARCHAR(50) NOT NULL DEFAULT 'openai',
+    base_url VARCHAR(500) NOT NULL DEFAULT '',
+    api_key_encrypted TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI 模型（每个供应商下可配置多个模型）
+CREATE TABLE IF NOT EXISTS ai_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id INTEGER NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    is_default BOOLEAN NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(200) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    system_prompt TEXT NOT NULL DEFAULT '',
+    user_prompt TEXT NOT NULL DEFAULT '',
+    output_format VARCHAR(50) NOT NULL DEFAULT 'markdown',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS ai_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT '',
+    skill_id INTEGER NOT NULL,
+    provider_id INTEGER NOT NULL,
+    cron_expr VARCHAR(100) NOT NULL DEFAULT '',
+    params TEXT NOT NULL DEFAULT '{}',
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    last_run_at DATETIME,
+    run_count INTEGER NOT NULL DEFAULT 0,
+    agent_config_id INTEGER,
+    model_id INTEGER,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (skill_id) REFERENCES ai_skills(id) ON DELETE CASCADE,
+    FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_config_id) REFERENCES ai_agent_config(id) ON DELETE SET NULL,
+    FOREIGN KEY (model_id) REFERENCES ai_models(id) ON DELETE SET NULL
+);
+
+-- AI 聊天会话
+CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title VARCHAR(200) NOT NULL DEFAULT '新会话',
+    agent_config_id INTEGER,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_config_id) REFERENCES ai_agent_config(id) ON DELETE SET NULL
+);
+
+-- AI 聊天消息
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    content TEXT NOT NULL DEFAULT '',
+    tool_calls TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
+);
+
 -- ════════════════════════════════════════════════════════════
 --  默认系统设置（首次启动，key 不存在时插入）
 -- ════════════════════════════════════════════════════════════

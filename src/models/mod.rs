@@ -8,6 +8,8 @@ pub async fn init_db(config: &DatabaseConfig) -> anyhow::Result<DatabaseConnecti
     opt.max_connections(config.max_connections);
     opt.min_connections(config.min_connections);
     let db = Database::connect(opt).await?;
+    // SQLite 默认不启用外键约束，需要显式开启以保证 CASCADE 删除生效
+    db.execute_unprepared("PRAGMA foreign_keys = ON").await?;
     Ok(db)
 }
 

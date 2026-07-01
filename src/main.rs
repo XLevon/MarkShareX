@@ -7,6 +7,7 @@ use tracing_subscriber::prelude::*;
 
 mod config;
 mod controllers;
+mod crypto;
 mod middleware;
 mod migrations;
 mod models;
@@ -157,6 +158,10 @@ async fn main() -> anyhow::Result<()> {
     utils::ip_migration::migrate_ip_settings_format(&db).await;
 
     let state = utils::AppState::new(db, config.clone(), search_engine, log_buffer);
+
+    // ── 启动 AI 定时调度器 ──
+    let scheduler = crate::services::ai_scheduler::AiScheduler::new(std::sync::Arc::new(state.clone()));
+    tokio::spawn(async move { scheduler.start().await });
 
     let app = Router::new()
         .merge(controllers::api_routes(state.clone()))

@@ -56,6 +56,8 @@ const adminRoutes: RouteRecordRaw[] = [
       { path: 'users', name: 'admin-users', component: () => import('@/views/admin/AdminUsers.vue') },
       { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/Settings.vue') },
       { path: 'guestbook', name: 'admin-guestbook', component: () => import('@/views/admin/AdminGuestbook.vue') },
+      { path: 'news', name: 'admin-news', component: () => import('@/views/admin/NewsManage.vue') },
+      { path: 'ai', name: 'admin-ai', component: () => import('@/views/admin/AIManage.vue') },
     ],
   },
 ]

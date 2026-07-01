@@ -1,0 +1,22 @@
+-- AI 聊天会话
+CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title VARCHAR(200) NOT NULL DEFAULT '新会话',
+    agent_config_id INTEGER,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_config_id) REFERENCES ai_agent_config(id) ON DELETE SET NULL
+);
+
+-- AI 聊天消息
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'user',
+    content TEXT NOT NULL DEFAULT '',
+    tool_calls TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
+);

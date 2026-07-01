@@ -20,32 +20,44 @@
     '--text-secondary': isDark ? '#9ca3af' : '#4b5563',
     '--text-dim': isDark ? '#9ca3af' : '#6b7280',
   }">
-    <!-- 顶部导航栏 -->
-    <NavBar
-      :logo-text="settingsStore.settings.site_title || 'MarkShareX'"
-      :logo-image="settingsStore.resolvedLogoUrl"
-      :is-dark="isDark"
-      :is-logged-in="true"
-      :display-user="displayUserName"
-      :user-initial="userInitial"
-      :header-style="adminNavStyle"
-      @toggle-dark="toggleDark"
-    >
-      <template #nav-left>
-        <nav class="admin-nav-links">
-          <router-link
-            v-for="item in navItems"
-            :key="item.key"
-            :to="item.to"
-            class="admin-nav-link"
-            :class="{ active: isActive(item.key) }"
+    <!-- 顶部导航栏 + 移动端菜单（sticky 包裹） -->
+    <div class="sticky top-0 z-50">
+      <NavBar
+        :logo-text="settingsStore.settings.site_title || 'MarkShareX'"
+        :logo-image="settingsStore.resolvedLogoUrl"
+        :is-dark="isDark"
+        :is-logged-in="true"
+        :display-user="displayUserName"
+        :user-initial="userInitial"
+        :header-style="adminNavStyle"
+        :sticky="false"
+        @toggle-dark="toggleDark"
+      >
+        <template #nav-left>
+          <!-- 汉堡菜单按钮（仅手机端） -->
+          <button
+            class="lg:hidden w-10 h-10 flex items-center justify-center rounded-lg border-0 cursor-pointer transition-colors hover:bg-white/5"
+            :style="{ color: isDark ? '#9ca3af' : '#4b5563' }"
+            @click="mobileMenuOpen = !mobileMenuOpen"
           >
-            <span class="nav-icon" v-html="item.icon"></span>
-            <span>{{ item.label }}</span>
-            <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
-          </router-link>
-        </nav>
-      </template>
+            <svg v-if="!mobileMenuOpen" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            <svg v-else width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <!-- 桌面端导航栏 -->
+          <nav class="!hidden lg:!flex admin-nav-links">
+            <router-link
+              v-for="item in navItems"
+              :key="item.key"
+              :to="item.to"
+              class="admin-nav-link flex-shrink-0"
+              :class="{ active: isActive(item.key) }"
+            >
+              <span class="nav-icon" v-html="item.icon"></span>
+              <span>{{ item.label }}</span>
+              <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
+            </router-link>
+          </nav>
+        </template>
       <template #dropdown-items>
         <button class="dd-btn" :style="{ color: modalTheme.ddBtnColor }" @mouseenter="($event.target as HTMLElement).style.background = modalTheme.ddBtnHoverBg" @mouseleave="($event.target as HTMLElement).style.background = 'transparent'" @click="showProfile = true">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -69,6 +81,37 @@
         </button>
       </template>
     </NavBar>
+    </div>
+
+    <!-- 移动端导航悬浮层 -->
+    <template v-if="mobileMenuOpen">
+      <!-- 半透明遮罩 -->
+      <div class="fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)" @click="mobileMenuOpen = false"></div>
+      <!-- 菜单面板（全部导航项平铺） -->
+      <div
+        class="fixed top-0 left-0 right-0 z-50 shadow-2xl"
+        :style="{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb', backgroundColor: isDark ? '#16161d' : '#ffffff', marginTop: '64px' }"
+      >
+        <nav class="grid grid-cols-3 gap-2 p-4">
+          <router-link
+            v-for="item in navItems"
+            :key="item.key"
+            :to="item.to"
+            class="relative flex flex-col items-center justify-center gap-1.5 py-3 px-1 rounded-xl text-xs font-medium no-underline transition-colors"
+            :style="isActive(item.key)
+              ? { color: '#e0e0e0', backgroundColor: 'rgba(79,70,229,0.15)' }
+              : { color: isDark ? '#9ca3af' : '#4b5563' }"
+            @click="mobileMenuOpen = false"
+          >
+            <span class="relative flex items-center justify-center w-9 h-9 rounded-lg" :style="isActive(item.key) ? { backgroundColor: 'rgba(79,70,229,0.2)' } : { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }">
+              <span v-html="item.icon" :style="isActive(item.key) ? { opacity: 1 } : { opacity: 0.65 }"></span>
+              <span v-if="item.badge" class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4 text-center">{{ item.badge }}</span>
+            </span>
+            <span class="leading-tight">{{ item.label }}</span>
+          </router-link>
+        </nav>
+      </div>
+    </template>
 
     <!-- 内容区域 -->
     <main class="admin-main">
@@ -145,6 +188,8 @@
       </div>
     </div>
   </div>
+
+  <AiChatWidget />
 </template>
 
 <script setup lang="ts">
@@ -158,6 +203,7 @@ import NavBar from '@/components/shared/NavBar.vue'
 import ProfileView from '@/views/admin/Profile.vue'
 
 import { useDarkMode } from '@/composables/useDarkMode'
+import AiChatWidget from '@/components/shared/AiChatWidget.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -247,6 +293,7 @@ function handleLogout() {
 }
 
 // ── Profile modal ──
+const mobileMenuOpen = ref(false)
 const showProfile = ref(false)
 function onProfileSaved() {
   // Refresh auth store so top-right display_name syncs
@@ -384,6 +431,8 @@ const importIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" 
 const usersIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
 const settingsIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
 const guestbookIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>'
+const newsIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8z"/></svg>'
+const aiIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 17c.85.63 1.89 1 3 1s2.15-.37 3-1"/></svg>'
 const changelogIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>'
 const commentsIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
 
@@ -451,6 +500,8 @@ const allNavItems = [
   { label: '用户', key: 'users', to: '/admin/users', icon: usersIcon, roles: ['admin', 'sub_admin'] },
   { label: '设置', key: 'settings', to: '/admin/settings', icon: settingsIcon, roles: ['admin'] },
   { label: '留言板', key: 'guestbook', to: '/admin/guestbook', icon: guestbookIcon, roles: ['admin', 'sub_admin'] },
+  { label: '资讯', key: 'news', to: '/admin/news', icon: newsIcon, roles: ['admin', 'sub_admin'] },
+  { label: 'AI', key: 'ai', to: '/admin/ai', icon: aiIcon, roles: ['admin', 'sub_admin'] },
 ]
 
 const navItems = computed(() =>
@@ -467,6 +518,8 @@ const navItems = computed(() =>
       return { ...item, badge }
     })
 )
+
+// SVG icons
 
 onMounted(() => {
   initDarkMode()

@@ -412,10 +412,18 @@ pub async fn render_markdown(db: &DatabaseConnection, content: &str) -> String {
     let mut builder = ammonia::Builder::default();
     builder.add_tag_attributes("code", &["class"]);
     builder.add_tag_attributes("pre", &["class"]);
+    // Allow target on links for new-tab opening (rel is managed by ammonia)
+    builder.add_tag_attributes("a", &["href", "target", "title"]);
     // Allow referrerpolicy on img for anti-hotlinking
     builder.add_tag_attributes("img", &["src", "alt", "title", "width", "height", "loading", "referrerpolicy"]);
     let safe_html = builder.clean(&html).to_string();
-    
+
+    // Add target="_blank" to all external links for new-tab opening
+    // (rel is already handled by ammonia)
+    let link_re = Regex::new(r#"<a(\s[^>]*)?\shref="([^"]+)"([^>]*)>"#).unwrap();
+    let safe_html = link_re.replace_all(&safe_html, 
+        r#"<a$1 href="$2" target="_blank"$3>"#).to_string();
+
     // Add referrerpolicy to all img tags (prevents hotlink blocking from sites like CSDN)
     let re = Regex::new(r"<img\s").unwrap();
     re.replace_all(&safe_html, r#"<img referrerpolicy="no-referrer" "#).to_string()

@@ -1,7 +1,16 @@
 <template>
   <div class="home-page">
     <!-- Hero Section -->
-    <section class="relative overflow-hidden py-16 md:py-24 px-4" :style="{ background: isDark ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #1e293b 100%)' : 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 50%, #ede9fe 100%)' }">
+    <section
+      class="relative overflow-hidden px-4 transition-all duration-1000 ease-in-out"
+      :style="{
+        background: isDark ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #1e293b 100%)' : 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 50%, #ede9fe 100%)',
+        maxHeight: heroVisible ? '800px' : '0px',
+        paddingTop: heroVisible ? '64px' : '0px',
+        paddingBottom: heroVisible ? '96px' : '0px',
+        opacity: heroVisible ? '1' : '0',
+      }"
+    >
       <!-- Decorative blobs -->
       <div class="absolute top-0 right-0 w-96 h-96 rounded-full opacity-20 blur-3xl" :style="{ background: isDark ? '#4f46e5' : '#818cf8' }"></div>
       <div class="absolute bottom-0 left-0 w-72 h-72 rounded-full opacity-10 blur-3xl" :style="{ background: isDark ? '#6366f1' : '#a5b4fc' }"></div>
@@ -95,12 +104,85 @@
       </div>
     </section>
 
+    <!-- News Section -->
+    <section v-if="newsItems.length > 0" class="max-w-4xl mx-auto px-4 pt-12 md:pt-16 pb-0">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-8">
+        <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
+        <div class="hidden sm:block flex-1 min-w-4"></div>
+        <input
+          v-model="newsSearch"
+          type="text"
+          placeholder="搜索资讯..."
+          class="w-full sm:w-64 md:w-80 px-3 py-1.5 text-sm rounded-lg border outline-none transition-colors"
+          :style="{
+            backgroundColor: 'var(--color-bg-card)',
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-text)',
+          }"
+          @focus="$event.target.style.borderColor = 'var(--color-primary)'"
+          @blur="$event.target.style.borderColor = 'var(--color-border)'"
+        />
+      </div>
+      <div v-if="filteredNews.length === 0" class="text-center py-8" :style="{ color: 'var(--color-text-muted)' }">
+        没有找到相关资讯
+      </div>
+      <div class="space-y-4">
+        <article
+          v-for="item in filteredNews"
+          :key="item.id"
+          :ref="el => { if (el) newsRefs.set(item.id, el as HTMLElement) }"
+          class="p-5 rounded-xl border cursor-pointer transition-all duration-200"
+          :style="{
+            borderColor: 'var(--color-border)',
+            backgroundColor: clickedNewsIds.has(item.id) ? (isDark ? '#1e293b' : '#eef2ff') : 'var(--color-bg-card)',
+            scrollMarginTop: '80px',
+          }"
+          :class="{
+            'hover:shadow-lg hover:-translate-y-0.5': true,
+          }"
+          @click="toggleNews(item)"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+              <h3 class="text-lg font-semibold flex items-start gap-2" :style="{ color: 'var(--color-text)' }">
+                <!-- Title icon: news/bulletin -->
+                <svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ color: 'var(--color-primary)' }">
+                  <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+                  <path d="M18 14h-8M16 18H8"/>
+                </svg>
+                <span class="line-clamp-3 md:line-clamp-2">{{ item.title }}</span>
+              </h3>
+            </div>
+            <span class="text-xs whitespace-nowrap pt-0.5" :style="{ color: 'var(--color-text-muted)' }">{{ formatDate(item.published_at || item.created_at) }}</span>
+          </div>
+          <p class="text-sm leading-relaxed line-clamp-2 mt-2 flex items-start gap-1.5 min-h-[2.5rem]" :style="{ color: item.summary ? 'var(--color-text-secondary)' : 'transparent' }">
+            <!-- Summary icon: indent/quote -->
+            <svg class="flex-shrink-0 mt-0.5" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" :style="{ color: 'var(--color-text-muted)', opacity: 0.5 }">
+              <path d="M3 21V9l9-9 2 2-7 7h5v12H3zm11 0V9l9-9 2 2-7 7h5v12h-9z"/>
+            </svg>
+            <span>{{ item.summary }}</span>
+          </p>
+          <!-- Expanded content -->
+          <div v-if="expandedNewsId === item.id" class="mt-4 pt-4 border-t" :style="{ borderColor: 'var(--color-border)' }">
+            <div v-if="newsLoadingId === item.id" class="text-center py-4 text-sm" :style="{ color: 'var(--color-text-muted)' }">加载中...</div>
+            <div v-else class="text-sm leading-relaxed markdown-body p-4 rounded-lg border-l-2" :style="{ color: 'var(--color-text)', backgroundColor: isDark ? '#1e293b' : '#f1f5f9', borderLeftColor: isDark ? '#6366f1' : '#818cf8', maxWidth: 'none' }" v-html="item.content_html || item.content" @click="onNewsContentClick"></div>
+          </div>
+        </article>
+      </div>
+      <div v-if="hasMore" ref="loadMoreRef" class="text-center py-6">
+        <span v-if="loadingMore" :style="{ color: 'var(--color-text-muted)' }">加载中...</span>
+      </div>
+      <div v-else class="text-center pt-0 pb-1">
+        <span :style="{ color: 'var(--color-text-muted)', fontSize: '13px' }">— 我是有底线的 —</span>
+      </div>
+    </section>
+
     <GuestbookFormModal :visible="showGuestbookForm" @close="showGuestbookForm = false" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
@@ -108,8 +190,10 @@ import { useDarkMode } from '@/composables/useDarkMode'
 import { fetchPosts } from '@/api/posts'
 import { fetchCategories } from '@/api/categories'
 import { fetchTags } from '@/api/tags'
+import { fetchNews, fetchNewsItem, type NewsItem } from '@/api/news'
 import GuestbookFormModal from '@/components/shared/GuestbookFormModal.vue'
 import { navSearchVisible } from '@/composables/useSearchVisibility'
+import { useHeroVisibility } from '@/composables/useHeroVisibility'
 import { useTitleParts } from '@/composables/useTitleParts'
 
 const route = useRoute()
@@ -117,6 +201,7 @@ const router = useRouter()
 const settingsStore = useSettingsStore()
 const authStore = useAuthStore()
 const { isDark } = useDarkMode()
+const heroVisible = useHeroVisibility()
 
 const titleParts = useTitleParts(
   () => settingsStore.settings.site_title || 'MarkShareX',
@@ -126,6 +211,101 @@ const titleParts = useTitleParts(
 const heroSearch = ref('')
 const heroSearchRef = ref<HTMLElement | null>(null)
 const showGuestbookForm = ref(false)
+
+// News section
+const newsItems = ref<NewsItem[]>([])
+const newsPage = ref(1)
+const hasMore = ref(false)
+const loadingMore = ref(false)
+const loadMoreRef = ref<HTMLElement | null>(null)
+let newsObserver: IntersectionObserver | null = null
+
+const newsSearch = ref('')
+const newsRefs = new Map<number, HTMLElement>()
+const clickedNewsIds = reactive(new Set<number>())
+const expandedNewsId = ref<number | null>(null)
+const newsLoadingId = ref<number | null>(null)
+
+const batchSize = computed(() => parseInt(settingsStore.settings.batch_load_size || '5') || 5)
+const scrollSize = computed(() => parseInt(settingsStore.settings.scroll_load_size || '3') || 3)
+
+const filteredNews = computed(() => {
+  const q = newsSearch.value.trim().toLowerCase()
+  if (!q) return newsItems.value
+  return newsItems.value.filter(item =>
+    item.title.toLowerCase().includes(q) ||
+    (item.summary && item.summary.toLowerCase().includes(q))
+  )
+})
+
+async function toggleNews(item: NewsItem) {
+  if (expandedNewsId.value === item.id) {
+    expandedNewsId.value = null
+    // 收起后滚动回标题行位置
+    await nextTick()
+    const el = newsRefs.get(item.id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    return
+  }
+  expandedNewsId.value = item.id
+  clickedNewsIds.add(item.id)
+  // Lazy load content if not already loaded
+  if (!item.content && !item.content_html) {
+    newsLoadingId.value = item.id
+    try {
+      const resp = await fetchNewsItem(item.id)
+      const detail = resp.data.data
+      item.content = detail.content
+      item.content_html = detail.content_html
+    } catch { /* ignore */ }
+    finally { newsLoadingId.value = null }
+  }
+  // Scroll title row to just below navbar
+  await nextTick()
+  const el2 = newsRefs.get(item.id)
+  if (el2) {
+    el2.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+function onNewsContentClick(e: MouseEvent) {
+  // 点击链接时不收起资讯（让链接正常打开）
+  if ((e.target as HTMLElement).closest('a')) {
+    e.stopPropagation()
+  }
+}
+
+async function loadNewsInitial() {
+  try {
+    const resp = await fetchNews({ page: 1, page_size: batchSize.value })
+    const data = resp.data.data || []
+    newsItems.value = data
+    newsPage.value = 1
+    hasMore.value = data.length >= batchSize.value
+  } catch { /* ignore */ }
+}
+
+async function loadMoreNews() {
+  if (loadingMore.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const nextPage = newsPage.value + 1
+    const resp = await fetchNews({ page: nextPage, page_size: batchSize.value })
+    const data = resp.data.data || []
+    newsItems.value.push(...data)
+    newsPage.value = nextPage
+    hasMore.value = data.length >= batchSize.value
+  } catch { /* ignore */ }
+  finally { loadingMore.value = false }
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
 
 const totalPosts = ref(0)
 const totalCategories = ref(0)
@@ -168,6 +348,8 @@ function goWrite() {
 
 onMounted(() => {
   loadStats()
+  loadNewsInitial()
+  setTimeout(() => { heroVisible.value = false }, 3000)
   if (heroSearchRef.value) {
     const observer = new IntersectionObserver(
       ([entry]) => { navSearchVisible.value = entry.isIntersecting ? false : true },
@@ -176,6 +358,21 @@ onMounted(() => {
     observer.observe(heroSearchRef.value)
     navSearchVisible.value = false
     onUnmounted(() => { observer.disconnect(); navSearchVisible.value = true })
+  }
+})
+
+// Setup infinite scroll observer after news items render
+watch(hasMore, async (val) => {
+  if (newsObserver) { newsObserver.disconnect(); newsObserver = null }
+  if (val) {
+    await nextTick()
+    if (loadMoreRef.value) {
+      newsObserver = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) loadMoreNews() },
+        { threshold: 0 }
+      )
+      newsObserver.observe(loadMoreRef.value)
+    }
   }
 })
 

@@ -7,6 +7,38 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub auth: AuthConfig,
     pub storage: StorageConfig,
+    pub ai: Option<AiConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AiConfig {
+    pub search: Option<AiSearchConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AiSearchConfig {
+    #[serde(default = "default_search_provider")]
+    pub provider: String,
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default)]
+    pub api_url: String,
+}
+
+fn default_search_provider() -> String { "tavily".to_string() }
+
+impl AiSearchConfig {
+    pub fn api_url(&self) -> String {
+        if self.api_url.is_empty() {
+            match self.provider.as_str() {
+                "tavily" => "https://api.tavily.com".to_string(),
+                "firecrawl" => "https://api.firecrawl.dev".to_string(),
+                _ => "https://api.tavily.com".to_string(),
+            }
+        } else {
+            self.api_url.trim_end_matches('/').to_string()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

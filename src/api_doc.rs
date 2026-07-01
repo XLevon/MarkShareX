@@ -15,6 +15,8 @@ use crate::controllers::{
     comments::CommentResponse,
     files::FileResponse,
     network_resources::NetworkResourceResponse,
+    news::NewsResponse,
+    ai::{AiProviderResponse, AiSkillResponse, AiTaskResponse},
     ops::{HealthResponse, LogQueryResponse, StatsResponse},
     posts::{AdjacentPostsResponse, AuthorInfo, LikeStatusResponse, PostResponse, SearchResponse},
     profile::{ApiKeyResponse, ProfileResponse, SiteManagerResponse},
@@ -25,7 +27,8 @@ use crate::controllers::{
 
 use crate::controllers::{
     admin, analytics, auth, author_applications, categories, changelog, comments,
-    files, import_export, network_resources, ops, posts, profile, settings, setup, tags,
+    files, import_export, network_resources, news, ops, posts, profile, settings, setup, tags,
+    ai,
 };
 
 /// 聚合所有 API 路径和模型
@@ -47,6 +50,8 @@ use crate::controllers::{
         SettingsResponse, SetupResponse, LoginResponse, UserResponse,
         AdminUserResponse, ProfileResponse, SiteManagerResponse, ApiKeyResponse,
         NetworkResourceResponse, ApplicationResponse, ChangelogResponse,
+        NewsResponse,
+        AiProviderResponse, AiSkillResponse, AiTaskResponse,
         LogQueryResponse, HealthResponse, StatsResponse,
     )),
     tags(
@@ -60,6 +65,8 @@ use crate::controllers::{
         (name = "Files", description = "文件上传与管理"),
         (name = "Import/Export", description = "导入导出"),
         (name = "Network Resources", description = "网络资源库"),
+        (name = "News", description = "咨询信息"),
+        (name = "AI", description = "AI 模块"),
         (name = "Posts", description = "文章管理"),
         (name = "Profile", description = "个人资料"),
         (name = "Settings", description = "站点设置"),
@@ -99,6 +106,15 @@ use crate::controllers::{
         network_resources::delete_resource, network_resources::ensure_resource,
         network_resources::get_references, network_resources::list_resources,
         network_resources::resolve_resource, network_resources::update_resource,
+        news::list_news, news::list_admin_news, news::create_news,
+        news::update_news, news::delete_news,
+        ai::list_providers, ai::create_provider, ai::update_provider, ai::delete_provider,
+        ai::list_skills, ai::create_skill, ai::update_skill, ai::delete_skill,
+        ai::list_tasks, ai::create_task, ai::update_task, ai::delete_task,
+        ai::list_agent_configs, ai::create_agent_config, ai::update_agent_config, ai::delete_agent_config,
+        ai::list_models, ai::create_model, ai::update_model, ai::delete_model,
+        ai::list_sessions, ai::create_session, ai::get_session, ai::delete_session, ai::chat,
+        ai::list_tools, ai::create_tool, ai::update_tool, ai::delete_tool,
         posts::create_post, posts::delete_post, posts::get_adjacent_posts,
         posts::get_like_status, posts::get_post, posts::get_post_by_slug,
         posts::list_admin_posts, posts::list_authors, posts::list_posts,

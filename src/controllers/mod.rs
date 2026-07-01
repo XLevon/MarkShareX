@@ -14,8 +14,10 @@ pub mod import_export;
 pub mod author_applications;
 pub mod network_resources;
 pub mod changelog;
+pub mod news;
 pub mod ops;
 pub mod article_kb;
+pub mod ai;
 pub mod guestbook;
 
 use axum::{routing::{get, post, put, delete}, Router, Json, middleware};
@@ -268,6 +270,29 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         // Changelog (admin)
         .route("/api/v1/changelogs", get(changelog::list_changelogs).post(changelog::create_changelog))
         .route("/api/v1/changelogs/:id", put(changelog::update_changelog).delete(changelog::delete_changelog))
+        // News (public)
+        .route("/api/v1/news", get(news::list_news))
+        .route("/api/v1/news/:id", get(news::get_news))
+        // News (admin)
+        .route("/api/v1/admin/news", get(news::list_admin_news).post(news::create_news))
+        .route("/api/v1/admin/news/:id", put(news::update_news).delete(news::delete_news))
+        // AI (admin)
+        .route("/api/v1/admin/ai/providers", get(ai::list_providers).post(ai::create_provider))
+        .route("/api/v1/admin/ai/providers/:id", put(ai::update_provider).delete(ai::delete_provider))
+        .route("/api/v1/admin/ai/providers/:id/test", post(ai::test_provider))
+        .route("/api/v1/admin/ai/skills", get(ai::list_skills).post(ai::create_skill))
+        .route("/api/v1/admin/ai/skills/:id", put(ai::update_skill).delete(ai::delete_skill))
+        .route("/api/v1/admin/ai/tasks", get(ai::list_tasks).post(ai::create_task))
+        .route("/api/v1/admin/ai/tasks/:id", put(ai::update_task).delete(ai::delete_task))
+        .route("/api/v1/admin/ai/agent-configs", get(ai::list_agent_configs).post(ai::create_agent_config))
+        .route("/api/v1/admin/ai/agent-configs/:id", put(ai::update_agent_config).delete(ai::delete_agent_config))
+        .route("/api/v1/admin/ai/models", get(ai::list_models).post(ai::create_model))
+        .route("/api/v1/admin/ai/models/:id", put(ai::update_model).delete(ai::delete_model))
+        .route("/api/v1/admin/ai/sessions", get(ai::list_sessions).post(ai::create_session))
+        .route("/api/v1/admin/ai/sessions/:id", get(ai::get_session).delete(ai::delete_session))
+        .route("/api/v1/admin/ai/chat", post(ai::chat))
+        .route("/api/v1/admin/ai/tools", get(ai::list_tools).post(ai::create_tool))
+        .route("/api/v1/admin/ai/tools/:id", put(ai::update_tool).delete(ai::delete_tool))
         // Static files
         .nest_service("/uploads", tower_http::services::ServeDir::new(&state.config.storage.upload_dir))
         .with_state(state)

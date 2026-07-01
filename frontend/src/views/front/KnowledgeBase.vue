@@ -5,6 +5,28 @@
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
         <!-- Article List -->
         <div class="lg:col-span-2">
+          <!-- 移动端搜索框（当导航栏搜索框被隐藏时显示） -->
+          <div class="md:hidden mb-6">
+            <div class="relative">
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="搜索文章、标签或作者..."
+                class="w-full px-4 py-3 pl-11 text-sm rounded-xl border outline-none transition-colors"
+                :style="{
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'var(--color-bg-secondary)',
+                  borderColor: 'var(--color-border)',
+                  color: 'var(--color-text)',
+                }"
+                @keyup.enter="doSearch"
+                @focus="(e: FocusEvent) => { (e.target as HTMLInputElement).style.borderColor = 'var(--color-primary)' }"
+                @blur="(e: FocusEvent) => { (e.target as HTMLInputElement).style.borderColor = 'var(--color-border)' }"
+              />
+              <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5" :style="{ color: 'var(--color-text-muted)' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            </div>
+          </div>
           <div v-if="loading" class="text-center py-12" :style="{ color: 'var(--color-text-muted)' }">加载中...</div>
           <div v-else-if="posts.length === 0" class="text-center py-12" :style="{ color: 'var(--color-text-muted)' }">
             <p class="text-lg mb-2">暂无文章</p>
@@ -331,7 +353,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
+import { useDarkMode } from '@/composables/useDarkMode'
 import { fetchPosts, fetchPinnedPosts } from '@/api/posts'
 import { fetchCategories } from '@/api/categories'
 import { fetchTags } from '@/api/tags'
@@ -344,8 +368,11 @@ import FriendLinks from '@/components/front/FriendLinks.vue'
 import WebmasterInfo from '@/components/front/WebmasterInfo.vue'
 
 const settingsStore = useSettingsStore()
+const router = useRouter()
+const { isDark } = useDarkMode()
 
 const loading = ref(false)
+const searchQuery = ref('')
 const posts = ref<Post[]>([])
 const pinnedPosts = ref<Post[]>([])
 const categories = ref<Category[]>([])
@@ -406,6 +433,15 @@ const sidebarCategories = computed<SidebarCat[]>(() => {
 function toggleGroup(category: string) {
   if (collapsedGroups.has(category)) collapsedGroups.delete(category)
   else collapsedGroups.add(category)
+}
+
+function doSearch() {
+  const q = searchQuery.value.trim()
+  if (q) {
+    router.push({ path: '/search', query: { q } })
+  } else {
+    router.push({ path: '/search', query: {} })
+  }
 }
 
 const hotPosts = computed(() => [...posts.value].sort((a, b) => (b.view_count || 0) - (a.view_count || 0)))

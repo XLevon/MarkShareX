@@ -1,0 +1,490 @@
+//! AI 工具执行引擎 — Tool trait + 内置工具实现 + 注册调度
+//!
+//! 支持 Tavily 和 Firecrawl 作为搜索后端。
+//! 工具通过 ai_tools 数据库表注册，运行时从 DB 读取并 dispatch。
+
+use async_trait::async_trait;
+use sea_orm::*;
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::config::AiSearchConfig;
+use crate::utils::{AppState, AppError};
+use crate::models::entity::news;
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Tool trait
+// ═══════════════════════════════════════════════════════════════════════
+
+/// AI 工具的统一接口。
+/// 所有可被 LLM function calling 调用的工具都实现此 trait。
+#[async_trait]
+pub trait AiTool: Send + Sync {
+    /// 数据库中的 function_name（与 ai_tools 表对应）
+    fn name(&self) -> &str;
+
+    /// 工具描述（给 LLM 看的）
+    fn description(&self) -> &str;
+
+    /// OpenAI function calling 格式的 parameters JSON Schema
+    fn parameters(&self) -> Value;
+
+    /// 执行工具，返回结果文本
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Tool Registry — 运行时从 DB 加载工具
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct ToolRegistry {
+    /// function_name → tool instance
+    tools: HashMap<String, Arc<dyn AiTool>>,
+}
+
+impl ToolRegistry {
+    /// 创建空注册表，后续通过 register 添加工具
+    pub fn new() -> Self {
+        Self { tools: HashMap::new() }
+    }
+
+    /// 注册一个工具
+    pub fn register(&mut self, tool: Arc<dyn AiTool>) {
+        self.tools.insert(tool.name().to_string(), tool);
+    }
+
+    /// 查找工具
+    pub fn get(&self, name: &str) -> Option<&Arc<dyn AiTool>> {
+        self.tools.get(name)
+    }
+
+    /// 生成 OpenAI function calling 格式的 tools 列表
+    pub fn to_openai_tools(&self) -> Vec<Value> {
+        self.tools
+            .values()
+            .map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name(),
+                        "description": t.description(),
+                        "parameters": t.parameters(),
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// 列出所有已注册的工具名
+    #[allow(dead_code)]
+    pub fn tool_names(&self) -> Vec<&str> {
+        self.tools.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// 检查是否已注册指定名称的工具
+    pub fn contains(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Helper: 获取搜索配置
+// ═══════════════════════════════════════════════════════════════════════
+
+fn get_search_config(state: &AppState) -> Result<&AiSearchConfig, AppError> {
+    state.config.ai.as_ref()
+        .and_then(|a| a.search.as_ref())
+        .ok_or_else(|| AppError::BadRequest("AI 搜索未配置，请在 config.toml 中设置 [ai.search]".into()))
+}
+
+fn get_search_api_key(state: &AppState) -> Result<String, AppError> {
+    let cfg = get_search_config(state)?;
+    // 优先从环境变量读取
+    if let Ok(key) = std::env::var("MARKSHAREX_AI_SEARCH_API_KEY") {
+        if !key.is_empty() {
+            return Ok(key);
+        }
+    }
+    if cfg.api_key.is_empty() {
+        return Err(AppError::BadRequest(
+            "AI 搜索 API Key 未设置。请在 config.toml [ai.search] 中设置 api_key 或设置环境变量 MARKSHAREX_AI_SEARCH_API_KEY".into()
+        ));
+    }
+    Ok(cfg.api_key.clone())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Built-in Tool: web_search
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct WebSearchTool;
+
+#[async_trait]
+impl AiTool for WebSearchTool {
+    fn name(&self) -> &str { "web_search" }
+
+    fn description(&self) -> &str {
+        "搜索网络资讯，返回标题、URL 和摘要。适合查找最新新闻、技术动态等。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "搜索关键词"
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "返回结果数量，默认 5，最大 10",
+                    "default": 5
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        let query = args["query"].as_str().unwrap_or("").to_string();
+        let limit = args["limit"].as_u64().unwrap_or(5).min(10) as usize;
+
+        if query.is_empty() {
+            return Err(AppError::BadRequest("搜索关键词不能为空".into()));
+        }
+
+        let cfg = get_search_config(state)?;
+        let api_key = get_search_api_key(state)?;
+
+        let client = reqwest::Client::new();
+        let payload = match cfg.provider.as_str() {
+            "tavily" => serde_json::json!({
+                "api_key": api_key,
+                "query": query,
+                "max_results": limit,
+                "include_raw_content": false,
+                "include_images": false,
+            }),
+            "firecrawl" => serde_json::json!({
+                "query": query,
+                "limit": limit,
+            }),
+            _ => return Err(AppError::BadRequest(format!("不支持的搜索提供商: {}", cfg.provider))),
+        };
+
+        let endpoint = match cfg.provider.as_str() {
+            "tavily" => format!("{}/search", cfg.api_url()),
+            "firecrawl" => format!("{}/v1/search", cfg.api_url()),
+            _ => unreachable!(),
+        };
+
+        let mut req = client.post(&endpoint).json(&payload);
+        if cfg.provider == "firecrawl" {
+            req = req.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let resp = req.send().await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("搜索请求失败: {}", e)))?;
+
+        let body: Value = resp.json().await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("搜索响应解析失败: {}", e)))?;
+
+        // 标准化输出
+        let results: Vec<Value> = match cfg.provider.as_str() {
+            "tavily" => {
+                body.get("results").cloned().unwrap_or_default()
+                    .as_array().cloned().unwrap_or_default()
+                    .into_iter()
+                    .map(|r| serde_json::json!({
+                        "title": r["title"],
+                        "url": r["url"],
+                        "description": r["content"],
+                    }))
+                    .collect()
+            }
+            "firecrawl" => {
+                body.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default()
+                    .into_iter()
+                    .map(|r| serde_json::json!({
+                        "title": r["title"],
+                        "url": r["url"],
+                        "description": r["description"],
+                    }))
+                    .collect()
+            }
+            _ => vec![],
+        };
+
+        Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "success": true,
+            "count": results.len(),
+            "results": results,
+        })).unwrap_or_default())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Built-in Tool: web_extract
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct WebExtractTool;
+
+#[async_trait]
+impl AiTool for WebExtractTool {
+    fn name(&self) -> &str { "web_extract" }
+
+    fn description(&self) -> &str {
+        "抓取指定 URL 的网页内容，返回 Markdown 格式正文。适合获取文章全文。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "urls": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "要抓取的 URL 列表，最多 5 个",
+                    "maxItems": 5
+                }
+            },
+            "required": ["urls"]
+        })
+    }
+
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        let urls: Vec<String> = args["urls"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        if urls.is_empty() {
+            return Err(AppError::BadRequest("请提供至少一个 URL".into()));
+        }
+
+        let cfg = get_search_config(state)?;
+        let api_key = get_search_api_key(state)?;
+        let client = reqwest::Client::new();
+
+        let mut results = Vec::new();
+        for url in urls.iter().take(5) {
+            let payload = match cfg.provider.as_str() {
+                "tavily" => serde_json::json!({
+                    "api_key": api_key,
+                    "urls": [url],
+                    "include_images": false,
+                }),
+                "firecrawl" => serde_json::json!({
+                    "url": url,
+                    "formats": ["markdown"],
+                }),
+                _ => continue,
+            };
+
+            let endpoint = match cfg.provider.as_str() {
+                "tavily" => format!("{}/extract", cfg.api_url()),
+                "firecrawl" => format!("{}/v1/scrape", cfg.api_url()),
+                _ => continue,
+            };
+
+            let mut req = client.post(&endpoint).json(&payload);
+            if cfg.provider == "firecrawl" {
+                req = req.header("Authorization", format!("Bearer {}", api_key));
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    if let Ok(body) = resp.json::<Value>().await {
+                        let content = match cfg.provider.as_str() {
+                            "tavily" => body["results"][0]["raw_content"]
+                                .as_str().unwrap_or("").to_string(),
+                            "firecrawl" => body["data"]["markdown"]
+                                .as_str().or(body["data"]["content"].as_str())
+                                .unwrap_or("").to_string(),
+                            _ => String::new(),
+                        };
+                        // 截断过长内容（按字符而非字节，避免 UTF-8 边界 panic）
+                        let truncated = if content.len() > 15000 {
+                            let char_count = content.chars().count();
+                            let max_chars = 15000usize.min(char_count);
+                            let safe: String = content.chars().take(max_chars).collect();
+                            format!("{}...\n\n(内容过长，已截断至前 {} 字符)", safe, max_chars)
+                        } else {
+                            content
+                        };
+                        results.push(serde_json::json!({
+                            "url": url,
+                            "content": truncated,
+                        }));
+                    } else {
+                        results.push(serde_json::json!({"url": url, "error": "解析失败"}));
+                    }
+                }
+                Err(e) => {
+                    results.push(serde_json::json!({"url": url, "error": format!("请求失败: {}", e)}));
+                }
+            }
+        }
+
+        Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "success": true,
+            "count": results.len(),
+            "results": results,
+        })).unwrap_or_default())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Built-in Tool: create_news
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct CreateNewsTool;
+
+#[async_trait]
+impl AiTool for CreateNewsTool {
+    fn name(&self) -> &str { "create_news" }
+
+    fn description(&self) -> &str {
+        "创建一条资讯草稿。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）。可选 source_url（来源链接）。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "资讯标题"
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "简短摘要，200字以内"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Markdown 格式正文"
+                },
+                "source_url": {
+                    "type": "string",
+                    "description": "原文链接（可选）"
+                }
+            },
+            "required": ["title", "summary", "content"]
+        })
+    }
+
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        let title = args["title"].as_str().unwrap_or("").to_string();
+        let summary = args["summary"].as_str().unwrap_or("").to_string();
+        let mut content = args["content"].as_str().unwrap_or("").to_string();
+        let source_url = args["source_url"].as_str().unwrap_or("").to_string();
+
+        if title.is_empty() {
+            return Err(AppError::BadRequest("标题不能为空".into()));
+        }
+
+        // 如果有来源链接，追加到正文末尾
+        if !source_url.is_empty() {
+            content = format!("{}\n\n> 原文链接：[{}]({})", content, source_url, source_url);
+        }
+
+        // 生成 content_html
+        let content_html = crate::services::posts::render_markdown(&state.db, &content).await;
+
+        // 保存副本用于响应
+        let content_preview = content.chars().take(800).collect::<String>();
+        let summary_clone = summary.clone();
+
+        let now = crate::utils::now_local();
+        let model = news::ActiveModel {
+            title: Set(title.clone()),
+            summary: Set(summary),
+            content: Set(content),
+            content_html: Set(content_html),
+            status: Set("draft".to_string()),
+            sort_order: Set(0),
+            published_at: Set(None),
+            user_id: Set(None), // AI 创建，无用户关联
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        };
+
+        let inserted = model.insert(&state.db).await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("创建资讯失败: {}", e)))?;
+
+        Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "success": true,
+            "message": format!("资讯「{}」已创建（草稿），ID: {}", title, inserted.id),
+            "news_id": inserted.id,
+            "title": title,
+            "summary": summary_clone,
+            "content_preview": content_preview,
+            "draft_url": format!("http://{}:{}/admin/news/{}", state.config.server.host, state.config.server.port, inserted.id),
+        })).unwrap_or_default())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  DB 工具包装器：数据库中定义的自定义工具
+// ═══════════════════════════════════════════════════════════════════════
+
+struct DbTool {
+    item: ai_tool::Model,
+}
+
+#[async_trait]
+impl AiTool for DbTool {
+    fn name(&self) -> &str { &self.item.function_name }
+    fn description(&self) -> &str { &self.item.description }
+
+    fn parameters(&self) -> Value {
+        serde_json::from_str(&self.item.parameters_schema).unwrap_or(serde_json::json!({
+            "type": "object", "properties": {}
+        }))
+    }
+
+    async fn execute(&self, _args: Value, _state: &AppState) -> Result<String, AppError> {
+        Ok(format!("工具「{}」已收到调用，但此工具为声明式定义，暂无执行逻辑。", self.item.name))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Factory: 创建带有内置工具 + DB 工具的 ToolRegistry
+// ═══════════════════════════════════════════════════════════════════════
+
+use crate::models::entity::ai_tool;
+use sea_orm::DatabaseConnection;
+use sea_orm::EntityTrait;
+use sea_orm::QueryFilter;
+use sea_orm::ColumnTrait;
+
+/// 动态加载工具：内置工具 + 数据库中 enabled=true 的自定义工具
+pub async fn create_registry(db: &DatabaseConnection) -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry.register(Arc::new(WebSearchTool));
+    registry.register(Arc::new(WebExtractTool));
+    registry.register(Arc::new(CreateNewsTool));
+
+    // 加载数据库中的启用工具
+    if let Ok(items) = ai_tool::Entity::find()
+        .filter(ai_tool::Column::Enabled.eq(true))
+        .all(db).await
+    {
+        for item in items {
+            // 避免覆盖已注册的内置工具
+            if !registry.contains(item.function_name.as_str()) {
+                registry.register(Arc::new(DbTool { item }));
+            }
+        }
+    }
+
+    registry
+}

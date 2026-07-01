@@ -1,12 +1,13 @@
 <template>
   <header
-    class="sticky top-0 z-50 border-b backdrop-blur-md"
+    class="z-50 border-b backdrop-blur-md"
+    :class="{ sticky: sticky, 'top-0': sticky, relative: !sticky }"
     :style="headerStyle"
   >
     <div class="max-w-7xl mx-auto px-6">
       <div class="flex items-center justify-between h-16 gap-4">
         <!-- Left: Logo + Nav -->
-        <div class="flex items-center gap-4 flex-shrink-0" :style="{ minWidth: isMobile ? 'auto' : '240px' }">
+        <div class="flex items-center gap-1 sm:gap-4 flex-shrink-0" :style="{ minWidth: isMobile ? 'auto' : '240px' }">
           <router-link
             to="/"
             class="flex items-center font-bold no-underline flex-shrink-0 gap-1"
@@ -73,7 +74,7 @@
 import { ref, computed } from 'vue'
 import { useTitleParts } from '@/composables/useTitleParts'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   logoText: string
   logoImage: string
   isDark: boolean
@@ -82,7 +83,10 @@ const props = defineProps<{
   userInitial: string
   headerStyle: Record<string, string>
   badgeCount?: number
-}>()
+  sticky?: boolean
+}>(), {
+  sticky: true,
+})
 
 const isMobile = ref(window.innerWidth < 640)
 if (typeof window !== 'undefined') {
