@@ -99,11 +99,13 @@
 
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMessage, type ChatSession } from '@/api/ai'
 import { marked } from 'marked'
 
 const props = withDefaults(defineProps<{ mode?: 'front' | 'admin' }>(), { mode: 'admin' })
 const isAdmin = computed(() => props.mode === 'admin')
+const router = useRouter()
 
 const open = ref(false)
 const input = ref('')
@@ -263,8 +265,21 @@ async function send() {
       history: [],
       // 前台模式不传 session_id，每次都是新会话
       session_id: isAdmin.value ? (sessionId.value ?? undefined) : undefined,
+      in_admin: isAdmin.value,
     })
     const data = resp.data.data
+    // 处理快速导航标记 [navigate_to:path:label]
+    const navMatch = data.reply.match(/^\[navigate_to:(.+?):(.+?)\]$/)
+    if (navMatch) {
+      let [, path, label] = navMatch
+      messages.value.push({ role: 'assistant', content: `正在跳转到「${label}」...` })
+      if (path === '__back__') {
+        router.back()
+      } else {
+        router.push(path)
+      }
+      return
+    }
     messages.value.push({ role: 'assistant', content: data.reply })
     // 后台模式更新 session ID
     if (isAdmin.value && !sessionId.value) {

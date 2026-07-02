@@ -143,6 +143,7 @@ export interface ChatRequest {
   history: ChatMessage[]
   agent_config_id?: number
   session_id?: number
+  in_admin?: boolean
 }
 
 export interface ChatResponse {

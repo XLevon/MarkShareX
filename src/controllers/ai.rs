@@ -8,7 +8,7 @@ use sea_orm::*;
 use sea_orm::sea_query::Expr;
 use crate::utils::{AppState, AppError, ApiResponse};
 use crate::middleware::auth::AuthUser;
-use crate::models::entity::{ai_provider, ai_skill, ai_task, ai_agent_config, ai_tool, ai_model, ai_chat_session, ai_chat_message};
+use crate::models::entity::{ai_provider, ai_skill, ai_task, ai_agent_config, ai_tool, ai_model, ai_chat_session, ai_chat_message, settings};
 use crate::crypto;
 
 // ── Provider ──
@@ -1055,6 +1055,8 @@ pub struct ChatRequest {
     pub history: Vec<ChatMessage>,
     pub agent_config_id: Option<i32>,
     pub session_id: Option<i32>,
+    #[serde(default)]
+    pub in_admin: bool,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Clone)]
@@ -1084,6 +1086,26 @@ pub async fn chat(
     // ── 斜杠命令处理 ──
     if user_msg.starts_with('/') {
         return handle_slash_command(&state, &auth, &user_msg, &req).await;
+    }
+
+    // ── 快速导航检测（DB 驱动，无硬编码映射）──
+    if is_simple_nav(&user_msg) {
+        if let Some((page_name, path)) = detect_nav_intent(&state.db, &user_msg, req.in_admin).await {
+            let nav_marker = format!("[navigate_to:{}:{}]", path, page_name);
+            // 保存空对话记录
+            let nav_model = ai_chat_message::ActiveModel {
+                session_id: Set(0),
+                role: Set("assistant".to_string()),
+                content: Set(nav_marker.clone()),
+                created_at: Set(now),
+                ..Default::default()
+            };
+            nav_model.insert(&state.db).await?;
+            return Ok(Json(ApiResponse {
+                data: ChatResponse { reply: nav_marker, session_id: 0 },
+                pagination: None,
+            }));
+        }
     }
 
     // ── 1. 获取或创建 Session ──
@@ -1194,6 +1216,68 @@ pub async fn chat(
         data: ChatResponse { reply, session_id },
         pagination: None,
     }))
+}
+
+// ── 快速导航检测（DB 驱动）──
+
+/// 判断消息是否为简单导航（≤30字，无问号/疑问词）
+fn is_simple_nav(msg: &str) -> bool {
+    if msg.len() > 30 { return false; }
+    let question_markers = ["?", "？", "什么", "怎么", "如何", "为什么", "哪些", "哪个", "哪里", "谁"];
+    !question_markers.iter().any(|q| msg.contains(q))
+}
+
+/// 从 DB settings 读取触发词和路径映射，匹配用户消息
+async fn detect_nav_intent(
+    db: &DatabaseConnection,
+    msg: &str,
+    in_admin: bool,
+) -> Option<(String, String)> {
+    // 1. 读取触发词
+    let trigger_words: Vec<String> = if let Ok(Some(row)) = settings::Entity::find()
+        .filter(settings::Column::Key.eq("nav_trigger_words"))
+        .one(db).await
+    {
+        serde_json::from_str::<Vec<String>>(&row.value).unwrap_or_default()
+    } else { vec![] };
+
+    // 消息必须命中任一触发词
+    if !trigger_words.is_empty() && !trigger_words.iter().any(|t| msg.contains(t.as_str())) {
+        return None;
+    }
+
+    // 2. 读取路径映射
+    let mut page_name = String::new();
+    let mut path = String::new();
+    if let Ok(Some(row)) = settings::Entity::find()
+        .filter(settings::Column::Key.eq("nav_quick_paths"))
+        .one(db).await
+    {
+        let pages: Vec<[String; 2]> = serde_json::from_str(&row.value).unwrap_or_default();
+        for [kw, p] in &pages {
+            if msg.contains(kw.as_str()) {
+                page_name = kw.clone();
+                path = p.clone();
+                break;
+            }
+        }
+    }
+
+    if path.is_empty() { return None; }
+
+    // 3. Admin 上下文重映射
+    if in_admin {
+        let remapped = match path.as_str() {
+            "/knowledge-base" => ("文章管理".to_string(), "/admin/posts".to_string()),
+            "/authors" => ("用户管理".to_string(), "/admin/users".to_string()),
+            "/categories" => ("分类管理".to_string(), "/admin/categories".to_string()),
+            "/tags" => ("标签管理".to_string(), "/admin/tags".to_string()),
+            _ => (page_name, path),
+        };
+        return Some(remapped);
+    }
+
+    Some((page_name, path))
 }
 
 /// 处理斜杠命令

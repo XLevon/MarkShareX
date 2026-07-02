@@ -53,6 +53,28 @@
           </div>
           <n-data-table :columns="taskColumns" :data="tasks" :loading="loading" size="small" />
         </n-tab-pane>
+
+        <!-- Config -->
+        <n-tab-pane name="config" tab="配置">
+          <n-card title="快速路径触发词" size="small" style="max-width:720px;margin-bottom:16px">
+            <template #header-extra>
+              <n-button type="primary" size="small" :loading="savingConfig" @click="saveNavConfig">保存</n-button>
+            </template>
+            <p style="margin:0 0 8px;font-size:13px;color:var(--color-text-muted)">
+              用户消息包含任一触发词时才进入快速路径匹配。格式：<code>["跳","去","打开",...]</code>
+            </p>
+            <n-input v-model:value="navTriggerWords" type="textarea" :rows="4" placeholder='["跳","去","打开"]' />
+          </n-card>
+          <n-card title="快速路径" size="small" style="max-width:720px">
+            <template #header-extra>
+              <n-button type="primary" size="small" :loading="savingConfig" @click="saveNavConfig">保存</n-button>
+            </template>
+            <p style="margin:0 0 8px;font-size:13px;color:var(--color-text-muted)">
+              关键词→路径映射。格式：<code>[["首页","/"],["管理后台","/admin/dashboard"],...]</code>
+            </p>
+            <n-input v-model:value="navQuickPaths" type="textarea" :rows="16" placeholder='[["首页","/"]]' />
+          </n-card>
+        </n-tab-pane>
       </n-tabs>
     </n-card>
 
@@ -237,6 +259,7 @@ import {
   fetchTools, createTool, updateTool, deleteTool, type AiTool,
   fetchModels, createModel, updateModel, deleteModel, type AiModel,
 } from '@/api/ai'
+import { fetchSettings, updateSettings } from '@/api/settings'
 
 const message = useMessage()
 const activeTab = ref('providers')
@@ -620,7 +643,33 @@ watch(agentProviderFilter, () => {
   agentForm.value.model_id = undefined
 })
 
-function loadAll() { loadProviders(); loadSkills(); loadTasks(); loadAgentConfigs(); loadTools(); loadModels() }
+function loadAll() { loadProviders(); loadSkills(); loadTasks(); loadAgentConfigs(); loadTools(); loadModels(); loadNavConfig() }
+
+// ── Nav Config ──
+const navTriggerWords = ref('[]')
+const navQuickPaths = ref('[]')
+const savingConfig = ref(false)
+
+async function loadNavConfig() {
+  try {
+    const { data: resp } = await fetchSettings()
+    const s = (resp.data as any).settings || resp.data || {}
+    navTriggerWords.value = s.nav_trigger_words || '[]'
+    navQuickPaths.value = s.nav_quick_paths || '[]'
+  } catch {}
+}
+
+async function saveNavConfig() {
+  savingConfig.value = true
+  try {
+    await updateSettings({
+      nav_trigger_words: navTriggerWords.value,
+      nav_quick_paths: navQuickPaths.value,
+    } as any)
+    message.success('已保存，即时生效')
+  } catch { message.error('保存失败') }
+  finally { savingConfig.value = false }
+}
 onMounted(() => loadAll())
 </script>
 
