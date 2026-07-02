@@ -35,6 +35,7 @@ export interface AiSkill {
   description: string
   content: string
   output_format: string
+  params_template: string
   created_at: string
   updated_at: string
 }

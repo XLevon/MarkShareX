@@ -379,6 +379,7 @@ CREATE TABLE IF NOT EXISTS ai_skills (
     system_prompt TEXT NOT NULL DEFAULT '',
     user_prompt TEXT NOT NULL DEFAULT '',
     output_format VARCHAR(50) NOT NULL DEFAULT 'markdown',
+    params_template TEXT NOT NULL DEFAULT '{}',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

@@ -4,7 +4,10 @@
     <button
       v-if="!open"
       class="ai-chat-fab"
-      @click="open = true"
+      :style="fabDragTransform"
+      @mousedown.prevent="(e: MouseEvent) => startFabDrag(e)"
+      @touchstart.prevent="(e: TouchEvent) => startFabDrag(e)"
+      @click="fabDragged ? (fabDragged = false) : (open = true)"
       title="AI 助手"
     >
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -16,8 +19,8 @@
     <!-- 展开面板 -->
     <Teleport to="body">
       <Transition name="chat-slide">
-        <div v-if="open" class="ai-chat-panel">
-          <div class="ai-chat-header">
+        <div v-if="open" class="ai-chat-panel" :style="panelDragTransform">
+          <div class="ai-chat-header" @mousedown.prevent="startPanelDrag" @touchstart.prevent="startPanelDrag">
             <div class="ai-chat-title-bar">
               <button class="ai-chat-back" v-if="showSessions" @click="showSessions = false">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
@@ -110,6 +113,79 @@ const msgContainer = ref<HTMLElement | null>(null)
 const sessionId = ref<number | null>(null)
 const sessions = ref<ChatSession[]>([])
 const showSessions = ref(false)
+
+// ── Drag state ──
+const fabDrag = ref({ x: 0, y: 0 })
+const panelDrag = ref({ x: 0, y: 0 })
+const fabDragged = ref(false)
+const panelDragging = ref<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+const fabDragging = ref<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+
+const fabDragTransform = computed(() =>
+  fabDrag.value.x || fabDrag.value.y
+    ? `transform: translate(${fabDrag.value.x}px, ${fabDrag.value.y}px)`
+    : ''
+)
+const panelDragTransform = computed(() =>
+  panelDrag.value.x || panelDrag.value.y
+    ? `transform: translate(${panelDrag.value.x}px, ${panelDrag.value.y}px)`
+    : ''
+)
+
+function startFabDrag(e: MouseEvent | TouchEvent) {
+  const pt = 'touches' in e ? e.touches[0] : e
+  fabDragging.value = { sx: pt.clientX, sy: pt.clientY, ox: fabDrag.value.x, oy: fabDrag.value.y }
+  fabDragged.value = false
+  document.addEventListener('mousemove', onFabDrag)
+  document.addEventListener('mouseup', stopFabDrag)
+  document.addEventListener('touchmove', onFabDrag, { passive: false })
+  document.addEventListener('touchend', stopFabDrag)
+}
+function onFabDrag(e: MouseEvent | TouchEvent) {
+  if (!fabDragging.value) return
+  e.preventDefault()
+  const pt = 'touches' in e ? e.touches[0] : e
+  const dx = pt.clientX - fabDragging.value.sx
+  const dy = pt.clientY - fabDragging.value.sy
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) fabDragged.value = true
+  fabDrag.value = { x: fabDragging.value.ox + dx, y: fabDragging.value.oy + dy }
+}
+function stopFabDrag() {
+  fabDragging.value = null
+  document.removeEventListener('mousemove', onFabDrag)
+  document.removeEventListener('mouseup', stopFabDrag)
+  document.removeEventListener('touchmove', onFabDrag)
+  document.removeEventListener('touchend', stopFabDrag)
+}
+
+function startPanelDrag(e: MouseEvent | TouchEvent) {
+  const pt = 'touches' in e ? e.touches[0] : e
+  panelDragging.value = { sx: pt.clientX, sy: pt.clientY, ox: panelDrag.value.x, oy: panelDrag.value.y }
+  document.addEventListener('mousemove', onPanelDrag)
+  document.addEventListener('mouseup', stopPanelDrag)
+  document.addEventListener('touchmove', onPanelDrag, { passive: false })
+  document.addEventListener('touchend', stopPanelDrag)
+}
+function onPanelDrag(e: MouseEvent | TouchEvent) {
+  if (!panelDragging.value) return
+  e.preventDefault()
+  const pt = 'touches' in e ? e.touches[0] : e
+  const dx = pt.clientX - panelDragging.value.sx
+  const dy = pt.clientY - panelDragging.value.sy
+  panelDrag.value = { x: panelDragging.value.ox + dx, y: panelDragging.value.oy + dy }
+}
+function stopPanelDrag() {
+  panelDragging.value = null
+  document.removeEventListener('mousemove', onPanelDrag)
+  document.removeEventListener('mouseup', stopPanelDrag)
+  document.removeEventListener('touchmove', onPanelDrag)
+  document.removeEventListener('touchend', stopPanelDrag)
+}
+
+// Reset panel position when open changes
+watch(open, (val) => {
+  if (!val) panelDrag.value = { x: 0, y: 0 }
+})
 
 async function loadSessions() {
   if (!isAdmin.value) return
@@ -240,14 +316,13 @@ onMounted(() => {
   border: none;
   background: var(--color-primary, #6366f1);
   color: #fff;
-  cursor: pointer;
+  cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-  transition: transform 0.2s, box-shadow 0.2s;
 }
-.ai-chat-fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(99, 102, 241, 0.55); }
+.ai-chat-fab:hover { box-shadow: 0 6px 24px rgba(99, 102, 241, 0.55); }
 
 .ai-chat-panel {
   position: fixed;
@@ -266,6 +341,7 @@ onMounted(() => {
   background: var(--color-bg-card, #fff);
   border: 1px solid var(--color-border, #e5e7eb);
 }
+.ai-chat-fab:hover { box-shadow: 0 6px 24px rgba(99, 102, 241, 0.55); }
 
 .ai-chat-header {
   display: flex;
@@ -277,6 +353,8 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-border, #e5e7eb);
   background: var(--color-bg-card, #fff);
   color: var(--color-text, #1f2937);
+  cursor: grab;
+  user-select: none;
 }
 .ai-chat-title-bar { display: flex; align-items: center; gap: 8px; }
 .session-name { font-weight: 400; font-size: 12px; color: var(--color-text-muted, #9ca3af); }

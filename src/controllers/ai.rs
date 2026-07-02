@@ -81,6 +81,7 @@ pub struct AiSkillResponse {
     pub description: String,
     pub content: String,
     pub output_format: String,
+    pub params_template: String,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -90,6 +91,7 @@ impl From<ai_skill::Model> for AiSkillResponse {
         Self {
             id: m.id, name: m.name, description: m.description,
             content: m.content, output_format: m.output_format,
+            params_template: m.params_template,
             created_at: m.created_at, updated_at: m.updated_at,
         }
     }
@@ -104,9 +106,37 @@ pub struct CreateSkillRequest {
     pub content: String,
     #[serde(default = "default_output_format")]
     pub output_format: String,
+    #[serde(default)]
+    pub params_template: String,
 }
 
 fn default_output_format() -> String { "markdown".to_string() }
+
+/// Parse {{variable}} placeholders from content and generate JSON template.
+/// System variables (date, datetime, time) retain their {{name}} placeholder.
+/// User variables get empty string default.
+fn generate_params_template(content: &str) -> String {
+    use regex::Regex;
+    let re = Regex::new(r"\{\{(\w+)\}\}").unwrap();
+    let mut vars: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for cap in re.captures_iter(content) {
+        vars.insert(cap.get(1).unwrap().as_str());
+    }
+    if vars.is_empty() {
+        return "{}".to_string();
+    }
+    let system_vars: std::collections::HashSet<&str> =
+        ["date", "datetime", "time"].iter().cloned().collect();
+    let mut map = serde_json::Map::new();
+    for var in vars {
+        if system_vars.contains(var) {
+            map.insert(var.to_string(), serde_json::Value::String(format!("{{{{{}}}}}", var)));
+        } else {
+            map.insert(var.to_string(), serde_json::Value::String(String::new()));
+        }
+    }
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
+}
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSkillRequest {
@@ -114,6 +144,7 @@ pub struct UpdateSkillRequest {
     pub description: Option<String>,
     pub content: Option<String>,
     pub output_format: Option<String>,
+    pub params_template: Option<String>,
 }
 
 // ── Task ──
@@ -481,10 +512,17 @@ pub async fn create_skill(
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<Json<ApiResponse<AiSkillResponse>>, AppError> {
     let now = crate::utils::now_local();
+    // Auto-generate params_template from content if not provided
+    let params_template = if req.params_template.is_empty() {
+        generate_params_template(&req.content)
+    } else {
+        req.params_template.clone()
+    };
     let model = ai_skill::ActiveModel {
         name: Set(req.name), description: Set(req.description),
         content: Set(req.content),
         output_format: Set(req.output_format),
+        params_template: Set(params_template),
         created_at: Set(now), updated_at: Set(now),
         ..Default::default()
     };
@@ -507,6 +545,7 @@ pub async fn update_skill(
     if let Some(v) = req.description { model.description = Set(v); }
     if let Some(v) = req.content { model.content = Set(v); }
     if let Some(v) = req.output_format { model.output_format = Set(v); }
+    if let Some(v) = req.params_template { model.params_template = Set(v); }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
     Ok(Json(ApiResponse { data: AiSkillResponse::from(updated), pagination: None }))

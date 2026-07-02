@@ -14,7 +14,7 @@
           <n-data-table :columns="providerColumns" :data="providers" :loading="loading" size="small" />
           <div style="margin-top: 24px">
             <h4 style="margin: 0 0 8px">模型列表</h4>
-            <div class="tab-toolbar">
+            <div class="tab-toolbar" style="justify-content:space-between">
               <n-select v-model:value="modelProviderFilter" :options="providerOptions" placeholder="按供应商筛选" clearable style="width:200px" />
               <n-button type="primary" size="small" @click="openModelForm()" :disabled="!modelProviderFilter">+ 添加模型</n-button>
             </div>
@@ -99,8 +99,10 @@
             <n-switch v-model:value="agentForm.is_default" />
           </n-form-item>
           <n-form-item label="模型">
-            <n-select v-model:value="agentProviderFilter" :options="providerFilterOptions" placeholder="先选供应商" clearable style="margin-bottom:8px" />
-            <n-select v-model:value="agentForm.model_id" :options="agentModelOptions" clearable placeholder="不选则使用默认" />
+            <div style="display:flex;gap:8px;width:100%">
+              <n-select v-model:value="agentProviderFilter" :options="providerFilterOptions" placeholder="先选供应商" clearable style="flex:1" />
+              <n-select v-model:value="agentForm.model_id" :options="agentModelOptions" clearable placeholder="不选则使用默认" style="flex:1" />
+            </div>
           </n-form-item>
         </n-form>
         <template #footer><n-space justify="end">
@@ -120,6 +122,12 @@
             <n-input v-model:value="skillForm.content" type="textarea" :rows="14" placeholder="你是一个科技资讯编辑，请根据以下要求生成内容...
             
 支持 {{变量}} 占位符，如 {{topic}}、{{count}}" />
+          </n-form-item>
+          <n-form-item label="参数模板">
+            <div style="width:100%">
+              <n-input v-model:value="skillForm.params_template" type="textarea" :rows="4" placeholder='{"topic":"","count":3}' />
+              <div style="color:var(--color-text-muted);font-size:12px;margin-top:4px">JSON 格式，系统变量 {{date}} {{datetime}} {{time}} 会自动替换。新建时自动从指令内容提取</div>
+            </div>
           </n-form-item>
           <n-form-item label="输出格式">
             <n-select v-model:value="skillForm.output_format" :options="outputFormatOptions" />
@@ -170,7 +178,7 @@
             <n-select v-model:value="taskForm.agent_config_id" :options="agentOptions" clearable placeholder="选择智能体" />
           </n-form-item>
           <n-form-item label="技能" required>
-            <n-select v-model:value="taskForm.skill_id" :options="skillOptions" />
+            <n-select v-model:value="taskForm.skill_id" :options="skillOptions" @update:value="applySkillParamsTemplate" />
           </n-form-item>
           <n-form-item label="供应商">
             <n-select v-model:value="taskForm.provider_id" :options="providerOptions" clearable placeholder="不选则使用Agent的配置" />
@@ -374,7 +382,7 @@ const testingId = ref<number | null>(null)
 const providerColumns = [
   { title: '名称', key: 'name', width: 130 },
   { title: '类型', key: 'provider_type', width: 120 },
-  { title: '状态', key: 'is_active', width: 70, render(row: AiProvider) {
+  { title: '启用', key: 'is_active', width: 70, render(row: AiProvider) {
     return h(NSwitch, { size: 'small', value: row.is_active, onUpdateValue: (v: boolean) => toggleProviderActive(row, v) })
   }},
   { title: '操作', key: 'actions', width: 140, render(row: AiProvider) {
@@ -446,7 +454,7 @@ async function handleTestProvider(row: AiProvider) {
 const skills = ref<AiSkill[]>([])
 const showSkillModal = ref(false)
 const editingSkillId = ref<number | null>(null)
-const skillForm = ref({ name: '', description: '', content: '', output_format: 'markdown' })
+const skillForm = ref({ name: '', description: '', content: '', output_format: 'markdown', params_template: '{}' })
 const outputFormatOptions = [
   { label: 'Markdown', value: 'markdown' },
   { label: 'JSON', value: 'json' },
@@ -457,7 +465,7 @@ const toolColumns = [
   { title: '名称', key: 'name', width: 120 },
   { title: '功能名', key: 'function_name', width: 140 },
   { title: '描述', key: 'description', ellipsis: { tooltip: true } },
-  { title: '状态', key: 'enabled', width: 70, render(row: AiTool) {
+  { title: '启用', key: 'enabled', width: 70, render(row: AiTool) {
     return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleToolEnabled(row, v) })
   }},
   { title: '操作', key: 'actions', width: 80, render(row: AiTool) {
@@ -469,6 +477,7 @@ const toolColumns = [
 const skillColumns = [
   { title: '名称', key: 'name', width: 150 },
   { title: '描述', key: 'description', ellipsis: { tooltip: true } },
+  { title: '参数模板', key: 'params_template', width: 260, ellipsis: { tooltip: true }, render(row: AiSkill) { return row.params_template || '{}' } },
   { title: '操作', key: 'actions', width: 140, render(row: AiSkill) {
     return h(NSpace, { size: 'small' }, { default: () => [
       h(NButton, { size: 'small', onClick: () => openSkillForm(row) }, { default: () => '编辑' }),
@@ -480,7 +489,7 @@ const skillColumns = [
 async function loadSkills() { loading.value = true; try { const r = await fetchSkills(); skills.value = r.data.data || [] } catch {} finally { loading.value = false } }
 function openSkillForm(row?: AiSkill) {
   editingSkillId.value = row?.id ?? null
-  skillForm.value = row ? { name: row.name, description: row.description, content: row.content, output_format: row.output_format } : { name: '', description: '', content: '', output_format: 'markdown' }
+  skillForm.value = row ? { name: row.name, description: row.description, content: row.content, output_format: row.output_format, params_template: row.params_template } : { name: '', description: '', content: '', output_format: 'markdown', params_template: '{}' }
   showSkillModal.value = true
 }
 async function saveSkill() {
@@ -543,7 +552,7 @@ const taskColumns = [
   { title: '供应商', key: 'provider_id', width: 100, render(row: AiTask) { return providers.value.find(p => p.id === row.provider_id)?.name || 'Agent默认' } },
   { title: '模型', key: 'model_id', width: 120, render(row: AiTask) { return models.value.find(m => m.id === row.model_id)?.name || 'Agent默认' } },
   { title: 'Cron', key: 'cron_expr', width: 130 },
-  { title: '状态', key: 'enabled', width: 70, render(row: AiTask) {
+  { title: '启用', key: 'enabled', width: 70, render(row: AiTask) {
     return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleTaskEnabled(row, v) })
   }},
   { title: '运行次数', key: 'run_count', width: 90 },
@@ -562,6 +571,10 @@ function openTaskForm(row?: AiTask) {
   taskForm.value = row
     ? { name: row.name || '', skill_id: row.skill_id, provider_id: row.provider_id ?? undefined, agent_config_id: row.agent_config_id ?? undefined, model_id: row.model_id ?? undefined, cron_expr: row.cron_expr, params: row.params, enabled: row.enabled }
     : { name: '', skill_id: skillOptions.value[0]?.value ?? 0, provider_id: undefined, agent_config_id: undefined, model_id: undefined, cron_expr: '', params: '{}', enabled: true }
+  // 新建任务时自动带入技能参数模板
+  if (!row) {
+    applySkillParamsTemplate()
+  }
   showTaskModal.value = true
 }
 async function saveTask() {
@@ -593,6 +606,15 @@ watch(() => taskForm.value.provider_id, () => {
   taskForm.value.model_id = taskModelOptions.value[0]?.value ?? undefined
 })
 
+// 切换技能时自动带入参数模板
+function applySkillParamsTemplate() {
+  const skill = skills.value.find(s => s.id === taskForm.value.skill_id)
+  taskForm.value.params = (skill?.params_template && skill.params_template !== '{}') ? skill.params_template : '{}'
+}
+watch(() => taskForm.value.skill_id, () => {
+  applySkillParamsTemplate()
+})
+
 // 切换 Agent 供应商时清空模型选择
 watch(agentProviderFilter, () => {
   agentForm.value.model_id = undefined
@@ -606,5 +628,5 @@ onMounted(() => loadAll())
 .ai-manage { padding: 0 0 24px; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
 .page-header h2 { margin: 0; font-size: 28px; font-weight: 700; color: var(--input-color); }
-.tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
+.tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; align-items: center; }
 </style>
