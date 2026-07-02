@@ -177,16 +177,18 @@ onMounted(() => loadData())
 
 <style scoped>
 .news-manage {
-  padding: 24px;
+  padding: 0 0 24px;
 }
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 .page-header h2 {
   margin: 0;
-  font-size: 22px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--input-color);
 }
 </style>

@@ -603,8 +603,8 @@ onMounted(() => loadAll())
 </script>
 
 <style scoped>
-.ai-manage { padding: 24px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.page-header h2 { margin: 0; font-size: 22px; }
+.ai-manage { padding: 0 0 24px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.page-header h2 { margin: 0; font-size: 28px; font-weight: 700; color: var(--input-color); }
 .tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
 </style>

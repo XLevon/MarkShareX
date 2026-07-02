@@ -134,9 +134,9 @@ onMounted(() => loadEntries())
 </script>
 
 <style scoped>
-.admin-guestbook-page { padding: 24px; }
+.admin-guestbook-page { padding: 0 0 24px; }
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-.page-title { font-size: 22px; font-weight: 700; color: var(--color-text); margin: 0; }
+.page-title { font-size: 28px; font-weight: 700; color: var(--input-color); margin: 0; }
 .entries-list { display: flex; flex-direction: column; gap: 12px; }
 .entry-card { border: 1px solid; border-radius: 12px; padding: 16px; }
 .entry-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
