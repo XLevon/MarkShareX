@@ -1,7 +1,7 @@
 <template>
   <div class="admin-guestbook-page">
     <div class="page-header">
-      <h1 class="page-title">💬 留言板</h1>
+      <h2 class="page-title">💬 留言板</h2>
     </div>
 
     <div v-if="loading" class="loading-state"><div class="spinner"></div><span>加载中...</span></div>

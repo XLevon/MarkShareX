@@ -27,25 +27,23 @@
               </button>
               <span v-if="showSessions">会话列表</span>
               <span v-else>🤖 AI 助手</span>
-              <span class="session-name" v-if="!showSessions && sessionId && isAdmin">#{{ sessionId }}</span>
+              <span class="session-name" v-if="!showSessions && sessionId">#{{ sessionId }}</span>
             </div>
             <div class="ai-chat-header-actions">
-              <template v-if="isAdmin">
-                <button class="ai-chat-btn-icon" @click="toggleSessions" title="会话列表">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-                </button>
-                <button class="ai-chat-btn-icon" @click="newSession" title="新会话">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                </button>
-              </template>
+              <button class="ai-chat-btn-icon" @click="toggleSessions" title="会话列表">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+              </button>
+              <button class="ai-chat-btn-icon" @click="newSession" title="新会话">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
               <button class="ai-chat-close" @click="open = false">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
           </div>
 
-          <!-- 会话列表（仅管理后台） -->
-          <div v-if="showSessions && isAdmin" class="ai-chat-sessions">
+          <!-- 会话列表 -->
+          <div v-if="showSessions" class="ai-chat-sessions">
             <div v-if="sessions.length === 0" class="ai-chat-empty">暂无会话</div>
             <div
               v-for="s in sessions" :key="s.id"
@@ -98,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, computed } from 'vue'
+import { ref, nextTick, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMessage, type ChatSession } from '@/api/ai'
 import { marked } from 'marked'
@@ -187,6 +185,13 @@ function stopPanelDrag() {
 // Reset panel position when open changes
 watch(open, (val) => {
   if (!val) panelDrag.value = { x: 0, y: 0 }
+  // Lock body scroll when panel is open
+  document.body.style.overflow = val ? 'hidden' : ''
+})
+
+// Ensure scroll lock is released on unmount
+onUnmounted(() => {
+  document.body.style.overflow = ''
 })
 
 async function loadSessions() {

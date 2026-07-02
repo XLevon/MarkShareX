@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen flex flex-col transition-theme" :style="{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }">
     <!-- Navigation Bar + Hero Toggle -->
-    <div class="sticky top-0 z-50">
+    <div class="sticky top-0 z-[1100]">
       <NavBar
         :logo-text="settingsStore.settings.site_title || 'MarkShareX'"
         :logo-image="settingsStore.resolvedLogoUrl"
@@ -227,7 +227,6 @@
 
   </div>
 
-  <AiChatWidget mode="front" />
 </template>
 
 <script setup lang="ts">
@@ -243,7 +242,6 @@ import ProfileView from '@/views/admin/Profile.vue'
 import { navSearchVisible } from '@/composables/useSearchVisibility'
 import { useHeroVisibility } from '@/composables/useHeroVisibility'
 import { fetchLatestVersion } from '@/api/changelog'
-import AiChatWidget from '@/components/shared/AiChatWidget.vue'
 
 const route = useRoute()
 const router = useRouter()

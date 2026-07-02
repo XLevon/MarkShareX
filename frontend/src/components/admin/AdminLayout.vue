@@ -21,7 +21,7 @@
     '--text-dim': isDark ? '#9ca3af' : '#6b7280',
   }">
     <!-- 顶部导航栏 + 移动端菜单（sticky 包裹） -->
-    <div class="sticky top-0 z-50">
+    <div class="sticky top-0 z-[1100]">
       <NavBar
         :logo-text="settingsStore.settings.site_title || 'MarkShareX'"
         :logo-image="settingsStore.resolvedLogoUrl"
@@ -186,10 +186,8 @@
           </div>
         </div>
       </div>
-    </div>
   </div>
-
-  <AiChatWidget />
+</div>
 </template>
 
 <script setup lang="ts">
@@ -203,7 +201,6 @@ import NavBar from '@/components/shared/NavBar.vue'
 import ProfileView from '@/views/admin/Profile.vue'
 
 import { useDarkMode } from '@/composables/useDarkMode'
-import AiChatWidget from '@/components/shared/AiChatWidget.vue'
 
 const router = useRouter()
 const route = useRoute()

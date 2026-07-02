@@ -10,6 +10,7 @@
     <n-message-provider>
       <n-dialog-provider>
         <router-view />
+        <AiChatWidget :mode="chatMode" />
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
@@ -17,18 +18,21 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { darkTheme, zhCN, dateZhCN } from 'naive-ui'
 import { useDarkMode } from '@/composables/useDarkMode'
+import AiChatWidget from '@/components/shared/AiChatWidget.vue'
 
+const route = useRoute()
+const router = useRouter()
 const { isDark, initDarkMode } = useDarkMode()
 
 const naiveTheme = computed(() => isDark.value ? darkTheme : null)
 
-// ── 首次加载时后台检查系统是否已初始化，未初始化则跳转到 setup ──
-import { useRouter } from 'vue-router'
-import { fetchSetupStatus } from '@/api/setup'
+const chatMode = computed(() => route.path.startsWith('/admin') ? 'admin' as const : 'front' as const)
 
-const router = useRouter()
+// ── 首次加载时后台检查系统是否已初始化，未初始化则跳转到 setup ──
+import { fetchSetupStatus } from '@/api/setup'
 
 onMounted(async () => {
   initDarkMode()
