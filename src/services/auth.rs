@@ -8,17 +8,19 @@ use crate::utils::AppError;
 pub struct Claims {
     pub user_id: i32,
     pub username: String,
+    pub display_name: Option<String>,
     pub role: String,
     pub status: String,
     pub exp: i64,
     pub iat: i64,
 }
 
-pub fn generate_token(user_id: i32, username: &str, role: &str, status: &str, config: &AuthConfig) -> Result<String, AppError> {
+pub fn generate_token(user_id: i32, username: &str, display_name: Option<String>, role: &str, status: &str, config: &AuthConfig) -> Result<String, AppError> {
     let now = Utc::now();
     let claims = Claims {
         user_id,
         username: username.to_string(),
+        display_name,
         role: role.to_string(),
         status: status.to_string(),
         iat: now.timestamp(),

@@ -120,6 +120,7 @@ pub async fn register(
     let token = services::auth::generate_token(
         user.id,
         &user.username,
+        user.display_name.clone(),
         &user.role,
         &user.status,
         &state.config.auth,
@@ -240,6 +241,7 @@ pub async fn login(
     let token = services::auth::generate_token(
         user.id,
         &user.username,
+        user.display_name.clone(),
         &user.role,
         &user.status,
         &state.config.auth,
@@ -335,6 +337,7 @@ pub async fn refresh(
     let token = services::auth::generate_token(
         user.id,
         &user.username,
+        user.display_name.clone(),
         &user.role,
         &user.status,
         &state.config.auth,

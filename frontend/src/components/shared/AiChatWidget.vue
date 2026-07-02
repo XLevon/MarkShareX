@@ -190,7 +190,6 @@ watch(open, (val) => {
 })
 
 async function loadSessions() {
-  if (!isAdmin.value) return
   try {
     const r = await fetchSessions()
     sessions.value = r.data.data || []
@@ -263,8 +262,7 @@ async function send() {
     const resp = await sendChatMessage({
       message: text,
       history: [],
-      // 前台模式不传 session_id，每次都是新会话
-      session_id: isAdmin.value ? (sessionId.value ?? undefined) : undefined,
+      session_id: sessionId.value ?? undefined,
       in_admin: isAdmin.value,
     })
     const data = resp.data.data
@@ -281,8 +279,8 @@ async function send() {
       return
     }
     messages.value.push({ role: 'assistant', content: data.reply })
-    // 后台模式更新 session ID
-    if (isAdmin.value && !sessionId.value) {
+    // 更新 session ID
+    if (!sessionId.value) {
       sessionId.value = data.session_id
       loadSessions()
     }

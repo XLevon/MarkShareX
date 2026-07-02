@@ -467,11 +467,18 @@ use sea_orm::QueryFilter;
 use sea_orm::ColumnTrait;
 
 /// 动态加载工具：内置工具 + 数据库中 enabled=true 的自定义工具
-pub async fn create_registry(db: &DatabaseConnection) -> ToolRegistry {
+/// is_admin: 管理员可调用全部工具，非管理员只能调用只读工具
+pub async fn create_registry(db: &DatabaseConnection, is_privileged: bool) -> ToolRegistry {
     let mut registry = ToolRegistry::new();
+
+    // 基础工具（所有用户可用）
     registry.register(Arc::new(WebSearchTool));
     registry.register(Arc::new(WebExtractTool));
-    registry.register(Arc::new(CreateNewsTool));
+
+    // 特权工具（仅 admin/sub_admin）
+    if is_privileged {
+        registry.register(Arc::new(CreateNewsTool));
+    }
 
     // 加载数据库中的启用工具
     if let Ok(items) = ai_tool::Entity::find()

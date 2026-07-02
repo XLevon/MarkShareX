@@ -17,6 +17,9 @@ pub struct AuthUser {
     /// 认证来源：jwt 或 api_key
     #[allow(dead_code)]
     pub auth_source: String,
+    /// 用户显示名（jwt 携带，无需额外查表）
+    #[allow(dead_code)]
+    pub display_name: Option<String>,
 }
 
 #[axum::async_trait]
@@ -49,6 +52,7 @@ impl FromRequestParts<AppState> for AuthUser {
         Ok(AuthUser {
             user_id: claims.user_id,
             username: claims.username,
+            display_name: claims.display_name,
             role: claims.role,
             status: claims.status,
             auth_source: "jwt".to_string(),
@@ -102,6 +106,7 @@ impl AuthUser {
                 Ok(AuthUser {
                     user_id: u.id,
                     username: u.username,
+                    display_name: u.display_name,
                     role: u.role,
                     status: u.status,
                     auth_source: "api_key".to_string(),

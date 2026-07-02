@@ -951,13 +951,30 @@ pub async fn list_sessions(
     let sessions = q.order_by_desc(ai_chat_session::Column::UpdatedAt)
         .all(&state.db).await?;
 
+    // 收集所有 user_id 查 display_name
+    let user_ids: Vec<i32> = sessions.iter().map(|s| s.user_id).collect();
+    let users = crate::models::entity::users::Entity::find()
+        .filter(crate::models::entity::users::Column::Id.is_in(user_ids))
+        .all(&state.db).await?;
+    use std::collections::HashMap;
+    let name_map: HashMap<i32, String> = users.iter().map(|u| {
+        (u.id, u.display_name.clone().unwrap_or_else(|| u.username.clone()))
+    }).collect();
+
     let mut result = Vec::new();
     for s in sessions {
         let count = ai_chat_message::Entity::find()
             .filter(ai_chat_message::Column::SessionId.eq(s.id))
             .count(&state.db).await?;
+        let user_label = name_map.get(&s.user_id).cloned().unwrap_or_default();
+        // Admin 看到：前缀 [显示名]，非 admin 只看到自己的标题不加前缀
+        let title = if auth.role == "admin" {
+            format!("[{}] {}", user_label, s.title)
+        } else {
+            s.title.clone()
+        };
         result.push(ChatSessionResponse {
-            id: s.id, title: s.title, user_id: s.user_id,
+            id: s.id, title, user_id: s.user_id,
             agent_config_id: s.agent_config_id,
             msg_count: count as usize,
             created_at: s.created_at, updated_at: s.updated_at,
@@ -1188,7 +1205,7 @@ pub async fn chat(
     } else { None };
 
     // ── 7. 执行 AI ──
-    let registry = ai_tools::create_registry(&state.db).await;
+    let registry = ai_tools::create_registry(&state.db, auth.is_privileged()).await;
     let reply = ai_chat::run_function_calling(
         &state, &registry, &agent_cfg.system_prompt,
         &user_content, &history, None, model_name,
