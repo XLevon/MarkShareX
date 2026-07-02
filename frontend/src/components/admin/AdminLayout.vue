@@ -279,7 +279,8 @@ function isActive(key: string) {
   if (key === 'comments') return route.name === 'admin-analytics-comments'
   if (key === 'users') return route.name === 'admin-users'
   if (key === 'settings') return route.name === 'admin-settings'
-  if (key === 'guestbook') return route.name === 'admin-guestbook'
+  if (key === 'news') return route.name === 'admin-news'
+  if (key === 'ai') return String(route.name).startsWith('admin-ai')
   return false
 }
 
@@ -499,7 +500,6 @@ const allNavItems = [
   { label: '批导', key: 'import', to: '/admin/import', icon: importIcon, roles: ['admin', 'sub_admin', 'author'] },
   { label: '用户', key: 'users', to: '/admin/users', icon: usersIcon, roles: ['admin', 'sub_admin'] },
   { label: '设置', key: 'settings', to: '/admin/settings', icon: settingsIcon, roles: ['admin'] },
-  { label: '留言板', key: 'guestbook', to: '/admin/guestbook', icon: guestbookIcon, roles: ['admin', 'sub_admin'] },
   { label: '资讯', key: 'news', to: '/admin/news', icon: newsIcon, roles: ['admin', 'sub_admin'] },
   { label: 'AI', key: 'ai', to: '/admin/ai', icon: aiIcon, roles: ['admin', 'sub_admin'] },
 ]

@@ -52,6 +52,15 @@
           <span class="stat-label">评论数</span>
         </div>
       </router-link>
+      <router-link to="/admin/guestbook" class="stat-card stat-link">
+        <div class="stat-icon guestbook">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        </div>
+        <div class="stat-body">
+          <span class="stat-value">{{ stats.guestbookEntries }}</span>
+          <span class="stat-label">留言量</span>
+        </div>
+      </router-link>
     </div>
 
     <!-- 快捷入口 5 列 -->
@@ -91,6 +100,13 @@
         </div>
         <span class="quick-label">基础设置</span>
         <span class="quick-desc">站点标题、描述等配置</span>
+      </router-link>
+      <router-link to="/admin/news" class="quick-card">
+        <div class="quick-icon news-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 4l8 8 8-8"/></svg>
+        </div>
+        <span class="quick-label">资讯管理</span>
+        <span class="quick-desc">管理资讯文章采集发布</span>
       </router-link>
     </div>
 
@@ -186,6 +202,7 @@ import { useRouter } from 'vue-router'
 import { fetchAdminPosts } from '@/api/posts'
 import { fetchFiles } from '@/api/files'
 import { getCommentPendingCount } from '@/api/admin'
+import { fetchGuestbook } from '@/api/guestbook'
 import api from '@/api/index'
 import dayjs from 'dayjs'
 
@@ -200,7 +217,7 @@ const isAdmin = computed(() => {
   return false
 })
 
-const stats = reactive({ posts: 0, published: 0, drafts: 0, views: 0, likes: 0, comments: 0, pendingComments: 0, dailyViews: 0, dailyLikes: 0, dailyPublished: 0, dailyDrafts: 0 })
+const stats = reactive({ posts: 0, published: 0, drafts: 0, views: 0, likes: 0, comments: 0, pendingComments: 0, guestbookEntries: 0, dailyViews: 0, dailyLikes: 0, dailyPublished: 0, dailyDrafts: 0 })
 const recentPosts = ref<any[]>([])
 const storageUsed = ref(0)
 const storageTotal = ref(1024 * 1024 * 1024)
@@ -320,6 +337,11 @@ onMounted(async () => {
     } catch { /* keep 0 */ }
 
     try {
+      const { data: guestbookResp } = await fetchGuestbook({ page: 1, page_size: 1 })
+      stats.guestbookEntries = guestbookResp.pagination.total
+    } catch { /* keep 0 */ }
+
+    try {
       // authors only see pending comments on their own posts (matches CommentsAdmin behavior)
       const role = (() => {
         try {
@@ -415,6 +437,7 @@ watch(chartRange, (days) => loadTrendData(days))
 .stat-icon.views    { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
 .stat-icon.likes    { background: rgba(239, 68, 68, 0.12);  color: #f87171; }
 .stat-icon.comments { background: rgba(107, 114, 128, 0.12); color: var(--text-secondary); }
+.stat-icon.guestbook { background: rgba(16, 185, 129, 0.12); color: #34d399; }
 .stat-body { display: flex; flex-direction: column; gap: 2px; }
 .stat-value { font-size: 22px; font-weight: 700; color: var(--input-color); letter-spacing: -0.5px; }
 .stat-label { font-size: 12px; color: var(--text-dim); }

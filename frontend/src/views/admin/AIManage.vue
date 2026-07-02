@@ -140,7 +140,7 @@
           <n-form-item label="功能名" required><n-input v-model:value="toolForm.function_name" placeholder="search_posts" :disabled="!!editingToolId" /></n-form-item>
           <n-form-item label="描述">
             <div style="width:100%">
-              <n-input v-model:value="toolForm.description" type="textarea" :rows="2" placeholder="根据关键词搜索已发布的文章" />
+              <n-input v-model:value="toolForm.description" type="textarea" :rows="4" placeholder="根据关键词搜索已发布的文章" />
               <div style="color:#d03050;font-size:12px;margin-top:4px">该描述会传给LLM，决定了AI何时调用此工具</div>
             </div>
           </n-form-item>

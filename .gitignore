@@ -3,6 +3,7 @@ node_modules/
 
 # 构建产物
 target/
+.pid
 marksharex
 frontend/dist.tar.gz
 

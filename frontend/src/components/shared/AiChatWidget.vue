@@ -97,6 +97,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMessage, type ChatSession } from '@/api/ai'
+import { marked } from 'marked'
 
 const props = withDefaults(defineProps<{ mode?: 'front' | 'admin' }>(), { mode: 'admin' })
 const isAdmin = computed(() => props.mode === 'admin')
@@ -163,7 +164,7 @@ async function newSession() {
 }
 
 function renderMsg(content: string) {
-  return content.replace(/\n/g, '<br>')
+  return marked.parse(content)
 }
 
 async function sendHint(text: string) {
