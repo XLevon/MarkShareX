@@ -20,7 +20,7 @@
     <Teleport to="body">
       <Transition name="chat-slide">
         <div v-if="open" class="ai-chat-panel" :style="panelDragTransform">
-          <div class="ai-chat-header" @mousedown.prevent="startPanelDrag" @touchstart.prevent="startPanelDrag">
+          <div class="ai-chat-header" @mousedown="startPanelDrag" @touchstart="startPanelDrag">
             <div class="ai-chat-title-bar">
               <button class="ai-chat-back" v-if="showSessions" @click="showSessions = false">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
@@ -159,6 +159,8 @@ function stopFabDrag() {
 }
 
 function startPanelDrag(e: MouseEvent | TouchEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('button')) return  // 不拦截按钮点击
   const pt = 'touches' in e ? e.touches[0] : e
   panelDragging.value = { sx: pt.clientX, sy: pt.clientY, ox: panelDrag.value.x, oy: panelDrag.value.y }
   document.addEventListener('mousemove', onPanelDrag)
