@@ -390,8 +390,8 @@ impl AiTool for CreateNewsTool {
     async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
         let title = args["title"].as_str().unwrap_or("").to_string();
         let summary = args["summary"].as_str().unwrap_or("").to_string();
-        let mut content = args["content"].as_str().unwrap_or("").to_string();
-        let source_url = args["source_url"].as_str().unwrap_or("").to_string();
+        let content = args["content"].as_str().unwrap_or("").to_string();
+        let _source_url = args["source_url"].as_str().unwrap_or("").to_string();
         let status = args["status"].as_str().unwrap_or("draft").to_string();
 
         if title.is_empty() {
@@ -400,11 +400,6 @@ impl AiTool for CreateNewsTool {
 
         if status != "draft" && status != "published" {
             return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
-        }
-
-        // 如果有来源链接，追加到正文末尾
-        if !source_url.is_empty() {
-            content = format!("{}\n\n> 原文链接：[{}]({})", content, source_url, source_url);
         }
 
         // 生成 content_html
