@@ -13,6 +13,8 @@ use std::sync::Arc;
 use crate::config::AiSearchConfig;
 use crate::utils::{AppState, AppError};
 use crate::models::entity::news;
+use crate::models::entity::posts;
+use crate::models::entity::categories;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Tool trait
@@ -446,7 +448,148 @@ impl AiTool for CreateNewsTool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Built-in Tool: get_current_datetime
+//  Built-in Tool: create_post — AI 自动发布知识库文章
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct CreatePostTool;
+
+#[async_trait]
+impl AiTool for CreatePostTool {
+    fn name(&self) -> &str { "create_post" }
+
+    fn description(&self) -> &str {
+        "创建一篇知识库文章。需要提供 title（标题）、content（Markdown 正文，可用 nr:ID 引用资源库图片）、category_id（分类 ID）。可选 summary、cover_image（nr:ID 或 URL）、status（draft 或 published，默认 draft）。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "文章标题"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Markdown 格式正文。图片用 ![alt](nr:资源ID) 引用资源库图片，或用 ![alt](https://...) 引用外部图片"
+                },
+                "category_id": {
+                    "type": "integer",
+                    "description": "分类 ID（必填，需先查询 categories 获取）"
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "文章摘要（可选）"
+                },
+                "cover_image": {
+                    "type": "string",
+                    "description": "封面图：nr:资源ID 或完整 URL（可选）"
+                },
+                "status": {
+                    "type": "string",
+                    "description": "发布状态：draft（草稿，默认）或 published（已发布）",
+                    "enum": ["draft", "published"],
+                    "default": "draft"
+                }
+            },
+            "required": ["title", "content", "category_id"]
+        })
+    }
+
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        let title = args["title"].as_str().unwrap_or("").to_string();
+        let content = args["content"].as_str().unwrap_or("").to_string();
+        let summary = args["summary"].as_str().unwrap_or("").to_string();
+        let cover_image = args["cover_image"].as_str().unwrap_or("").to_string();
+        let status = args["status"].as_str().unwrap_or("draft").to_string();
+        let category_id: i32 = args["category_id"].as_i64().unwrap_or(0) as i32;
+
+        if title.is_empty() { return Err(AppError::BadRequest("标题不能为空".into())); }
+        if content.is_empty() { return Err(AppError::BadRequest("内容不能为空".into())); }
+        if category_id <= 0 { return Err(AppError::BadRequest("category_id 无效".into())); }
+        if status != "draft" && status != "published" {
+            return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
+        }
+
+        // 验证分类存在
+        let cat = categories::Entity::find_by_id(category_id)
+            .filter(categories::Column::DeletedAt.is_null())
+            .one(&state.db).await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("查询分类失败: {}", e)))?
+            .ok_or_else(|| AppError::BadRequest(format!("分类 #{} 不存在", category_id)))?;
+
+        // 生成 slug
+        let slug = crate::services::posts::generate_slug(&title);
+
+        // 生成 content_html（支持 nr:{id} 图片引用解析）
+        let content_html = crate::services::posts::render_markdown(&state.db, &content).await;
+
+        let now = crate::utils::now_local();
+        let is_published = status == "published";
+        let published_at = if is_published { Some(now) } else { None };
+
+        // 处理封面图
+        let (cover_url, cover_filename, cover_nr_id) = if !cover_image.is_empty() {
+            if cover_image.starts_with("nr:") {
+                // 资源库图片引用
+                let nr_id: i32 = cover_image.trim_start_matches("nr:").parse().unwrap_or(0);
+                (Some(cover_image.clone()), None, Some(nr_id))
+            } else if cover_image.starts_with("http://") || cover_image.starts_with("https://") {
+                (Some(cover_image.clone()), None, None)
+            } else {
+                (None, Some(cover_image.clone()), None)
+            }
+        } else {
+            (None, None, None)
+        };
+
+        let summary_opt = if summary.is_empty() { None } else { Some(summary) };
+
+        let model = posts::ActiveModel {
+            title: Set(title.clone()),
+            slug: Set(slug),
+            content: Set(Some(content)),
+            content_html: Set(Some(content_html)),
+            summary: Set(summary_opt),
+            category_id: Set(Some(category_id)),
+            cover_image_url: Set(cover_url),
+            cover_image_filename: Set(cover_filename),
+            cover_network_id: Set(cover_nr_id),
+            status: Set(status.clone()),
+            post_type: Set("article".to_string()),
+            article_type: Set("original".to_string()),
+            article_status: Set("completed".to_string()),
+            is_pinned: Set(false),
+            allow_comment: Set(true),
+            sort_order: Set(0),
+            view_count: Set(0),
+            like_count: Set(0),
+            comment_count: Set(0),
+            published_at: Set(published_at),
+            user_id: Set(1), // AI 创建，默认 admin
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        };
+
+        let inserted = model.insert(&state.db).await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("创建文章失败: {}", e)))?;
+
+        let status_label = if is_published { "已发布" } else { "草稿" };
+        let cat_name = cat.name;
+
+        Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "success": true,
+            "message": format!("文章「{}」已创建（{}）", title, status_label),
+            "post_id": inserted.id,
+            "title": title,
+            "slug": inserted.slug,
+            "category": cat_name,
+            "status": status,
+            "url": format!("http://{}:{}/posts/{}", state.config.server.host, state.config.server.port, inserted.slug),
+        })).unwrap_or_default())
+    }
+}
 // ═══════════════════════════════════════════════════════════════════════
 
 pub struct GetCurrentDatetimeTool;
@@ -816,6 +959,7 @@ pub async fn create_registry(
 
     // 特权工具（仅 admin/sub_admin）
     try_register(&mut registry, &db_map, "create_news", CreateNewsTool, true, is_privileged);
+    try_register(&mut registry, &db_map, "create_post", CreatePostTool, true, is_privileged);
 
     // 加载 DB 中的纯自定义工具（不被内置工具覆盖的，且 enabled=true）
     for item in all_db {
