@@ -353,7 +353,7 @@ impl AiTool for CreateNewsTool {
     fn name(&self) -> &str { "create_news" }
 
     fn description(&self) -> &str {
-        "创建一条资讯草稿。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）。可选 source_url（来源链接）。"
+        "创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）。可选 source_url（来源链接）、status（draft 草稿 或 published 已发布，默认 draft）。"
     }
 
     fn parameters(&self) -> Value {
@@ -375,6 +375,12 @@ impl AiTool for CreateNewsTool {
                 "source_url": {
                     "type": "string",
                     "description": "原文链接（可选）"
+                },
+                "status": {
+                    "type": "string",
+                    "description": "发布状态：draft（草稿，默认）或 published（已发布）",
+                    "enum": ["draft", "published"],
+                    "default": "draft"
                 }
             },
             "required": ["title", "summary", "content"]
@@ -386,9 +392,14 @@ impl AiTool for CreateNewsTool {
         let summary = args["summary"].as_str().unwrap_or("").to_string();
         let mut content = args["content"].as_str().unwrap_or("").to_string();
         let source_url = args["source_url"].as_str().unwrap_or("").to_string();
+        let status = args["status"].as_str().unwrap_or("draft").to_string();
 
         if title.is_empty() {
             return Err(AppError::BadRequest("标题不能为空".into()));
+        }
+
+        if status != "draft" && status != "published" {
+            return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
         }
 
         // 如果有来源链接，追加到正文末尾
@@ -404,14 +415,17 @@ impl AiTool for CreateNewsTool {
         let summary_clone = summary.clone();
 
         let now = crate::utils::now_local();
+        let is_published = status == "published";
+        let published_at = if is_published { Some(now) } else { None };
+
         let model = news::ActiveModel {
             title: Set(title.clone()),
             summary: Set(summary),
             content: Set(content),
             content_html: Set(content_html),
-            status: Set("draft".to_string()),
+            status: Set(status.clone()),
             sort_order: Set(0),
-            published_at: Set(None),
+            published_at: Set(published_at),
             user_id: Set(None), // AI 创建，无用户关联
             created_at: Set(now),
             updated_at: Set(now),
@@ -421,12 +435,15 @@ impl AiTool for CreateNewsTool {
         let inserted = model.insert(&state.db).await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("创建资讯失败: {}", e)))?;
 
+        let status_label = if is_published { "已发布" } else { "草稿" };
+
         Ok(serde_json::to_string_pretty(&serde_json::json!({
             "success": true,
-            "message": format!("资讯「{}」已创建（草稿），ID: {}", title, inserted.id),
+            "message": format!("资讯「{}」已创建（{}），ID: {}", title, status_label, inserted.id),
             "news_id": inserted.id,
             "title": title,
             "summary": summary_clone,
+            "status": status,
             "content_preview": content_preview,
             "draft_url": format!("http://{}:{}/admin/news/{}", state.config.server.host, state.config.server.port, inserted.id),
         })).unwrap_or_default())
