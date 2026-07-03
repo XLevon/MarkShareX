@@ -5,8 +5,8 @@
       v-if="!open"
       class="ai-chat-fab"
       :style="fabDragTransform"
-      @mousedown.prevent="(e: MouseEvent) => startFabDrag(e)"
-      @touchstart.prevent="(e: TouchEvent) => startFabDrag(e)"
+      @mousedown="(e: MouseEvent) => startFabDrag(e)"
+      @touchstart="(e: TouchEvent) => startFabDrag(e)"
       @click="fabDragged ? (fabDragged = false) : (open = true)"
       title="AI 助手"
     >
