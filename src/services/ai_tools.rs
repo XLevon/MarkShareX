@@ -4,6 +4,7 @@
 //! 工具通过 ai_tools 数据库表注册，运行时从 DB 读取并 dispatch。
 
 use async_trait::async_trait;
+use chrono::Local;
 use sea_orm::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -433,8 +434,261 @@ impl AiTool for CreateNewsTool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  DB 工具包装器：数据库中定义的自定义工具
+//  Built-in Tool: get_current_datetime
 // ═══════════════════════════════════════════════════════════════════════
+
+pub struct GetCurrentDatetimeTool;
+
+#[async_trait]
+impl AiTool for GetCurrentDatetimeTool {
+    fn name(&self) -> &str { "get_current_datetime" }
+
+    fn description(&self) -> &str {
+        "获取当前日期和时间（含星期），返回服务器本地时间（CST/UTC+8）。无需参数。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
+    async fn execute(&self, _args: Value, _state: &AppState) -> Result<String, AppError> {
+        let now = Local::now();
+        Ok(now.format("%Y年%m月%d日 %H:%M:%S %A (UTC+8)").to_string())
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Built-in Tool: api_request
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct ApiRequestTool;
+
+#[async_trait]
+impl AiTool for ApiRequestTool {
+    fn name(&self) -> &str { "api_request" }
+
+    fn description(&self) -> &str {
+        "发送 HTTP 请求到指定 URL，返回响应内容。支持 GET 和 POST。用于调用本站 API 或外部接口。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "请求 URL"
+                },
+                "method": {
+                    "type": "string",
+                    "description": "HTTP 方法：GET 或 POST",
+                    "enum": ["GET", "POST"],
+                    "default": "GET"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "POST 请求体（JSON 字符串），仅 method=POST 时使用"
+                }
+            },
+            "required": ["url"]
+        })
+    }
+
+    async fn execute(&self, args: Value, _state: &AppState) -> Result<String, AppError> {
+        let url = args["url"].as_str().unwrap_or("").to_string();
+        let method = args["method"].as_str().unwrap_or("GET").to_uppercase();
+
+        if url.is_empty() {
+            return Err(AppError::BadRequest("URL 不能为空".into()));
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .danger_accept_invalid_certs(false)
+            .build()
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
+
+        let req = match method.as_str() {
+            "POST" => {
+                let body = args["body"].as_str().unwrap_or("{}").to_string();
+                client.post(&url).header("Content-Type", "application/json").body(body)
+            }
+            _ => client.get(&url),
+        };
+
+        let resp = req.send().await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("API 请求失败: {}", e)))?;
+
+        let status = resp.status();
+        let body = resp.text().await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("读取响应失败: {}", e)))?;
+
+        // 截断过长响应
+        let truncated = if body.len() > 8000 {
+            format!("{}...\n\n(响应过长，已截断至前 8000 字符)", &body[..8000])
+        } else {
+            body
+        };
+
+        Ok(format!("HTTP {} — 响应:\n{}", status.as_u16(), truncated))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Built-in Tool: navigate_to
+// ═══════════════════════════════════════════════════════════════════════
+
+pub struct NavigateToTool;
+
+#[async_trait]
+impl AiTool for NavigateToTool {
+    fn name(&self) -> &str { "navigate_to" }
+
+    fn description(&self) -> &str {
+        "获取指定网页的文本内容。用于查看页面信息。优先使用配置的 AI 搜索后端提取，回退到直接 HTTP 抓取。"
+    }
+
+    fn parameters(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "要访问的网页 URL"
+                }
+            },
+            "required": ["url"]
+        })
+    }
+
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        let url = args["url"].as_str().unwrap_or("").to_string();
+        if url.is_empty() {
+            return Err(AppError::BadRequest("URL 不能为空".into()));
+        }
+
+        // 优先用搜索后端提取
+        if let Ok(cfg) = get_search_config(state) {
+            let api_key = get_search_api_key(state)?;
+            let client = reqwest::Client::new();
+
+            let (endpoint, payload, auth_header) = match cfg.provider.as_str() {
+                "tavily" => (
+                    format!("{}/extract", cfg.api_url()),
+                    serde_json::json!({
+                        "api_key": api_key,
+                        "urls": [url],
+                        "include_images": false,
+                    }),
+                    None,
+                ),
+                "firecrawl" => (
+                    format!("{}/v1/scrape", cfg.api_url()),
+                    serde_json::json!({
+                        "url": url,
+                        "formats": ["markdown"],
+                    }),
+                    Some(format!("Bearer {}", api_key)),
+                ),
+                _ => {
+                    // 不支持的 provider，回退到直接抓取
+                    return fetch_url_directly(&url).await;
+                }
+            };
+
+            let mut req = client.post(&endpoint).json(&payload);
+            if let Some(h) = auth_header {
+                req = req.header("Authorization", h);
+            }
+
+            if let Ok(resp) = req.send().await {
+                if let Ok(body) = resp.json::<Value>().await {
+                    let content = match cfg.provider.as_str() {
+                        "tavily" => body["results"][0]["raw_content"].as_str().unwrap_or(""),
+                        "firecrawl" => body["data"]["markdown"].as_str()
+                            .or(body["data"]["content"].as_str()).unwrap_or(""),
+                        _ => "",
+                    };
+                    if !content.is_empty() {
+                        let truncated = truncate_str(content, 10000);
+                        return Ok(truncated);
+                    }
+                }
+            }
+        }
+
+        // 回退：直接 HTTP 抓取
+        fetch_url_directly(&url).await
+    }
+}
+
+/// 辅助函数：直接抓取 URL 并提取文本
+async fn fetch_url_directly(url: &str) -> Result<String, AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
+
+    let resp = client.get(url)
+        .header("User-Agent", "Mozilla/5.0 (compatible; MarkShareX/1.0)")
+        .send().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("请求失败: {}", e)))?;
+
+    let html = resp.text().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("读取响应失败: {}", e)))?;
+
+    // 简单去 HTML 标签
+    let text = strip_html(&html);
+    let truncated = truncate_str(&text, 10000);
+    Ok(truncated)
+}
+
+/// 去除 HTML 标签，保留纯文本
+fn strip_html(html: &str) -> String {
+    let mut result = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        if c == '<' { in_tag = true; continue; }
+        if c == '>' { in_tag = false; continue; }
+        if !in_tag { result.push(c); }
+    }
+    // 压缩多余空白
+    result.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// 按字符安全截断
+fn truncate_str(s: &str, max_chars: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count <= max_chars {
+        return s.to_string();
+    }
+    let truncated: String = s.chars().take(max_chars).collect();
+    format!("{}...\n\n(内容过长，已截断至前 {} 字符)", truncated, max_chars)
+}
+
+/// 包裹一个内置工具，仅覆盖 description() 和 parameters() 为 DB 中的值。
+/// execute() 仍按原工具执行。
+struct DbOverrideTool {
+    inner: Arc<dyn AiTool>,
+    item: ai_tool::Model,
+}
+
+#[async_trait]
+impl AiTool for DbOverrideTool {
+    fn name(&self) -> &str { self.inner.name() }
+    fn description(&self) -> &str { &self.item.description }
+    fn parameters(&self) -> Value {
+        serde_json::from_str(&self.item.parameters_schema)
+            .unwrap_or_else(|_| self.inner.parameters())
+    }
+
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        self.inner.execute(args, state).await
+    }
+}
 
 struct DbTool {
     item: ai_tool::Model,
@@ -463,33 +717,63 @@ impl AiTool for DbTool {
 use crate::models::entity::ai_tool;
 use sea_orm::DatabaseConnection;
 use sea_orm::EntityTrait;
-use sea_orm::QueryFilter;
-use sea_orm::ColumnTrait;
 
 /// 动态加载工具：内置工具 + 数据库中 enabled=true 的自定义工具
-/// is_admin: 管理员可调用全部工具，非管理员只能调用只读工具
+/// is_privileged: 管理员可调用全部工具，非管理员只能调用只读工具
+///
+/// 规则：
+/// 1. DB 中 enabled=false 的内置工具不会被注册（即使有 Rust 实现）
+/// 2. DB 中 enabled=true 的内置工具，用 DB 描述/参数覆盖 Rust 默认值
+/// 3. DB 中有记录但无 Rust 实现 → 注册为声明式 DbTool
+/// 4. 无 DB 记录的内置工具 → 用 Rust 默认值注册
 pub async fn create_registry(db: &DatabaseConnection, is_privileged: bool) -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
-    // 基础工具（所有用户可用）
-    registry.register(Arc::new(WebSearchTool));
-    registry.register(Arc::new(WebExtractTool));
+    // 加载所有 DB 工具（含 disabled），按 function_name 索引
+    let all_db: Vec<_> = ai_tool::Entity::find()
+        .all(db).await
+        .unwrap_or_default();
+    let db_map: HashMap<String, &ai_tool::Model> = all_db.iter()
+        .map(|t| (t.function_name.clone(), t))
+        .collect();
 
-    // 特权工具（仅 admin/sub_admin）
-    if is_privileged {
-        registry.register(Arc::new(CreateNewsTool));
+    // 辅助函数：注册内置工具（受 DB enabled + 权限控制）
+    fn try_register(
+        reg: &mut ToolRegistry,
+        db_map: &HashMap<String, &ai_tool::Model>,
+        name: &str,
+        tool: impl AiTool + 'static,
+        need_privilege: bool,
+        is_privileged: bool,
+    ) {
+        if need_privilege && !is_privileged { return; }
+        // DB 中有记录且 enabled=false → 跳过
+        if let Some(item) = db_map.get(name) {
+            if !item.enabled { return; }
+        }
+        // 无 DB 记录或用 DB 描述/参数覆盖
+        let t: Arc<dyn AiTool> = if let Some(item) = db_map.get(name) {
+            Arc::new(DbOverrideTool { inner: Arc::new(tool), item: (*item).clone() })
+        } else {
+            Arc::new(tool)
+        };
+        reg.register(t);
     }
 
-    // 加载数据库中的启用工具
-    if let Ok(items) = ai_tool::Entity::find()
-        .filter(ai_tool::Column::Enabled.eq(true))
-        .all(db).await
-    {
-        for item in items {
-            // 避免覆盖已注册的内置工具
-            if !registry.contains(item.function_name.as_str()) {
-                registry.register(Arc::new(DbTool { item }));
-            }
+    // 基础工具（所有用户可用）
+    try_register(&mut registry, &db_map, "web_search", WebSearchTool, false, is_privileged);
+    try_register(&mut registry, &db_map, "web_extract", WebExtractTool, false, is_privileged);
+    try_register(&mut registry, &db_map, "get_current_datetime", GetCurrentDatetimeTool, false, is_privileged);
+
+    // 特权工具（仅 admin/sub_admin）
+    try_register(&mut registry, &db_map, "create_news", CreateNewsTool, true, is_privileged);
+    try_register(&mut registry, &db_map, "api_request", ApiRequestTool, true, is_privileged);
+    try_register(&mut registry, &db_map, "navigate_to", NavigateToTool, true, is_privileged);
+
+    // 加载 DB 中的纯自定义工具（不被内置工具覆盖的，且 enabled=true）
+    for item in all_db {
+        if item.enabled && !registry.contains(item.function_name.as_str()) {
+            registry.register(Arc::new(DbTool { item }));
         }
     }
 
