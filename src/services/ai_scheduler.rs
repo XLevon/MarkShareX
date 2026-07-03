@@ -122,7 +122,7 @@ impl AiScheduler {
         );
 
         // 3. 构建工具注册表
-        let registry = ai_tools::create_registry(&state.db, true).await;
+        let registry = ai_tools::create_registry(&state.db, true, None).await;
 
         // 4. 构建用户消息（skill.content 作为 user prompt，params 替换模板变量）
         let user_message = build_user_message(&skill.content, &task.params);

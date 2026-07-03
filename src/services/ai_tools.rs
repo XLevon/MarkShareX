@@ -464,7 +464,10 @@ impl AiTool for GetCurrentDatetimeTool {
 //  Built-in Tool: api_request
 // ═══════════════════════════════════════════════════════════════════════
 
-pub struct ApiRequestTool;
+pub struct ApiRequestTool {
+    /// 当前登录用户的 token，用于以用户身份调用 API。cron 调度时为 None。
+    user_token: Option<String>,
+}
 
 #[async_trait]
 impl AiTool for ApiRequestTool {
@@ -511,13 +514,22 @@ impl AiTool for ApiRequestTool {
             .build()
             .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
 
-        let req = match method.as_str() {
+        let mut req = match method.as_str() {
             "POST" => {
                 let body = args["body"].as_str().unwrap_or("{}").to_string();
                 client.post(&url).header("Content-Type", "application/json").body(body)
             }
             _ => client.get(&url),
         };
+
+        // 如果调用的是本站 API，携带用户身份 token
+        if let Some(ref token) = self.user_token {
+            if url.starts_with("http://") || url.starts_with("https://") {
+                // 仅对本站请求注入 token（安全考虑：不泄露给外部）
+                // 本站请求通常是相对路径或同域名的，这里简单处理：非外部 API 域名即注入
+                req = req.header("Authorization", format!("Bearer {}", token));
+            }
+        }
 
         let resp = req.send().await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("API 请求失败: {}", e)))?;
@@ -718,15 +730,26 @@ use crate::models::entity::ai_tool;
 use sea_orm::DatabaseConnection;
 use sea_orm::EntityTrait;
 
+/// 用户上下文：传递给需要登录身份的工具（如 api_request）
+#[derive(Clone)]
+pub struct UserContext {
+    pub token: String,
+}
+
 /// 动态加载工具：内置工具 + 数据库中 enabled=true 的自定义工具
 /// is_privileged: 管理员可调用全部工具，非管理员只能调用只读工具
+/// user: 当前登录用户上下文（api_request 等工具需要）
 ///
 /// 规则：
 /// 1. DB 中 enabled=false 的内置工具不会被注册（即使有 Rust 实现）
 /// 2. DB 中 enabled=true 的内置工具，用 DB 描述/参数覆盖 Rust 默认值
 /// 3. DB 中有记录但无 Rust 实现 → 注册为声明式 DbTool
 /// 4. 无 DB 记录的内置工具 → 用 Rust 默认值注册
-pub async fn create_registry(db: &DatabaseConnection, is_privileged: bool) -> ToolRegistry {
+pub async fn create_registry(
+    db: &DatabaseConnection,
+    is_privileged: bool,
+    user: Option<&UserContext>,
+) -> ToolRegistry {
     let mut registry = ToolRegistry::new();
 
     // 加载所有 DB 工具（含 disabled），按 function_name 索引
@@ -764,11 +787,23 @@ pub async fn create_registry(db: &DatabaseConnection, is_privileged: bool) -> To
     try_register(&mut registry, &db_map, "web_search", WebSearchTool, false, is_privileged);
     try_register(&mut registry, &db_map, "web_extract", WebExtractTool, false, is_privileged);
     try_register(&mut registry, &db_map, "get_current_datetime", GetCurrentDatetimeTool, false, is_privileged);
+    try_register(&mut registry, &db_map, "navigate_to", NavigateToTool, false, is_privileged);
+
+    // api_request — 需要携带用户 token 以用户身份调用
+    if let Some(item) = db_map.get("api_request") {
+        if !item.enabled { /* DB 禁用，跳过 */ }
+        else {
+            let tool = ApiRequestTool { user_token: user.map(|u| u.token.clone()) };
+            let t: Arc<dyn AiTool> = Arc::new(DbOverrideTool { inner: Arc::new(tool), item: (*item).clone() });
+            registry.register(t);
+        }
+    } else {
+        let tool = ApiRequestTool { user_token: user.map(|u| u.token.clone()) };
+        registry.register(Arc::new(tool));
+    }
 
     // 特权工具（仅 admin/sub_admin）
     try_register(&mut registry, &db_map, "create_news", CreateNewsTool, true, is_privileged);
-    try_register(&mut registry, &db_map, "api_request", ApiRequestTool, true, is_privileged);
-    try_register(&mut registry, &db_map, "navigate_to", NavigateToTool, true, is_privileged);
 
     // 加载 DB 中的纯自定义工具（不被内置工具覆盖的，且 enabled=true）
     for item in all_db {

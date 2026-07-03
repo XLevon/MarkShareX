@@ -1,5 +1,6 @@
 use axum::{
     extract::{State, Path},
+    http::HeaderMap,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -1092,6 +1093,7 @@ pub struct ChatResponse {
 #[utoipa::path(post, path = "/api/v1/admin/ai/chat", responses((status = 200)), tag = "AI")]
 pub async fn chat(
     State(state): State<AppState>,
+    headers: HeaderMap,
     auth: AuthUser,
     Json(req): Json<ChatRequest>,
 ) -> Result<Json<ApiResponse<ChatResponse>>, AppError> {
@@ -1205,7 +1207,11 @@ pub async fn chat(
     } else { None };
 
     // ── 7. 执行 AI ──
-    let registry = ai_tools::create_registry(&state.db, auth.is_privileged()).await;
+    let user_ctx = headers.get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|token| ai_tools::UserContext { token: token.to_string() });
+    let registry = ai_tools::create_registry(&state.db, auth.is_privileged(), user_ctx.as_ref()).await;
     let reply = ai_chat::run_function_calling(
         &state, &registry, &agent_cfg.system_prompt,
         &user_content, &history, None, model_name,
