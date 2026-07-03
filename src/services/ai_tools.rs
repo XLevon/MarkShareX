@@ -471,7 +471,7 @@ impl AiTool for CreatePostTool {
                 },
                 "content": {
                     "type": "string",
-                    "description": "Markdown 格式正文。图片用 ![alt](nr:资源ID) 引用资源库图片，或用 ![alt](https://...) 引用外部图片"
+                    "description": "Markdown 格式正文。图片有三种写法：1) 本地资源: ![alt](/uploads/文件名.jpg)；2) 网络资源: ![alt](nr:资源ID) 引用资源库图片；3) 外部图片: ![alt](https://...)"
                 },
                 "category_id": {
                     "type": "integer",
