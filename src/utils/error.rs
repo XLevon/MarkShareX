@@ -46,6 +46,6 @@ impl IntoResponse for AppError {
             AppError::IoError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "IO错误".to_string()),
             AppError::ZipError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "压缩包错误".to_string()),
         };
-        (status, Json(json!({ "error": message }))).into_response()
+        (status, Json(json!({ "message": message }))).into_response()
     }
 }
