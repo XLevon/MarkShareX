@@ -313,6 +313,7 @@ async function saveAgent() {
     showAgentModal.value = false
     loadAgentConfigs()
     message.success('Agent 配置已保存')
+    window.dispatchEvent(new CustomEvent('marksharex:default-agent-changed'))
   } catch { message.error('保存失败') } finally { saving.value = false }
 }
 async function handleDeleteAgent(row: AgentConfig) {
@@ -325,6 +326,7 @@ async function toggleAgentDefault(row: AgentConfig, v: boolean) {
     if (v) agentConfigs.value.forEach(a => { if (a.id !== row.id) a.is_default = false })
     row.is_default = v
     message.success(v ? '已设为默认' : '已取消默认')
+    window.dispatchEvent(new CustomEvent('marksharex:default-agent-changed'))
   } catch (e: any) { message.error(e?.response?.data?.error || '切换失败') }
 }
 

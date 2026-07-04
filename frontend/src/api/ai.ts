@@ -108,6 +108,11 @@ export function deleteAgentConfig(id: number) {
   return api.delete(`/admin/ai/agent-configs/${id}`)
 }
 
+// Check if a default agent config exists (public, no auth required)
+export function fetchDefaultAgent() {
+  return api.get<{ data: { has_default: boolean; id: number | null; name: string | null } }>('/ai/default-agent')
+}
+
 // ── Model ──
 export interface AiModel {
   id: number

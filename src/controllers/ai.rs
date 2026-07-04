@@ -208,6 +208,35 @@ pub struct UpdateTaskRequest {
 }
 
 // ═══════════════════════════════════════════════════════
+//  Default Agent (public)
+// ═══════════════════════════════════════════════════════
+
+/// GET /api/v1/ai/default-agent — 检查是否有默认 Agent 配置（公开接口，无需认证）
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DefaultAgentInfo {
+    pub has_default: bool,
+    pub id: Option<i32>,
+    pub name: Option<String>,
+}
+
+pub async fn get_default_agent(
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<DefaultAgentInfo>>, AppError> {
+    let config = ai_agent_config::Entity::find()
+        .filter(ai_agent_config::Column::IsDefault.eq(true))
+        .one(&state.db).await?;
+
+    Ok(Json(ApiResponse {
+        data: DefaultAgentInfo {
+            has_default: config.is_some(),
+            id: config.as_ref().map(|c| c.id),
+            name: config.map(|c| c.name),
+        },
+        pagination: None,
+    }))
+}
+
+// ═══════════════════════════════════════════════════════
 //  Providers
 // ═══════════════════════════════════════════════════════
 
@@ -1111,15 +1140,6 @@ pub async fn chat(
     if is_simple_nav(&user_msg) {
         if let Some((page_name, path)) = detect_nav_intent(&state.db, &user_msg, req.in_admin).await {
             let nav_marker = format!("[navigate_to:{}:{}]", path, page_name);
-            // 保存空对话记录
-            let nav_model = ai_chat_message::ActiveModel {
-                session_id: Set(0),
-                role: Set("assistant".to_string()),
-                content: Set(nav_marker.clone()),
-                created_at: Set(now),
-                ..Default::default()
-            };
-            nav_model.insert(&state.db).await?;
             return Ok(Json(ApiResponse {
                 data: ChatResponse { reply: nav_marker, session_id: 0 },
                 pagination: None,

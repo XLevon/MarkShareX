@@ -78,6 +78,7 @@
             </div>
             <div class="ai-chat-input">
               <input
+                ref="inputField"
                 v-model="input"
                 @keydown.enter="send"
                 placeholder="输入消息..."
@@ -110,6 +111,7 @@ const input = ref('')
 const loading = ref(false)
 const messages = ref<ChatMessage[]>([])
 const msgContainer = ref<HTMLElement | null>(null)
+const inputField = ref<HTMLInputElement | null>(null)
 const sessionId = ref<number | null>(null)
 const sessions = ref<ChatSession[]>([])
 const showSessions = ref(false)
@@ -317,6 +319,13 @@ watch(open, async (val) => {
     await nextTick()
     scrollBottom()
   }
+})
+
+// 页面跳转后保持输入框焦点
+watch(() => router.currentRoute.value.path, () => {
+  nextTick(() => {
+    if (open.value) inputField.value?.focus()
+  })
 })
 
 onMounted(() => {

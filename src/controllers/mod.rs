@@ -264,6 +264,8 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         .route("/api/v1/network-resources/:id", put(network_resources::update_resource).delete(network_resources::delete_resource))
         .route("/api/v1/network-resources/:id/references", get(network_resources::get_references))
         .route("/api/v1/network-resources/:id/resolve", get(network_resources::resolve_resource))
+        // AI (public)
+        .route("/api/v1/ai/default-agent", get(ai::get_default_agent))
         // Changelog (public — MUST be before :id!)
         .route("/api/v1/changelogs/latest", get(changelog::get_latest_version))
         .route("/api/v1/changelogs/public", get(changelog::list_public_changelogs))
