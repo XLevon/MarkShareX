@@ -327,11 +327,19 @@ impl AiTool for WebExtractTool {
                             "content": truncated,
                         }));
                     } else {
-                        results.push(serde_json::json!({"url": url, "error": "解析失败"}));
+                        // 回退：直接 HTTP GET
+                        match fetch_url_directly(url).await {
+                            Ok(text) => results.push(serde_json::json!({"url": url, "content": text, "fallback": true})),
+                            Err(e) => results.push(serde_json::json!({"url": url, "error": e.to_string()})),
+                        }
                     }
                 }
-                Err(e) => {
-                    results.push(serde_json::json!({"url": url, "error": format!("请求失败: {}", e)}));
+                Err(_e) => {
+                    // 回退：直接 HTTP GET
+                    match fetch_url_directly(url).await {
+                        Ok(text) => results.push(serde_json::json!({"url": url, "content": text, "fallback": true})),
+                        Err(e2) => results.push(serde_json::json!({"url": url, "error": e2.to_string()})),
+                    }
                 }
             }
         }
@@ -655,7 +663,7 @@ impl AiTool for ApiRequestTool {
         })
     }
 
-    async fn execute(&self, args: Value, _state: &AppState) -> Result<String, AppError> {
+    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
         let url = args["url"].as_str().unwrap_or("").to_string();
         let method = args["method"].as_str().unwrap_or("GET").to_uppercase();
 
@@ -677,11 +685,9 @@ impl AiTool for ApiRequestTool {
             _ => client.get(&url),
         };
 
-        // 如果调用的是本站 API，携带用户身份 token
+        // 仅本站 API 注入当前用户 token；外部请求由调用者从上下文推断认证方式
         if let Some(ref token) = self.user_token {
-            if url.starts_with("http://") || url.starts_with("https://") {
-                // 仅对本站请求注入 token（安全考虑：不泄露给外部）
-                // 本站请求通常是相对路径或同域名的，这里简单处理：非外部 API 域名即注入
+            if is_local_service_url(&url, &state.config.server.host, state.config.server.port) {
                 req = req.header("Authorization", format!("Bearer {}", token));
             }
         }
@@ -701,94 +707,6 @@ impl AiTool for ApiRequestTool {
         };
 
         Ok(format!("HTTP {} — 响应:\n{}", status.as_u16(), truncated))
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Built-in Tool: navigate_to
-// ═══════════════════════════════════════════════════════════════════════
-
-pub struct NavigateToTool;
-
-#[async_trait]
-impl AiTool for NavigateToTool {
-    fn name(&self) -> &str { "navigate_to" }
-
-    fn description(&self) -> &str {
-        "获取指定网页的文本内容。用于查看页面信息。优先使用配置的 AI 搜索后端提取，回退到直接 HTTP 抓取。"
-    }
-
-    fn parameters(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "url": {
-                    "type": "string",
-                    "description": "要访问的网页 URL"
-                }
-            },
-            "required": ["url"]
-        })
-    }
-
-    async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
-        let url = args["url"].as_str().unwrap_or("").to_string();
-        if url.is_empty() {
-            return Err(AppError::BadRequest("URL 不能为空".into()));
-        }
-
-        // 优先用搜索后端提取
-        if let Ok(cfg) = get_search_config(state) {
-            let api_key = get_search_api_key(state)?;
-            let client = reqwest::Client::new();
-
-            let (endpoint, payload, auth_header) = match cfg.provider.as_str() {
-                "tavily" => (
-                    format!("{}/extract", cfg.api_url()),
-                    serde_json::json!({
-                        "api_key": api_key,
-                        "urls": [url],
-                        "include_images": false,
-                    }),
-                    None,
-                ),
-                "firecrawl" => (
-                    format!("{}/v1/scrape", cfg.api_url()),
-                    serde_json::json!({
-                        "url": url,
-                        "formats": ["markdown"],
-                    }),
-                    Some(format!("Bearer {}", api_key)),
-                ),
-                _ => {
-                    // 不支持的 provider，回退到直接抓取
-                    return fetch_url_directly(&url).await;
-                }
-            };
-
-            let mut req = client.post(&endpoint).json(&payload);
-            if let Some(h) = auth_header {
-                req = req.header("Authorization", h);
-            }
-
-            if let Ok(resp) = req.send().await {
-                if let Ok(body) = resp.json::<Value>().await {
-                    let content = match cfg.provider.as_str() {
-                        "tavily" => body["results"][0]["raw_content"].as_str().unwrap_or(""),
-                        "firecrawl" => body["data"]["markdown"].as_str()
-                            .or(body["data"]["content"].as_str()).unwrap_or(""),
-                        _ => "",
-                    };
-                    if !content.is_empty() {
-                        let truncated = truncate_str(content, 10000);
-                        return Ok(truncated);
-                    }
-                }
-            }
-        }
-
-        // 回退：直接 HTTP 抓取
-        fetch_url_directly(&url).await
     }
 }
 
@@ -834,6 +752,24 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
     }
     let truncated: String = s.chars().take(max_chars).collect();
     format!("{}...\n\n(内容过长，已截断至前 {} 字符)", truncated, max_chars)
+}
+
+/// 判断 URL 是否指向本服务（用于 api_request 安全注入 token）
+fn is_local_service_url(url: &str, config_host: &str, config_port: u16) -> bool {
+    // 相对路径始终算本站
+    if url.starts_with('/') {
+        return true;
+    }
+    // 匹配本机可能的访问方式
+    let port_str = config_port.to_string();
+    [
+        format!("http://{}:{}", config_host, port_str),
+        format!("https://{}:{}", config_host, port_str),
+        format!("http://127.0.0.1:{}", port_str),
+        format!("http://localhost:{}", port_str),
+    ]
+    .iter()
+    .any(|prefix| url.starts_with(prefix))
 }
 
 /// 包裹一个内置工具，仅覆盖 description() 和 parameters() 为 DB 中的值。
@@ -942,7 +878,6 @@ pub async fn create_registry(
     try_register(&mut registry, &db_map, "web_search", WebSearchTool, false, is_privileged);
     try_register(&mut registry, &db_map, "web_extract", WebExtractTool, false, is_privileged);
     try_register(&mut registry, &db_map, "get_current_datetime", GetCurrentDatetimeTool, false, is_privileged);
-    try_register(&mut registry, &db_map, "navigate_to", NavigateToTool, false, is_privileged);
 
     // api_request — 需要携带用户 token 以用户身份调用
     if let Some(item) = db_map.get("api_request") {
