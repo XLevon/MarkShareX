@@ -25,7 +25,7 @@
         <!-- Tools -->
         <n-tab-pane name="tools" tab="工具">
           <div class="tab-toolbar">
-            <n-button type="primary" size="small" @click="openToolForm()">+ 添加工具</n-button>
+            <!-- 「添加工具」暂未实现执行逻辑，隐藏入口 -->
           </div>
           <n-data-table :columns="toolColumns" :data="tools" :loading="loading" size="small" />
         </n-tab-pane>
@@ -56,7 +56,7 @@
 
         <!-- Config -->
         <n-tab-pane name="config" tab="配置">
-          <n-card title="快速路径触发词" size="small" style="max-width:720px;margin-bottom:16px">
+          <n-card title="快速路径触发词" size="small" style="margin-bottom:16px">
             <template #header-extra>
               <n-button type="primary" size="small" :loading="savingConfig" @click="saveNavConfig">保存</n-button>
             </template>
@@ -65,7 +65,7 @@
             </p>
             <n-input v-model:value="navTriggerWords" type="textarea" :rows="4" placeholder='["跳","去","打开"]' />
           </n-card>
-          <n-card title="快速路径" size="small" style="max-width:720px">
+          <n-card title="快速路径" size="small">
             <template #header-extra>
               <n-button type="primary" size="small" :loading="savingConfig" @click="saveNavConfig">保存</n-button>
             </template>
