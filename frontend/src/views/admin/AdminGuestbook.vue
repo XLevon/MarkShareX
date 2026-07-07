@@ -1,7 +1,7 @@
 <template>
   <div class="admin-guestbook-page">
     <div class="page-header">
-      <h2 class="page-title">💬 留言板</h2>
+      <h2 class="font-bold mb-6" style="color: var(--input-color); font-size: 28px">💬 留言板</h2>
     </div>
 
     <div v-if="loading" class="loading-state"><div class="spinner"></div><span>加载中...</span></div>

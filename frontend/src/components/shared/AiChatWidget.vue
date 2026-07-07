@@ -60,13 +60,12 @@
 
           <!-- 消息区域 -->
           <div v-else class="ai-chat-body">
-            <div class="ai-chat-messages" ref="msgContainer">
+            <div class="ai-chat-messages" ref="msgContainer" @click="handleMsgClick">
               <div v-if="messages.length === 0" class="ai-chat-empty">
                 <div>我是 AI 助手，可以帮你：</div>
                 <div class="ai-chat-hints">
-                  <div class="ai-chat-hint" @click="sendHint('网站有哪些内容？')">📚 站内导航</div>
-                  <div class="ai-chat-hint" @click="sendHint('今天有什么热门资讯？')">📰 今日资讯</div>
-                  <div class="ai-chat-hint" @click="sendHint('如何使用 MarkShareX？')">❓ 使用帮助</div>
+                  <div class="ai-chat-hint" @click="sendHint('系统怎么使用？')">❓ 使用帮助</div>
+                  <div class="ai-chat-hint" @click="sendHint('搜索站内资源')">📚 站内搜索</div>
                 </div>
               </div>
               <div v-for="(msg, i) in messages" :key="i" :class="['ai-chat-msg', msg.role]">
@@ -80,7 +79,7 @@
               <input
                 ref="inputField"
                 v-model="input"
-                @keydown.enter="send"
+                @keydown.enter="onInputEnter"
                 placeholder="输入消息..."
                 :disabled="loading"
                 class="ai-chat-input-field"
@@ -253,9 +252,48 @@ function renderMsg(content: string) {
   return marked.parse(content)
 }
 
+/** 拦截消息中的链接点击：内部链接用 router.push，外部链接正常跳转 */
+function handleMsgClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const link = target.closest('a')
+  if (!link) return
+  const href = link.getAttribute('href')
+  if (!href) return
+
+  // 锚点 / 新标签 → 浏览器默认行为
+  if (href.startsWith('#') || link.getAttribute('target') === '_blank') {
+    return
+  }
+
+  // 完整 URL → 判断是否本站
+  if (href.startsWith('http://') || href.startsWith('https://')) {
+    try {
+      const url = new URL(href)
+      if (url.host === window.location.host) {
+        // 本站完整 URL → 提取路径用 router.push
+        e.preventDefault()
+        router.push(url.pathname + url.search)
+        return
+      }
+    } catch {}
+    // 外部链接 → 浏览器默认行为
+    return
+  }
+
+  // 内部相对路径 → 路由跳转
+  e.preventDefault()
+  router.push(href)
+}
+
 async function sendHint(text: string) {
   input.value = text
   await send()
+}
+
+/** Enter 发送，过滤 IME 组合输入中的 Enter */
+function onInputEnter(e: KeyboardEvent) {
+  if (e.isComposing) return  // IME 组合中，不发送
+  send()
 }
 
 async function send() {
@@ -275,18 +313,6 @@ async function send() {
       in_admin: isAdmin.value,
     })
     const data = resp.data.data
-    // 处理快速导航标记 [navigate_to:path:label]
-    const navMatch = data.reply.match(/^\[navigate_to:(.+?):(.+?)\]$/)
-    if (navMatch) {
-      let [, path, label] = navMatch
-      messages.value.push({ role: 'assistant', content: `正在跳转到「${label}」...` })
-      if (path === '__back__') {
-        router.back()
-      } else {
-        router.push(path)
-      }
-      return
-    }
     messages.value.push({ role: 'assistant', content: data.reply })
     // 更新 session ID
     if (!sessionId.value) {
@@ -445,6 +471,30 @@ onMounted(() => {
 .ai-chat-msg.user { align-self: flex-end; background: var(--color-primary, #6366f1); color: #fff; border-bottom-right-radius: 6px; }
 .ai-chat-msg.assistant, .ai-chat-msg.system { align-self: flex-start; background: var(--color-bg-hover, #f3f4f6); color: var(--color-text, #1f2937); border-bottom-left-radius: 6px; }
 .ai-chat-typing { color: var(--color-text-muted, #9ca3af); font-style: italic; font-size: 13px; }
+
+/* 消息内超链接样式 */
+.ai-chat-msg-content :deep(a) {
+  color: #6366f1;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.ai-chat-msg-content :deep(a:hover) {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+/* 用户消息气泡内的链接反色 */
+.ai-chat-msg.user .ai-chat-msg-content :deep(a) {
+  color: #c7d2fe;
+  text-decoration-color: #818cf8;
+}
+.ai-chat-msg.user .ai-chat-msg-content :deep(a:hover) {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+}
 
 .ai-chat-sessions { flex: 1; overflow-y: auto; padding: 8px; }
 .ai-session-item {

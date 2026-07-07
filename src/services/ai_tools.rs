@@ -637,7 +637,7 @@ impl AiTool for ApiRequestTool {
     fn name(&self) -> &str { "api_request" }
 
     fn description(&self) -> &str {
-        "发送 HTTP 请求到指定 URL，返回响应内容。支持 GET 和 POST。用于调用本站 API 或外部接口。"
+        "搜索站内资源或调用外部 API 并返回超链接。用于调用站内搜索（GET /api/v1/search?q=关键词），或查询分类、标签、用户等。返回 JSON 结果，你自行解析并整理为可读格式，以 Markdown 超链接呈现。也可调用外部接口。"
     }
 
     fn parameters(&self) -> Value {
@@ -670,6 +670,14 @@ impl AiTool for ApiRequestTool {
         if url.is_empty() {
             return Err(AppError::BadRequest("URL 不能为空".into()));
         }
+
+        // 相对路径自动补全为完整 URL（如 /api/v1/search → http://127.0.0.1:5023/api/v1/search）
+        let url = if url.starts_with("http://") || url.starts_with("https://") {
+            url
+        } else {
+            let path = url.trim_start_matches('/');
+            format!("http://127.0.0.1:{}/{}", state.config.server.port, path)
+        };
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -709,6 +717,7 @@ impl AiTool for ApiRequestTool {
         Ok(format!("HTTP {} — 响应:\n{}", status.as_u16(), truncated))
     }
 }
+
 
 /// 辅助函数：直接抓取 URL 并提取文本
 async fn fetch_url_directly(url: &str) -> Result<String, AppError> {

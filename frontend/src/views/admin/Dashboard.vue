@@ -1,5 +1,10 @@
 <template>
   <div class="dashboard">
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <h1 class="page-title">📊 控制台</h1>
+    </div>
+
     <!-- 统计卡片 5 列 -->
     <div class="stats-row">
       <router-link to="/admin/posts?status=published&mtab=posts" class="stat-card stat-link">
@@ -389,6 +394,19 @@ watch(chartRange, (days) => loadTrendData(days))
 <style scoped>
 .dashboard {
   animation: fadeIn 0.3s ease;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--card-border-color);
+}
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--input-color);
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }

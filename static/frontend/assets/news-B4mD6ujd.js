@@ -1,1 +1,0 @@
-import{r as n}from"./index-GWI9yapm.js";function r(e){return n.get("/news",{params:e})}function a(e){return n.get(`/news/${e}`)}function u(e){return n.get("/admin/news",{params:e})}function i(e){return n.post("/admin/news",e)}function w(e,t){return n.put(`/admin/news/${e}`,t)}function c(e){return n.delete(`/admin/news/${e}`)}export{r as a,a as b,i as c,c as d,u as f,w as u};

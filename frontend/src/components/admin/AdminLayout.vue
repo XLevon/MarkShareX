@@ -117,7 +117,7 @@
     <main class="admin-main">
       <router-view v-slot="{ Component }">
         <keep-alive :include="['PostList']">
-          <component :is="Component" />
+          <component :is="Component" :key="$route.fullPath" />
         </keep-alive>
       </router-view>
     </main>

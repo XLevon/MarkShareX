@@ -1,7 +1,7 @@
 <template>
   <div class="news-manage">
     <div class="page-header">
-      <h2>📢 资讯管理</h2>
+      <h2 class="font-bold mb-6" style="color: var(--input-color); font-size: 28px">📢 资讯管理</h2>
       <n-button type="primary" @click="openCreate">+ 新建资讯</n-button>
     </div>
 
