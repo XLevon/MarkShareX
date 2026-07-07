@@ -376,8 +376,7 @@ CREATE TABLE IF NOT EXISTS ai_skills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(200) NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
-    system_prompt TEXT NOT NULL DEFAULT '',
-    user_prompt TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
     output_format VARCHAR(50) NOT NULL DEFAULT 'markdown',
     params_template TEXT NOT NULL DEFAULT '{}',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -387,7 +386,7 @@ CREATE TABLE IF NOT EXISTS ai_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL DEFAULT '',
     skill_id INTEGER NOT NULL,
-    provider_id INTEGER NOT NULL,
+    provider_id INTEGER,
     cron_expr VARCHAR(100) NOT NULL DEFAULT '',
     params TEXT NOT NULL DEFAULT '{}',
     enabled BOOLEAN NOT NULL DEFAULT 1,
@@ -398,7 +397,6 @@ CREATE TABLE IF NOT EXISTS ai_tasks (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (skill_id) REFERENCES ai_skills(id) ON DELETE CASCADE,
-    FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
     FOREIGN KEY (agent_config_id) REFERENCES ai_agent_config(id) ON DELETE SET NULL,
     FOREIGN KEY (model_id) REFERENCES ai_models(id) ON DELETE SET NULL
 );
