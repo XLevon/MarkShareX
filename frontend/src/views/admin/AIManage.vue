@@ -123,10 +123,18 @@
             
 支持 {{变量}} 占位符，如 {{topic}}、{{count}}" />
           </n-form-item>
-          <n-form-item label="参数模板">
+          <n-form-item>
+            <template #label>
+              <span style="display:inline-flex;align-items:center;gap:10px">
+                参数模板
+                <n-button size="tiny" @click="extractParamsFromContent">🔍 从指令识别</n-button>
+              </span>
+            </template>
             <div style="width:100%">
               <n-input v-model:value="skillForm.params_template" type="textarea" :rows="4" placeholder='{"topic":"","count":3}' />
-              <div style="color:var(--color-text-muted);font-size:12px;margin-top:4px">JSON 格式，系统变量 {{date}} {{datetime}} {{time}} 会自动替换。新建时自动从指令内容提取</div>
+              <div style="color:var(--color-text-muted);font-size:12px;margin-top:4px">
+                JSON 格式，可用系统变量：<code>{<!-- -->{date}}</code> <code>{<!-- -->{datetime}}</code> <code>{<!-- -->{time}}</code>。点击识别可从指令内容自动提取 <code>{<!-- -->{变量}}</code>
+              </div>
             </div>
           </n-form-item>
           <n-form-item label="输出格式">
@@ -187,7 +195,7 @@
             <n-select v-model:value="taskForm.model_id" :options="taskModelOptions" clearable placeholder="不选则使用Agent的配置" />
           </n-form-item>
           <n-form-item label="Cron 表达式" required>
-            <n-input v-model:value="taskForm.cron_expr" placeholder="0 8 * * *" />
+            <n-input v-model:value="taskForm.cron_expr" placeholder="* 0 8 * * * *" />
           </n-form-item>
           <n-form-item label="参数">
             <n-input v-model:value="taskForm.params" placeholder='{"topic":"AI","count":3}' />
@@ -493,6 +501,18 @@ function openSkillForm(row?: AiSkill) {
   editingSkillId.value = row?.id ?? null
   skillForm.value = row ? { name: row.name, description: row.description, content: row.content, output_format: row.output_format, params_template: row.params_template } : { name: '', description: '', content: '', output_format: 'markdown', params_template: '{}' }
   showSkillModal.value = true
+}
+/** 从指令内容中提取 {{变量}} 占位符，生成参数模板 JSON */
+function extractParamsFromContent() {
+  const content = skillForm.value.content
+  if (!content) { message.warning('请先填写指令内容'); return }
+  const matches = content.match(/\{\{(\w+)\}\}/g)
+  if (!matches) { message.info('未识别到 {{变量}} 占位符'); return }
+  const vars = [...new Set(matches.map(m => m.slice(2, -2)))]
+  const template: Record<string, string> = {}
+  vars.forEach(v => { template[v] = '' })
+  skillForm.value.params_template = JSON.stringify(template, null, 2)
+  message.success(`已识别 ${vars.length} 个变量: ${vars.join(', ')}`)
 }
 async function saveSkill() {
   if (!skillForm.value.name || !skillForm.value.content) { message.warning('名称和指令内容为必填'); return }

@@ -53,6 +53,9 @@ pub struct NewsQuery {
     /// 是否包含正文内容（默认 false，列表不返回正文以提升加载效率）
     #[serde(default)]
     pub include_content: bool,
+    /// 状态过滤：published（默认）、draft、或 all（不过滤）
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 fn default_status() -> String { "draft".to_string() }
@@ -101,8 +104,14 @@ pub async fn list_news(
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
 
-    let paginator = news::Entity::find()
-        .filter(news::Column::Status.eq("published"))
+    let mut select = news::Entity::find();
+    match query.status.as_deref() {
+        Some("all") => {}, // 不过滤状态
+        Some(s) => { select = select.filter(news::Column::Status.eq(s)); }
+        None => { select = select.filter(news::Column::Status.eq("published")); }
+    }
+
+    let paginator = select
         .order_by_desc(news::Column::SortOrder)
         .order_by_desc(news::Column::CreatedAt)
         .paginate(&state.db, page_size);

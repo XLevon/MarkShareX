@@ -331,6 +331,7 @@ async function send() {
     loading.value = false
     await nextTick()
     scrollBottom()
+    inputField.value?.focus()
   }
 }
 

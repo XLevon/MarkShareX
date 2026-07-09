@@ -707,9 +707,10 @@ impl AiTool for ApiRequestTool {
         let body = resp.text().await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("读取响应失败: {}", e)))?;
 
-        // 截断过长响应
-        let truncated = if body.len() > 8000 {
-            format!("{}...\n\n(响应过长，已截断至前 8000 字符)", &body[..8000])
+        // 截断过长响应（按字符而非字节截断，防止中文截断 panic）
+        let truncated = if body.chars().count() > 8000 {
+            let preview: String = body.chars().take(8000).collect();
+            format!("{}...\n\n(响应过长，已截断至前 8000 字符)", preview)
         } else {
             body
         };

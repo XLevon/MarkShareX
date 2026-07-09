@@ -93,7 +93,10 @@ impl AiScheduler {
                 // 执行完毕，从 running 集合中移除
                 running.lock().await.remove(&task_id);
                 match result {
-                    Ok(msg) => info!("调度任务 #{} 执行完成: {}...", task_id, &msg[..msg.len().min(100)]),
+                    Ok(msg) => {
+                        let preview: String = msg.chars().take(100).collect();
+                        info!("调度任务 #{} 执行完成: {}...", task_id, preview);
+                    }
                     Err(e) => error!("调度任务 #{} 执行失败: {}", task_id, e),
                 }
             });

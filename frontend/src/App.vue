@@ -54,18 +54,14 @@ onMounted(async () => {
   // 监听管理后台的默认 Agent 切换事件，即时刷新
   window.addEventListener('marksharex:default-agent-changed', refreshDefaultAgent)
 
-  // 仅首次访问时检查（localStorage 缓存避免重复）
-  if (!localStorage.getItem('marksharex_initialized')) {
-    try {
-      const { data: resp } = await fetchSetupStatus()
-      if (resp.data.initialized) {
-        localStorage.setItem('marksharex_initialized', '1')
-      } else {
-        router.replace({ name: 'admin-setup' })
-      }
-    } catch {
-      // API 异常，假定已初始化
+  // 首页加载后异步检查，若系统未初始化则跳转管理员初始化页面
+  try {
+    const { data: resp } = await fetchSetupStatus()
+    if (!resp.data.initialized) {
+      router.replace({ name: 'admin-setup' })
     }
+  } catch {
+    // API 异常不阻塞，放行
   }
 })
 </script>
