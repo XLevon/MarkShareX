@@ -363,7 +363,7 @@ impl AiTool for CreateNewsTool {
     fn name(&self) -> &str { "create_news" }
 
     fn description(&self) -> &str {
-        "创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）。可选 source_url（来源链接）、status（draft 草稿 或 published 已发布，默认 draft）。"
+        "创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）、source_url（来源链接）、status（draft 草稿 或 published 已发布，默认 draft）。"
     }
 
     fn parameters(&self) -> Value {
@@ -384,7 +384,7 @@ impl AiTool for CreateNewsTool {
                 },
                 "source_url": {
                     "type": "string",
-                    "description": "原文链接（可选）"
+                    "description": "原文链接"
                 },
                 "status": {
                     "type": "string",
@@ -393,7 +393,7 @@ impl AiTool for CreateNewsTool {
                     "default": "draft"
                 }
             },
-            "required": ["title", "summary", "content"]
+            "required": ["title", "summary", "content", "source_url"]
         })
     }
 

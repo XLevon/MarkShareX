@@ -106,7 +106,7 @@ impl AiScheduler {
     }
 
     /// 执行单个任务
-    async fn execute_task(state: &AppState, task_id: i32) -> Result<String, anyhow::Error> {
+    pub async fn execute_task(state: &AppState, task_id: i32) -> Result<String, anyhow::Error> {
         // 1. 查询任务详情
         let task = ai_task::Entity::find_by_id(task_id)
             .one(&state.db)
@@ -164,6 +164,38 @@ impl AiScheduler {
         info!("调度任务 #{} 状态已更新 (run_count={})", task_id, new_run_count);
 
         Ok(reply)
+    }
+
+    /// 执行单个任务（带追踪）
+    pub async fn execute_task_traced(state: &AppState, task_id: i32) -> Result<crate::services::ai_chat::TraceResult, anyhow::Error> {
+        let task = ai_task::Entity::find_by_id(task_id).one(&state.db).await?
+            .ok_or_else(|| anyhow::anyhow!("任务 #{} 不存在", task_id))?;
+        let skill = ai_skill::Entity::find_by_id(task.skill_id).one(&state.db).await?
+            .ok_or_else(|| anyhow::anyhow!("技能 #{} 不存在", task.skill_id))?;
+
+        let registry = ai_tools::create_registry(&state.db, true, None).await;
+        let user_message = build_user_message(&skill.content, &task.params);
+        let system_prompt = get_agent_system_prompt(state, task.agent_config_id).await;
+        let (agent_provider_id, agent_model_id) = get_agent_defaults(state, task.agent_config_id).await;
+        let provider_id = task.provider_id.or(agent_provider_id);
+        let model_id = task.model_id.or(agent_model_id);
+        let model_name = get_model_name(state, model_id).await;
+
+        let trace = ai_chat::run_function_calling_traced(
+            state, &registry, &system_prompt, &user_message, &[],
+            provider_id, model_name, Some(task_id),
+        ).await?;
+
+        // 更新任务状态
+        let now = Local::now().naive_local();
+        let new_run_count = task.run_count + 1;
+        let mut model: ai_task::ActiveModel = task.into();
+        model.last_run_at = Set(Some(now));
+        model.run_count = Set(new_run_count);
+        model.updated_at = Set(now);
+        model.update(&state.db).await?;
+
+        Ok(trace)
     }
 }
 

@@ -211,6 +211,49 @@
       </n-card>
     </n-modal>
 
+    <!-- Task Trace Modal -->
+    <n-modal v-model:show="showTraceModal" :mask-closable="false" style="width:720px;max-width:95vw">
+      <n-card :title="`📋 执行追踪 — ${traceTaskName}`" :bordered="false" size="small">
+        <!-- 等待首轮数据 -->
+        <div v-if="traceRunning && traceSteps.length === 0" style="text-align:center;padding:60px 0">
+          <n-spin size="large" /><p style="margin-top:16px;color:var(--color-text-muted)">正在执行任务，请稍候...</p>
+        </div>
+        <!-- 执行完成但无数据 -->
+        <div v-else-if="!traceRunning && traceSteps.length === 0" style="text-align:center;padding:40px 0;color:var(--color-text-muted)">
+          无追踪数据
+        </div>
+        <!-- 有数据：执行中逐轮显示 / 完成后完整展示 -->
+        <div v-else style="max-height:60vh;overflow-y:auto">
+          <div v-if="traceRunning" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--color-primary)">
+            <n-spin size="small" /><span style="font-size:13px">执行中，已获取 {{ traceSteps.length }} 轮数据...</span>
+          </div>
+          <div v-for="(step, si) in traceSteps" :key="si" style="margin-bottom:20px;border:1px solid var(--color-border);border-radius:8px;padding:12px">
+            <div style="font-weight:bold;margin-bottom:8px;color:var(--color-primary)">🔄 第 {{ step.round }} 轮</div>
+            <div v-if="step.llm_content" style="background:var(--color-bg-secondary);border-radius:6px;padding:10px;margin-bottom:10px;white-space:pre-wrap;font-size:13px">{{ step.llm_content }}</div>
+            <div v-for="(tc, tci) in step.tool_calls" :key="tci" style="margin-bottom:8px">
+              <n-collapse>
+                <n-collapse-item :title="`🔧 ${tc.function_name}`">
+                  <div style="font-size:12px">
+                    <div style="margin-bottom:6px"><b>参数：</b><code style="background:var(--color-bg-secondary);padding:2px 6px;border-radius:4px;word-break:break-all">{{ JSON.stringify(tc.arguments, null, 2) }}</code></div>
+                    <div><b>结果：</b><pre style="background:var(--color-bg-secondary);padding:8px;border-radius:4px;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;margin:0">{{ tc.result_preview }}</pre></div>
+                  </div>
+                </n-collapse-item>
+              </n-collapse>
+            </div>
+          </div>
+          <div style="margin-top:16px;padding:12px;background:var(--color-card-bg);border-radius:8px;border:1px solid var(--color-success, #67c23a);border-left:4px solid var(--color-success, #67c23a)">
+            <div style="font-weight:bold;margin-bottom:6px;color:var(--color-success, #67c23a)">✅ 最终结果</div>
+            <div style="white-space:pre-wrap;font-size:14px;line-height:1.7;color:var(--color-text)">{{ traceFinalReply }}</div>
+          </div>
+        </div>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showTraceModal=false">关闭</n-button>
+          </n-space>
+        </template>
+      </n-card>
+    </n-modal>
+
     <!-- Model Modal -->
     <n-modal v-model:show="showModelModal" :mask-closable="false">
       <n-card style="width:400px;max-width:90vw" :title="editingModelId ? '编辑模型' : '添加模型'">
@@ -240,7 +283,7 @@ import { NButton, NTag, NSpace, NSwitch, NSelect, useMessage } from 'naive-ui'
 import {
   fetchProviders, createProvider, updateProvider, deleteProvider, testProvider, type AiProvider,
   fetchSkills, createSkill, updateSkill, deleteSkill, type AiSkill,
-  fetchTasks, createTask, updateTask, deleteTask, type AiTask,
+  fetchTasks, createTask, updateTask, deleteTask, runTask, getTaskTrace, type AiTask, type TaskTraceStep,
   fetchAgentConfigs, createAgentConfig, updateAgentConfig, deleteAgentConfig, type AgentConfig,
   fetchTools, createTool, updateTool, deleteTool, type AiTool,
   fetchModels, createModel, updateModel, deleteModel, type AiModel,
@@ -577,9 +620,13 @@ const taskColumns = [
   { title: '启用', key: 'enabled', width: 70, render(row: AiTask) {
     return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleTaskEnabled(row, v) })
   }},
-  { title: '运行次数', key: 'run_count', width: 90 },
-  { title: '操作', key: 'actions', width: 140, render(row: AiTask) {
+  { title: '运行次数', key: 'run_count', width: 80 },
+  { title: '上次执行', key: 'last_run_at', width: 160, render(row: AiTask) {
+    return row.last_run_at ? new Date(row.last_run_at).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: '2-digit', day: '2-digit' }) : '-'
+  }},
+  { title: '操作', key: 'actions', width: 210, render(row: AiTask) {
     return h(NSpace, { size: 'small' }, { default: () => [
+      h(NButton, { size: 'small', type: 'primary', onClick: () => handleRunTask(row) }, { default: () => '执行' }),
       h(NButton, { size: 'small', onClick: () => openTaskForm(row) }, { default: () => '编辑' }),
       h(NButton, { size: 'small', type: 'error', onClick: () => handleDeleteTask(row) }, { default: () => '删除' }),
     ]})
@@ -621,6 +668,55 @@ async function toggleTaskEnabled(row: AiTask, v: boolean) {
   try { await updateTask(row.id, { enabled: v }); row.enabled = v; message.success(v ? '已启用' : '已停用') }
   catch (e: any) { message.error(e?.response?.data?.error || '切换失败') }
 }
+let tracePollTimer: ReturnType<typeof setInterval> | null = null
+
+async function handleRunTask(row: AiTask) {
+  traceTaskName.value = row.name || `任务 #${row.id}`
+  traceSteps.value = []
+  traceFinalReply.value = ''
+  traceRunning.value = true
+  showTraceModal.value = true
+
+  try {
+    const r = await runTask(row.id)
+    const taskId = r.data.data.task_id
+    // 开始轮询
+    tracePollTimer = setInterval(async () => {
+      try {
+        const t = await getTaskTrace(taskId)
+        const d = t.data.data
+        traceSteps.value = d.steps || []
+        if (d.status === 'completed') {
+          traceFinalReply.value = d.final_reply || ''
+          traceRunning.value = false
+          clearPollTimer()
+          await loadTasks()
+        } else if (d.status === 'failed') {
+          traceFinalReply.value = d.error || '执行失败'
+          traceRunning.value = false
+          clearPollTimer()
+        }
+      } catch {}
+    }, 1500)
+  } catch (e: any) {
+    traceFinalReply.value = `启动失败: ${e?.response?.data?.error || e.message || '未知错误'}`
+    traceRunning.value = false
+  }
+}
+
+function clearPollTimer() {
+  if (tracePollTimer) { clearInterval(tracePollTimer); tracePollTimer = null }
+}
+
+// ── Trace state ──
+const showTraceModal = ref(false)
+const traceRunning = ref(false)
+const traceTaskName = ref('')
+const traceSteps = ref<TaskTraceStep[]>([])
+const traceFinalReply = ref('')
+
+// 关闭弹窗时停止轮询
+watch(showTraceModal, (v) => { if (!v) clearPollTimer() })
 
 // 切换供应商时自动选该供应商的首个模型（加载表单时跳过）
 watch(() => taskForm.value.provider_id, () => {

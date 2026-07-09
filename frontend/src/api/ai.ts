@@ -82,6 +82,24 @@ export function updateTask(id: number, data: Partial<AiTask>) {
 export function deleteTask(id: number) {
   return api.delete(`/admin/ai/tasks/${id}`)
 }
+export function runTask(id: number) {
+  return api.post<{ data: { task_id: number; status: string } }>(`/admin/ai/tasks/${id}/run`)
+}
+export function getTaskTrace(id: number) {
+  return api.get<{ data: { status: string; steps: TaskTraceStep[]; final_reply: string; error: string | null } }>(`/admin/ai/tasks/${id}/trace`)
+}
+
+export interface TaskTraceStep {
+  round: number
+  llm_content: string | null
+  tool_calls: TaskTraceToolCall[]
+}
+
+export interface TaskTraceToolCall {
+  function_name: string
+  arguments: Record<string, unknown>
+  result_preview: string
+}
 
 // ── Agent Config ──
 export interface AgentConfig {

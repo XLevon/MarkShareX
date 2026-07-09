@@ -286,6 +286,8 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         .route("/api/v1/admin/ai/skills/:id", put(ai::update_skill).delete(ai::delete_skill))
         .route("/api/v1/admin/ai/tasks", get(ai::list_tasks).post(ai::create_task))
         .route("/api/v1/admin/ai/tasks/:id", put(ai::update_task).delete(ai::delete_task))
+        .route("/api/v1/admin/ai/tasks/:id/run", post(ai::run_task))
+        .route("/api/v1/admin/ai/tasks/:id/trace", get(ai::get_task_trace))
         .route("/api/v1/admin/ai/agent-configs", get(ai::list_agent_configs).post(ai::create_agent_config))
         .route("/api/v1/admin/ai/agent-configs/:id", put(ai::update_agent_config).delete(ai::delete_agent_config))
         .route("/api/v1/admin/ai/models", get(ai::list_models).post(ai::create_model))

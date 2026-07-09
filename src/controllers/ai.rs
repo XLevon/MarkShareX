@@ -203,8 +203,8 @@ pub struct UpdateTaskRequest {
     pub params: Option<String>,
     pub enabled: Option<bool>,
     pub name: Option<String>,
-    pub agent_config_id: Option<i32>,
-    pub model_id: Option<i32>,
+    pub agent_config_id: Option<Option<i32>>,
+    pub model_id: Option<Option<i32>>,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -654,8 +654,8 @@ pub async fn update_task(
     if let Some(v) = req.params { model.params = Set(v); }
     if let Some(v) = req.enabled { model.enabled = Set(v); }
     if let Some(v) = req.name { model.name = Set(v); }
-    if let Some(v) = req.agent_config_id { model.agent_config_id = Set(Some(v)); }
-    if let Some(v) = req.model_id { model.model_id = Set(Some(v)); }
+    if let Some(v) = req.agent_config_id { model.agent_config_id = Set(v); }
+    if let Some(v) = req.model_id { model.model_id = Set(v); }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
     Ok(Json(ApiResponse { data: AiTaskResponse::from(updated), pagination: None }))
@@ -670,6 +670,51 @@ pub async fn delete_task(
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     ai_task::Entity::delete_by_id(id).exec(&state.db).await?;
     Ok(Json(ApiResponse { data: (), pagination: None }))
+}
+
+/// POST /api/v1/admin/ai/tasks/{id}/run — 手动执行一次任务（异步启动+轮询追踪）
+pub async fn run_task(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    use crate::services::ai_scheduler::AiScheduler;
+    use crate::services::ai_trace;
+
+    let task_id = id;
+    ai_trace::trace_start(task_id);
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        match AiScheduler::execute_task_traced(&state_clone, task_id).await {
+            Ok(trace) => ai_trace::trace_complete(task_id, trace.final_reply),
+            Err(e) => ai_trace::trace_fail(task_id, e.to_string()),
+        }
+    });
+
+    Ok(Json(ApiResponse {
+        data: serde_json::json!({"task_id": task_id, "status": "started"}),
+        pagination: None,
+    }))
+}
+
+/// GET /api/v1/admin/ai/tasks/{id}/trace — 轮询任务执行追踪
+pub async fn get_task_trace(
+    State(_state): State<AppState>,
+    _auth: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
+    use crate::services::ai_trace;
+    let entry = ai_trace::trace_get(id).unwrap_or_else(|| ai_trace::TraceEntry {
+        status: "not_found".to_string(),
+        steps: vec![],
+        final_reply: String::new(),
+        error: None,
+    });
+    Ok(Json(ApiResponse {
+        data: serde_json::to_value(entry).unwrap_or_default(),
+        pagination: None,
+    }))
 }
 
 // ═══════════════════════════════════════════════════════
@@ -715,7 +760,7 @@ pub struct UpdateAgentConfigRequest {
     pub system_prompt: Option<String>,
     pub user_prompt: Option<String>,
     pub is_default: Option<bool>,
-    pub model_id: Option<i32>,
+    pub model_id: Option<Option<i32>>,
 }
 
 /// GET /api/v1/admin/ai/agent-configs
@@ -765,7 +810,7 @@ pub async fn update_agent_config(
     if let Some(v) = req.name { model.name = Set(v); }
     if let Some(v) = req.system_prompt { model.system_prompt = Set(v); }
     if let Some(v) = req.user_prompt { model.user_prompt = Set(v); }
-    if let Some(v) = req.model_id { model.model_id = Set(Some(v)); }
+    if let Some(v) = req.model_id { model.model_id = Set(v); }
     if let Some(v) = req.is_default {
         // 如果设为默认，先取消其他配置的默认
         if v {
