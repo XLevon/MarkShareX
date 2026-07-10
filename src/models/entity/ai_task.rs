@@ -17,6 +17,7 @@ pub struct Model {
     pub run_count: i32,
     pub agent_config_id: Option<i32>,
     pub model_id: Option<i32>,
+    pub max_tool_rounds: Option<i32>,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }

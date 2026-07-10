@@ -1,6 +1,6 @@
 <template>
   <header
-    class="z-50 border-b backdrop-blur-md"
+    class="z-[1100] border-b backdrop-blur-md"
     :class="{ sticky: sticky, 'top-0': sticky, relative: !sticky }"
     :style="headerStyle"
   >

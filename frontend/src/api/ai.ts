@@ -61,6 +61,7 @@ export interface AiTask {
   provider_id: number
   agent_config_id: number | null
   model_id: number | null
+  max_tool_rounds: number | null
   cron_expr: string
   params: string
   enabled: boolean

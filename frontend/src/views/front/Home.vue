@@ -106,22 +106,50 @@
 
     <!-- News Section -->
     <section v-if="newsItems.length > 0" class="max-w-4xl mx-auto px-4 pt-12 md:pt-16 pb-0">
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-8">
+      <!-- Header row: title + search + date -->
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-4">
         <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
-        <div class="hidden sm:block flex-1 min-w-4"></div>
-        <input
-          v-model="newsSearch"
-          type="text"
-          placeholder="搜索资讯..."
-          class="w-full sm:w-64 md:w-80 px-3 py-1.5 text-sm rounded-lg border outline-none transition-colors"
-          :style="{
-            backgroundColor: 'var(--color-bg-card)',
-            borderColor: 'var(--color-border)',
-            color: 'var(--color-text)',
-          }"
-          @focus="$event.target.style.borderColor = 'var(--color-primary)'"
-          @blur="$event.target.style.borderColor = 'var(--color-border)'"
-        />
+        <div class="hidden sm:block flex-1 min-w-2"></div>
+        <div class="flex items-center gap-2">
+          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" style="width:200px">
+            <template #footer>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
+                <n-button size="tiny" quaternary @click="setNewsDateRange('today')">今天</n-button>
+                <n-button size="tiny" quaternary @click="setNewsDateRange('yesterday')">昨天</n-button>
+                <n-button size="tiny" quaternary @click="setNewsDateRange('week')">本周</n-button>
+                <n-button size="tiny" quaternary @click="setNewsDateRange('lastWeek')">上周</n-button>
+                <n-button size="tiny" quaternary @click="setNewsDateRange('month')">本月</n-button>
+                <n-button size="tiny" quaternary @click="setNewsDateRange('lastMonth')">上月</n-button>
+              </div>
+            </template>
+          </n-date-picker>
+          <input
+            v-model="newsSearch"
+            type="text"
+            placeholder="搜索资讯..."
+            class="w-full sm:w-48 md:w-64 px-3 py-1.5 text-sm rounded-lg border outline-none transition-colors"
+            :style="{
+              backgroundColor: 'var(--color-bg-card)',
+              borderColor: 'var(--color-border)',
+              color: 'var(--color-text)',
+            }"
+            @focus="($event.target as HTMLInputElement).style.borderColor = 'var(--color-primary)'"
+            @blur="($event.target as HTMLInputElement).style.borderColor = 'var(--color-border)'"
+          />
+        </div>
+      </div>
+      <!-- Topic type filter pills -->
+      <div class="flex flex-wrap gap-1.5 mb-6">
+        <button
+          v-for="t in topicTypes"
+          :key="t.value"
+          @click="toggleNewsTopic(t.value)"
+          class="px-2.5 py-1 text-xs rounded-full border transition-colors cursor-pointer select-none"
+          :class="t.value === '' ? (newsTopicFilters.size === 0 ? 'border-transparent text-white' : 'hover:border-gray-400') : (newsTopicFilters.has(t.value) ? 'border-transparent text-white' : 'hover:border-gray-400')"
+          :style="t.value === ''
+            ? (newsTopicFilters.size === 0 ? { backgroundColor: 'var(--color-primary)', borderColor: 'var(--color-primary)', color: '#fff' } : { backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' })
+            : (newsTopicFilters.has(t.value) ? { backgroundColor: topicTypeColor(t.value, 1), borderColor: topicTypeColor(t.value, 1), color: '#fff' } : { backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' })"
+        >{{ t.label }}</button>
       </div>
       <div v-if="filteredNews.length === 0" class="text-center py-8" :style="{ color: 'var(--color-text-muted)' }">
         没有找到相关资讯
@@ -153,7 +181,10 @@
                 <span class="line-clamp-3 md:line-clamp-2">{{ item.title }}</span>
               </h3>
             </div>
-            <span class="text-xs whitespace-nowrap pt-0.5" :style="{ color: 'var(--color-text-muted)' }">{{ formatDate(item.published_at || item.created_at) }}</span>
+            <div class="flex items-center gap-2">
+              <span v-if="item.topic_type" class="text-xs px-1.5 py-0.5 rounded" :style="{ backgroundColor: topicTypeColor(item.topic_type, 0.15), color: topicTypeColor(item.topic_type, 1) }">{{ topicTypeLabel(item.topic_type) }}</span>
+              <span class="text-xs whitespace-nowrap pt-0.5" :style="{ color: 'var(--color-text-muted)' }">{{ formatDate(item.published_at || item.created_at) }}</span>
+            </div>
           </div>
           <p class="text-sm leading-relaxed line-clamp-2 mt-2 flex items-start gap-1.5 min-h-[2.5rem]" :style="{ color: item.summary ? 'var(--color-text-secondary)' : 'transparent' }">
             <!-- Summary icon: indent/quote -->
@@ -190,7 +221,7 @@ import { useDarkMode } from '@/composables/useDarkMode'
 import { fetchPosts } from '@/api/posts'
 import { fetchCategories } from '@/api/categories'
 import { fetchTags } from '@/api/tags'
-import { fetchNews, fetchNewsItem, type NewsItem } from '@/api/news'
+import { fetchNews, fetchNewsItem, fetchTopicTypes, type NewsItem } from '@/api/news'
 import GuestbookFormModal from '@/components/shared/GuestbookFormModal.vue'
 import { navSearchVisible } from '@/composables/useSearchVisibility'
 import { useHeroVisibility } from '@/composables/useHeroVisibility'
@@ -221,6 +252,96 @@ const loadMoreRef = ref<HTMLElement | null>(null)
 let newsObserver: IntersectionObserver | null = null
 
 const newsSearch = ref('')
+const newsTopicFilters = ref(new Set<string>())
+const newsDateRange = ref<[number, number] | null>(null)
+const topicTypeValues = ref<string[]>([])
+
+const topicTypeLabelMap: Record<string, string> = {
+  politics: '时政', finance: '财经', technology: '科技', society: '社会',
+  entertainment: '文娱', sports: '体育', international: '国际', law: '法治', education: '教育',
+}
+
+const topicTypes = computed(() => {
+  const types: { label: string; value: string }[] = [{ label: '全部', value: '' }]
+  for (const v of topicTypeValues.value) {
+    types.push({ label: topicTypeLabelMap[v] || v, value: v })
+  }
+  return types
+})
+
+const topicTypeColorMap: Record<string, string> = {
+  politics: '#e74c3c',
+  finance: '#e67e22',
+  technology: '#3498db',
+  society: '#1abc9c',
+  entertainment: '#9b59b6',
+  sports: '#27ae60',
+  international: '#f39c12',
+  law: '#34495e',
+  education: '#e91e63',
+}
+
+function topicTypeLabel(v: string): string {
+  return topicTypeLabelMap[v] || v
+}
+
+function topicTypeColor(v: string, alpha: number): string {
+  const hex = topicTypeColorMap[v] || '#6b7280'
+  if (alpha === 1) return hex
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+function toggleNewsTopic(value: string) {
+  if (value === '') {
+    newsTopicFilters.value = new Set()
+  } else {
+    const next = new Set(newsTopicFilters.value)
+    if (next.has(value)) next.delete(value)
+    else next.add(value)
+    newsTopicFilters.value = next
+  }
+}
+
+function setNewsDateRange(preset: 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth') {
+  const now = new Date()
+  let start: Date, end: Date
+  switch (preset) {
+    case 'today':
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+      break
+    case 'yesterday': {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+      start = d
+      end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
+      break
+    }
+    case 'week': {
+      const day = now.getDay() || 7
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1)
+      end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 7, 23, 59, 59, 999)
+      break
+    }
+    case 'lastWeek': {
+      const day = now.getDay() || 7
+      end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day, 23, 59, 59, 999)
+      start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6)
+      break
+    }
+    case 'month':
+      start = new Date(now.getFullYear(), now.getMonth(), 1)
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+      break
+    case 'lastMonth':
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999)
+      break
+  }
+  newsDateRange.value = [start.getTime(), end.getTime()]
+}
 const newsRefs = new Map<number, HTMLElement>()
 const clickedNewsIds = reactive(new Set<number>())
 const expandedNewsId = ref<number | null>(null)
@@ -230,9 +351,28 @@ const batchSize = computed(() => parseInt(settingsStore.settings.batch_load_size
 const scrollSize = computed(() => parseInt(settingsStore.settings.scroll_load_size || '3') || 3)
 
 const filteredNews = computed(() => {
+  let items = newsItems.value
+
+  // Topic type filter (multi-select toggle)
+  if (newsTopicFilters.value.size > 0) {
+    items = items.filter(item => newsTopicFilters.value.has(item.topic_type))
+  }
+
+  // Date range filter
+  if (newsDateRange.value) {
+    const [rangeStart, rangeEnd] = newsDateRange.value
+    items = items.filter(item => {
+      const d = item.published_at || item.created_at
+      if (!d) return false
+      const ts = new Date(d).getTime()
+      return ts >= rangeStart && ts <= rangeEnd
+    })
+  }
+
+  // Text search
   const q = newsSearch.value.trim().toLowerCase()
-  if (!q) return newsItems.value
-  return newsItems.value.filter(item =>
+  if (!q) return items
+  return items.filter(item =>
     item.title.toLowerCase().includes(q) ||
     (item.summary && item.summary.toLowerCase().includes(q))
   )
@@ -284,6 +424,25 @@ async function loadNewsInitial() {
     newsItems.value = data
     newsPage.value = 1
     hasMore.value = data.length >= batchSize.value
+  } catch { /* ignore */ }
+}
+
+async function loadTopicTypes() {
+  try {
+    const params: Record<string, string> = {}
+    // Pass date range if set
+    if (newsDateRange.value) {
+      const [start, end] = newsDateRange.value
+      const sd = new Date(start), ed = new Date(end)
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      params.date_from = `${sd.getFullYear()}-${pad(sd.getMonth()+1)}-${pad(sd.getDate())}`
+      params.date_to = `${ed.getFullYear()}-${pad(ed.getMonth()+1)}-${pad(ed.getDate())}`
+    }
+    // Pass search keyword
+    const q = newsSearch.value.trim()
+    if (q) params.search = q
+    const resp = await fetchTopicTypes(params)
+    topicTypeValues.value = resp.data.data || []
   } catch { /* ignore */ }
 }
 
@@ -349,6 +508,7 @@ function goWrite() {
 onMounted(() => {
   loadStats()
   loadNewsInitial()
+  loadTopicTypes()
   setTimeout(() => { heroVisible.value = false }, 3000)
   if (heroSearchRef.value) {
     const observer = new IntersectionObserver(
@@ -375,6 +535,9 @@ watch(hasMore, async (val) => {
     }
   }
 })
+
+// Re-fetch topic types when date or search changes
+watch([newsDateRange, newsSearch], () => { loadTopicTypes() })
 
 watch(() => route.query.search, () => loadStats())
 </script>

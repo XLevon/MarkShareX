@@ -341,6 +341,8 @@ CREATE TABLE IF NOT EXISTS news (
     content TEXT NOT NULL DEFAULT '',
     content_html TEXT NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    topic_type VARCHAR(20) NOT NULL DEFAULT '',
+    source_url VARCHAR(1000) NOT NULL DEFAULT '',
     sort_order INTEGER NOT NULL DEFAULT 0,
     published_at DATETIME,
     user_id INTEGER,
@@ -348,10 +350,12 @@ CREATE TABLE IF NOT EXISTS news (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
 CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);
+CREATE INDEX IF NOT EXISTS idx_news_topic_type ON news(topic_type);
 CREATE INDEX IF NOT EXISTS idx_news_sort_order ON news(sort_order);
 CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at);
-
+CREATE INDEX IF NOT EXISTS idx_news_source_url ON news(source_url);
 -- 20-22. AI 模块
 CREATE TABLE IF NOT EXISTS ai_providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -397,6 +401,7 @@ CREATE TABLE IF NOT EXISTS ai_tasks (
     run_count INTEGER NOT NULL DEFAULT 0,
     agent_config_id INTEGER,
     model_id INTEGER,
+    max_tool_rounds INTEGER,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (skill_id) REFERENCES ai_skills(id) ON DELETE CASCADE,

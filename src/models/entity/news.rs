@@ -13,6 +13,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub content_html: String,
     pub status: String,
+    pub topic_type: String,
+    pub source_url: String,
     pub sort_order: i32,
     pub published_at: Option<chrono::NaiveDateTime>,
     pub user_id: Option<i32>,

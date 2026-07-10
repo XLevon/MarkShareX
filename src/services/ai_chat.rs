@@ -44,6 +44,7 @@ pub async fn run_function_calling_traced(
     provider_id: Option<i32>,
     model_name: Option<String>,
     trace_task_id: Option<i32>,
+    max_rounds_override: Option<i32>,
 ) -> Result<TraceResult, AppError> {
     use crate::models::entity::ai_provider;
 
@@ -85,8 +86,7 @@ pub async fn run_function_calling_traced(
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
-    let max_rounds: u32 = std::env::var("MARKSHAREX_AI_MAX_TOOL_ROUNDS")
-        .ok().and_then(|s| s.parse().ok()).unwrap_or(8);
+    let max_rounds: u32 = resolve_max_rounds(max_rounds_override, state);
 
     let mut trace_steps: Vec<TraceStep> = Vec::new();
 
@@ -176,9 +176,30 @@ pub async fn run_function_calling(
     history: &[ChatMessage],
     provider_id: Option<i32>,
     model_name: Option<String>,
+    max_rounds_override: Option<i32>,
 ) -> Result<String, AppError> {
-    let result = run_function_calling_traced(state, registry, system_prompt, user_message, history, provider_id, model_name, None).await?;
+    let result = run_function_calling_traced(state, registry, system_prompt, user_message, history, provider_id, model_name, None, max_rounds_override).await?;
     Ok(result.final_reply)
+}
+
+/// 解析最大工具调用轮次
+/// 优先级: override > 任务配置 > 全局配置(>0) > 硬编码默认8
+fn resolve_max_rounds(override_val: Option<i32>, state: &AppState) -> u32 {
+    // 1. 调用方传入的 override（任务级最高优先）
+    if let Some(v) = override_val {
+        if v > 0 {
+            return v as u32;
+        }
+    }
+    // 2. 全局配置（0 视为未设置，用默认）
+    let config_val = state.config.ai.as_ref()
+        .map(|c| c.max_tool_rounds)
+        .unwrap_or(0);
+    if config_val > 0 {
+        return config_val;
+    }
+    // 3. 硬编码默认
+    8
 }
 
 /// 简化的聊天消息（仅 role + content）

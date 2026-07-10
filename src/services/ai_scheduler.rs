@@ -150,6 +150,7 @@ impl AiScheduler {
         &[], // 无历史消息
         provider_id,
         model_name,
+        task.max_tool_rounds,
     ).await?;
 
         // 7. 更新任务状态
@@ -183,7 +184,7 @@ impl AiScheduler {
 
         let trace = ai_chat::run_function_calling_traced(
             state, &registry, &system_prompt, &user_message, &[],
-            provider_id, model_name, Some(task_id),
+            provider_id, model_name, Some(task_id), task.max_tool_rounds,
         ).await?;
 
         // 更新任务状态

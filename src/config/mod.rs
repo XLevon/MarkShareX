@@ -12,8 +12,12 @@ pub struct AppConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AiConfig {
+    #[serde(default = "default_max_tool_rounds")]
+    pub max_tool_rounds: u32,
     pub search: Option<AiSearchConfig>,
 }
+
+fn default_max_tool_rounds() -> u32 { 8 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AiSearchConfig {
@@ -59,6 +63,8 @@ pub struct AuthConfig {
     pub jwt_secret: String,
     pub jwt_expire_seconds: i64,
     pub refresh_expire_seconds: i64,
+    #[serde(default)]
+    pub encrypt_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -120,6 +126,15 @@ impl AppConfig {
                 builder = builder.set_override("database.min_connections", min_conns)?;
                 #[cfg(debug_assertions)]
                 println!("  ✅ 环境变量覆盖: database.min_connections = {}", min_conns);
+            }
+        }
+
+        // AI 相关环境变量
+        if let Ok(max_rounds) = std::env::var("MARKSHAREX_AI_MAX_TOOL_ROUNDS") {
+            if let Ok(rounds) = max_rounds.parse::<u32>() {
+                builder = builder.set_override("ai.max_tool_rounds", rounds)?;
+                #[cfg(debug_assertions)]
+                println!("  ✅ 环境变量覆盖: ai.max_tool_rounds = {}", rounds);
             }
         }
         

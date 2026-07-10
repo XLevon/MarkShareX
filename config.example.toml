@@ -25,6 +25,8 @@ min_connections = 1
 jwt_secret = "marksharex-dev-secret-key-2026"
 jwt_expire_seconds = 3600
 refresh_expire_seconds = 604800
+# 加密密钥（用于加密 AI API Key 等敏感数据，部署时生成随机值，之后切勿修改）
+encrypt_key = ""
 
 # ------------------------------ 存储配置 ------------------------------
 [storage]
@@ -40,3 +42,17 @@ allowed_types = [
     "video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/x-msvideo",
     "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm", "audio/aac", "audio/flac",
 ]
+
+# ------------------------------ AI 搜索配置 ------------------------------
+[ai.search]
+# 搜索 API 提供商: tavily | firecrawl
+provider = "tavily"
+# Tavily API Key (https://app.tavily.com) — 部署时填入自己的 Key
+api_key = ""
+# API 地址（留空用默认）
+api_url = ""
+
+# ------------------------------ AI 通用配置 ------------------------------
+[ai]
+# 工具调用最大轮次（资讯采集等复杂任务建议 12-15）
+max_tool_rounds = 8

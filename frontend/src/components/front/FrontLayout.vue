@@ -136,7 +136,7 @@
       >
         <button
           @click="heroVisible = !heroVisible"
-          class="absolute right-0 -top-[2px] flex items-center gap-1 px-2 py-1 text-xs rounded-bl-lg border cursor-pointer transition-all duration-300 hero-toggle-btn"
+          class="absolute right-0 -top-px flex items-center gap-1 px-2 py-1 text-xs rounded-bl-lg border cursor-pointer transition-all duration-300 hero-toggle-btn"
           :style="{
             color: 'var(--color-text-muted)',
             borderColor: 'var(--color-border)',

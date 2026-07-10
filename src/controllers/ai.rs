@@ -158,6 +158,7 @@ pub struct AiTaskResponse {
     pub provider_id: Option<i32>,
     pub agent_config_id: Option<i32>,
     pub model_id: Option<i32>,
+    pub max_tool_rounds: Option<i32>,
     pub cron_expr: String,
     pub params: String,
     pub enabled: bool,
@@ -173,6 +174,7 @@ impl From<ai_task::Model> for AiTaskResponse {
             id: m.id, name: m.name, skill_id: m.skill_id, provider_id: m.provider_id,
             agent_config_id: m.agent_config_id,
             model_id: m.model_id,
+            max_tool_rounds: m.max_tool_rounds,
             cron_expr: m.cron_expr, params: m.params, enabled: m.enabled,
             last_run_at: m.last_run_at, run_count: m.run_count,
             created_at: m.created_at, updated_at: m.updated_at,
@@ -191,6 +193,7 @@ pub struct CreateTaskRequest {
     pub name: String,
     pub agent_config_id: Option<i32>,
     pub model_id: Option<i32>,
+    pub max_tool_rounds: Option<i32>,
     #[serde(default)]
     pub enabled: bool,
 }
@@ -205,6 +208,7 @@ pub struct UpdateTaskRequest {
     pub name: Option<String>,
     pub agent_config_id: Option<Option<i32>>,
     pub model_id: Option<Option<i32>>,
+    pub max_tool_rounds: Option<Option<i32>>,
 }
 
 // ═══════════════════════════════════════════════════════
@@ -629,6 +633,7 @@ pub async fn create_task(
         cron_expr: Set(req.cron_expr), params: Set(req.params),
         agent_config_id: Set(req.agent_config_id),
         model_id: Set(req.model_id),
+        max_tool_rounds: Set(req.max_tool_rounds),
         enabled: Set(req.enabled),
         created_at: Set(now), updated_at: Set(now),
         ..Default::default()
@@ -656,6 +661,7 @@ pub async fn update_task(
     if let Some(v) = req.name { model.name = Set(v); }
     if let Some(v) = req.agent_config_id { model.agent_config_id = Set(v); }
     if let Some(v) = req.model_id { model.model_id = Set(v); }
+    if let Some(v) = req.max_tool_rounds { model.max_tool_rounds = Set(v); }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
     Ok(Json(ApiResponse { data: AiTaskResponse::from(updated), pagination: None }))
@@ -1268,7 +1274,7 @@ pub async fn chat(
     let registry = ai_tools::create_registry(&state.db, auth.is_privileged(), user_ctx.as_ref()).await;
     let reply = ai_chat::run_function_calling(
         &state, &registry, &agent_cfg.system_prompt,
-        &user_content, &history, None, model_name,
+        &user_content, &history, None, model_name, None,
     ).await?;
 
     // ── 8. 保存 assistant 回复 ──

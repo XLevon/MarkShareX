@@ -363,7 +363,7 @@ impl AiTool for CreateNewsTool {
     fn name(&self) -> &str { "create_news" }
 
     fn description(&self) -> &str {
-        "创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）、source_url（来源链接）、status（draft 草稿 或 published 已发布，默认 draft）。"
+        "创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）、source_url（来源链接）、topic_type（题材类型，可选）、status（draft 草稿 或 published 已发布，默认 draft）。"
     }
 
     fn parameters(&self) -> Value {
@@ -391,6 +391,12 @@ impl AiTool for CreateNewsTool {
                     "description": "发布状态：draft（草稿，默认）或 published（已发布）",
                     "enum": ["draft", "published"],
                     "default": "draft"
+                },
+                "topic_type": {
+                    "type": "string",
+                    "description": "题材类型，为空则不分类。可选值：politics(时政新闻)、finance(财经新闻)、technology(科技新闻)、society(社会新闻)、entertainment(文娱新闻)、sports(体育新闻)、international(国际新闻)、law(法治新闻)、education(教育新闻)",
+                    "enum": ["politics", "finance", "technology", "society", "entertainment", "sports", "international", "law", "education"],
+                    "default": ""
                 }
             },
             "required": ["title", "summary", "content", "source_url"]
@@ -398,11 +404,15 @@ impl AiTool for CreateNewsTool {
     }
 
     async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
+        use sea_orm::ColumnTrait;
+        use sea_orm::QueryFilter;
+
         let title = args["title"].as_str().unwrap_or("").to_string();
         let summary = args["summary"].as_str().unwrap_or("").to_string();
         let content = args["content"].as_str().unwrap_or("").to_string();
-        let _source_url = args["source_url"].as_str().unwrap_or("").to_string();
+        let source_url = args["source_url"].as_str().unwrap_or("").to_string();
         let status = args["status"].as_str().unwrap_or("draft").to_string();
+        let topic_type = args["topic_type"].as_str().unwrap_or("").to_string();
 
         if title.is_empty() {
             return Err(AppError::BadRequest("标题不能为空".into()));
@@ -410,6 +420,49 @@ impl AiTool for CreateNewsTool {
 
         if status != "draft" && status != "published" {
             return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
+        }
+
+        // ═══ 去重检查 1：source_url ═══
+        if !source_url.is_empty() {
+            let exists = news::Entity::find()
+                .filter(news::Column::SourceUrl.eq(&source_url))
+                .one(&state.db).await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("查询失败: {}", e)))?;
+            if exists.is_some() {
+                return Ok(serde_json::to_string_pretty(&serde_json::json!({
+                    "success": false,
+                    "skipped": "duplicate_source_url",
+                    "message": format!("跳过：来源 URL 已存在 — {}", source_url),
+                })).unwrap_or_default());
+            }
+        }
+
+        // ═══ 去重检查 2：标题相似度 ═══
+        let three_days_ago = crate::utils::now_local().date() - chrono::Duration::days(3);
+        let recent: Vec<String> = news::Entity::find()
+            .select_only()
+            .column(news::Column::Title)
+            .filter(news::Column::CreatedAt.gte(three_days_ago.and_hms_opt(0, 0, 0).unwrap()))
+            .into_tuple::<String>()
+            .all(&state.db).await
+            .unwrap_or_default();
+
+        // 提取标题中的2+字中文词汇
+        let title_words = extract_cn_words(&title);
+        if !title_words.is_empty() {
+            for existing_title in &recent {
+                let existing_words = extract_cn_words(existing_title);
+                if existing_words.is_empty() { continue; }
+                let overlap: usize = title_words.iter().filter(|w| existing_words.contains(*w)).count();
+                let similarity = overlap as f64 / title_words.len().min(existing_words.len()) as f64;
+                if similarity > 0.6 {
+                    return Ok(serde_json::to_string_pretty(&serde_json::json!({
+                        "success": false,
+                        "skipped": "duplicate_title",
+                        "message": format!("跳过：标题高度相似 ({:.0}%)—「{}」vs「{}」", similarity * 100.0, title, existing_title),
+                    })).unwrap_or_default());
+                }
+            }
         }
 
         // 生成 content_html
@@ -429,6 +482,8 @@ impl AiTool for CreateNewsTool {
             content: Set(content),
             content_html: Set(content_html),
             status: Set(status.clone()),
+            topic_type: Set(topic_type.clone()),
+            source_url: Set(source_url.clone()),
             sort_order: Set(0),
             published_at: Set(published_at),
             user_id: Set(None), // AI 创建，无用户关联
@@ -466,7 +521,7 @@ impl AiTool for CreatePostTool {
     fn name(&self) -> &str { "create_post" }
 
     fn description(&self) -> &str {
-        "创建一篇知识库文章。需要提供 title（标题）、content（Markdown 正文，可用 nr:ID 引用资源库图片）、category_id（分类 ID）。可选 summary、cover_image（nr:ID 或 URL）、status（draft 或 published，默认 draft）。"
+        "创建一篇知识库文章。需要提供 title（标题）、content（Markdown 正文，可用 nr:ID 引用资源库图片）、category_id（分类 ID，需先查询 categories 获取）。可选 summary、cover_image（nr:ID 或 URL）、status（draft 或 published，默认 draft）、article_type（original=原创、ai_organized=AI整理、tutorial=教程、repost=转载、translation=翻译、opinion_essay=随笔，默认 original）。"
     }
 
     fn parameters(&self) -> Value {
@@ -498,6 +553,12 @@ impl AiTool for CreatePostTool {
                     "description": "发布状态：draft（草稿，默认）或 published（已发布）",
                     "enum": ["draft", "published"],
                     "default": "draft"
+                },
+                "article_type": {
+                    "type": "string",
+                    "description": "文章类型：original（原创）、ai_organized（AI整理）、tutorial（教程）、repost（转载）、translation（翻译）、opinion_essay（随笔）",
+                    "enum": ["original", "ai_organized", "tutorial", "repost", "translation", "opinion_essay"],
+                    "default": "original"
                 }
             },
             "required": ["title", "content", "category_id"]
@@ -511,12 +572,17 @@ impl AiTool for CreatePostTool {
         let cover_image = args["cover_image"].as_str().unwrap_or("").to_string();
         let status = args["status"].as_str().unwrap_or("draft").to_string();
         let category_id: i32 = args["category_id"].as_i64().unwrap_or(0) as i32;
+        let article_type = args["article_type"].as_str().unwrap_or("original").to_string();
 
         if title.is_empty() { return Err(AppError::BadRequest("标题不能为空".into())); }
         if content.is_empty() { return Err(AppError::BadRequest("内容不能为空".into())); }
         if category_id <= 0 { return Err(AppError::BadRequest("category_id 无效".into())); }
         if status != "draft" && status != "published" {
             return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
+        }
+        let valid_types = ["original", "ai_organized", "tutorial", "repost", "translation", "opinion_essay"];
+        if !valid_types.contains(&article_type.as_str()) {
+            return Err(AppError::BadRequest(format!("article_type 无效，可选: {}", valid_types.join("、"))));
         }
 
         // 验证分类存在
@@ -565,7 +631,7 @@ impl AiTool for CreatePostTool {
             cover_network_id: Set(cover_nr_id),
             status: Set(status.clone()),
             post_type: Set("article".to_string()),
-            article_type: Set("original".to_string()),
+            article_type: Set(article_type),
             article_status: Set("completed".to_string()),
             is_pinned: Set(false),
             allow_comment: Set(true),
@@ -637,7 +703,7 @@ impl AiTool for ApiRequestTool {
     fn name(&self) -> &str { "api_request" }
 
     fn description(&self) -> &str {
-        "搜索站内资源或调用外部 API 并返回超链接。用于调用站内搜索（GET /api/v1/search?q=关键词），或查询分类、标签、用户等。返回 JSON 结果，你自行解析并整理为可读格式，以 Markdown 超链接呈现。也可调用外部接口。"
+        "搜索站内资源并返回超链接。用于调用站内搜索（GET /api/v1/search?q=关键词），或查询分类、标签、用户等。仅支持本站 API 的相对路径。返回 JSON 结果，你自行解析并整理为可读格式，以 Markdown 超链接呈现。"
     }
 
     fn parameters(&self) -> Value {
@@ -671,9 +737,19 @@ impl AiTool for ApiRequestTool {
             return Err(AppError::BadRequest("URL 不能为空".into()));
         }
 
-        // 相对路径自动补全为完整 URL（如 /api/v1/search → http://127.0.0.1:5023/api/v1/search）
+        // URL 解析：绝对 URL 且 path 以 /api/ 开头 → 认定本站请求，扒掉域名走本地
+        // 相对路径直接补全；其他绝对 URL 一律拒绝
         let url = if url.starts_with("http://") || url.starts_with("https://") {
-            url
+            // 提取 path 部分（含查询参数）
+            let path_and_query = url.split("://").nth(1)
+                .and_then(|s| s.find('/').map(|i| &s[i..]))
+                .unwrap_or("/");
+            if !path_and_query.starts_with("/api/") {
+                return Err(AppError::BadRequest(
+                    "api_request 仅支持本站 API（/api/...），不允许调用外部接口。如需外部数据请使用 web_search/web_extract。".into()
+                ));
+            }
+            format!("http://127.0.0.1:{}{}", state.config.server.port, path_and_query)
         } else {
             let path = url.trim_start_matches('/');
             format!("http://127.0.0.1:{}/{}", state.config.server.port, path)
@@ -762,6 +838,21 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
     }
     let truncated: String = s.chars().take(max_chars).collect();
     format!("{}...\n\n(内容过长，已截断至前 {} 字符)", truncated, max_chars)
+}
+
+/// 从中文文本中提取2字及以上词汇用于标题相似度去重
+fn extract_cn_words(title: &str) -> Vec<String> {
+    let chars: Vec<char> = title.chars().collect();
+    let mut words = Vec::new();
+    // 2-gram 滑动窗口提取
+    for window in chars.windows(2) {
+        let w: String = window.iter().collect();
+        // 仅保留纯中文字符组成的词汇
+        if w.chars().all(|c| c >= '\u{4e00}' && c <= '\u{9fff}') {
+            words.push(w);
+        }
+    }
+    words
 }
 
 /// 判断 URL 是否指向本服务（用于 api_request 安全注入 token）

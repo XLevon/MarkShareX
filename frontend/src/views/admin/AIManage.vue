@@ -83,7 +83,7 @@
     </n-modal>
 
     <!-- Agent Modal -->
-    <n-modal v-model:show="showAgentModal" :mask-closable="false">
+    <n-modal v-model:show="showAgentModal" :mask-closable="false" :key="'agent-'+agentModalKey">
       <n-card style="width:640px;max-width:92vw" :title="editingAgentId ? '编辑智能体' : '添加智能体'">
         <n-form label-placement="left" label-width="80">
           <n-form-item label="名称" required><n-input v-model:value="agentForm.name" placeholder="对话框助手" /></n-form-item>
@@ -161,7 +161,7 @@
             </div>
           </n-form-item>
           <n-form-item label="参数 Schema">
-            <n-input v-model:value="toolForm.parameters_schema" type="textarea" :rows="6" :disabled="!!editingToolId"
+            <n-input v-model:value="toolForm.parameters_schema" type="textarea" :rows="6"
               placeholder='{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}' />
           </n-form-item>
           <n-form-item label="启用">
@@ -176,7 +176,7 @@
     </n-modal>
 
     <!-- Task Modal -->
-    <n-modal v-model:show="showTaskModal" :mask-closable="false">
+    <n-modal v-model:show="showTaskModal" :mask-closable="false" :key="'task-'+taskModalKey">
       <n-card style="width:520px;max-width:90vw" :title="editingTaskId ? '编辑任务' : '添加任务'">
         <n-form label-placement="left" label-width="80">
           <n-form-item label="任务名称">
@@ -193,6 +193,9 @@
           </n-form-item>
           <n-form-item label="模型">
             <n-select v-model:value="taskForm.model_id" :options="taskModelOptions" clearable placeholder="不选则使用Agent的配置" />
+          </n-form-item>
+          <n-form-item label="工具轮次">
+            <n-input-number v-model:value="taskForm.max_tool_rounds" :min="1" :max="99" placeholder="留空=使用全局默认" style="width:100%" />
           </n-form-item>
           <n-form-item label="Cron 表达式" required>
             <n-input v-model:value="taskForm.cron_expr" placeholder="* 0 8 * * * *" />
@@ -297,6 +300,7 @@ const saving = ref(false)
 // ── Agent Config ──
 const agentConfigs = ref<AgentConfig[]>([])
 const showAgentModal = ref(false)
+const agentModalKey = ref(0)
 const editingAgentId = ref<number | null>(null)
 const agentForm = ref({ name: '', system_prompt: '', user_prompt: '', is_default: false, model_id: undefined as number | undefined })
 const agentProviderFilter = ref<number | null>(null)
@@ -331,6 +335,7 @@ function openAgentForm(row?: AgentConfig) {
     agentProviderFilter.value = null
   }
   showAgentModal.value = true
+  agentModalKey.value++
 }
 async function saveAgent() {
   if (!agentForm.value.name) { message.warning('名称为必填'); return }
@@ -605,30 +610,31 @@ async function toggleToolEnabled(row: AiTool, v: boolean) {
 // ── Tasks ──
 const tasks = ref<AiTask[]>([])
 const showTaskModal = ref(false)
+const taskModalKey = ref(0)
 const editingTaskId = ref<number | null>(null)
 let skipModelWatch = false
-const taskForm = ref({ name: '', skill_id: 0, provider_id: undefined as number | undefined, agent_config_id: undefined as number | undefined, model_id: undefined as number | undefined, cron_expr: '', params: '{}', enabled: true })
+const taskForm = ref({ name: '', skill_id: 0, provider_id: undefined as number | undefined, agent_config_id: undefined as number | undefined, model_id: undefined as number | undefined, max_tool_rounds: null as number | null, cron_expr: '', params: '{}', enabled: true })
 const providerOptions = computed(() => providers.value.filter(p => p.is_active).map(p => ({ label: p.name, value: p.id })))
 const skillOptions = computed(() => skills.value.map(s => ({ label: s.name, value: s.id })))
 const taskColumns = [
-  { title: '任务名称', key: 'name', width: 130, render(row: AiTask) { return row.name || '-' } },
-  { title: 'Agent', key: 'agent_config_id', width: 100, render(row: AiTask) { return agentConfigs.value.find(a => a.id === row.agent_config_id)?.name || '默认' } },
-  { title: '技能', key: 'skill_id', width: 120, render(row: AiTask) { return skills.value.find(s => s.id === row.skill_id)?.name || '-' } },
-  { title: '供应商', key: 'provider_id', width: 100, render(row: AiTask) { return providers.value.find(p => p.id === row.provider_id)?.name || 'Agent默认' } },
-  { title: '模型', key: 'model_id', width: 120, render(row: AiTask) { return models.value.find(m => m.id === row.model_id)?.name || 'Agent默认' } },
-  { title: 'Cron', key: 'cron_expr', width: 130 },
-  { title: '启用', key: 'enabled', width: 70, render(row: AiTask) {
-    return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleTaskEnabled(row, v) })
-  }},
-  { title: '运行次数', key: 'run_count', width: 80 },
-  { title: '上次执行', key: 'last_run_at', width: 160, render(row: AiTask) {
+  { title: '名称', key: 'name', width: 100, ellipsis: { tooltip: true }, render(row: AiTask) { return row.name || '-' } },
+  { title: 'Agent', key: 'agent_config_id', width: 75, ellipsis: { tooltip: true }, render(row: AiTask) { return agentConfigs.value.find(a => a.id === row.agent_config_id)?.name || '-' } },
+  { title: '技能', key: 'skill_id', width: 75, ellipsis: { tooltip: true }, render(row: AiTask) { return skills.value.find(s => s.id === row.skill_id)?.name || '-' } },
+  { title: '模型', key: 'model_id', width: 95, ellipsis: { tooltip: true }, render(row: AiTask) { return models.value.find(m => m.id === row.model_id)?.name || '默认' } },
+  { title: '轮次', key: 'max_tool_rounds', width: 50, render(row: AiTask) { return row.max_tool_rounds ?? '-' } },
+  { title: 'Cron', key: 'cron_expr', width: 100, ellipsis: { tooltip: true } },
+  { title: '上次执行', key: 'last_run_at', width: 110, render(row: AiTask) {
     return row.last_run_at ? new Date(row.last_run_at).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: '2-digit', day: '2-digit' }) : '-'
   }},
-  { title: '操作', key: 'actions', width: 210, render(row: AiTask) {
+  { title: '次数', key: 'run_count', width: 50 },
+  { title: '启用', key: 'enabled', width: 55, render(row: AiTask) {
+    return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleTaskEnabled(row, v) })
+  }},
+  { title: '操作', key: 'actions', width: 165, render(row: AiTask) {
     return h(NSpace, { size: 'small' }, { default: () => [
-      h(NButton, { size: 'small', type: 'primary', onClick: () => handleRunTask(row) }, { default: () => '执行' }),
-      h(NButton, { size: 'small', onClick: () => openTaskForm(row) }, { default: () => '编辑' }),
-      h(NButton, { size: 'small', type: 'error', onClick: () => handleDeleteTask(row) }, { default: () => '删除' }),
+      h(NButton, { size: 'tiny', type: 'primary', onClick: () => handleRunTask(row) }, { default: () => '执行' }),
+      h(NButton, { size: 'tiny', onClick: () => openTaskForm(row) }, { default: () => '编辑' }),
+      h(NButton, { size: 'tiny', type: 'error', onClick: () => handleDeleteTask(row) }, { default: () => '删除' }),
     ]})
   }},
 ]
@@ -638,13 +644,14 @@ function openTaskForm(row?: AiTask) {
   editingTaskId.value = row?.id ?? null
   skipModelWatch = true
   taskForm.value = row
-    ? { name: row.name || '', skill_id: row.skill_id, provider_id: row.provider_id ?? undefined, agent_config_id: row.agent_config_id ?? undefined, model_id: row.model_id ?? undefined, cron_expr: row.cron_expr, params: row.params, enabled: row.enabled }
-    : { name: '', skill_id: skillOptions.value[0]?.value ?? 0, provider_id: undefined, agent_config_id: undefined, model_id: undefined, cron_expr: '', params: '{}', enabled: true }
+    ? { name: row.name || '', skill_id: row.skill_id, provider_id: row.provider_id ?? undefined, agent_config_id: row.agent_config_id ?? undefined, model_id: row.model_id ?? undefined, max_tool_rounds: row.max_tool_rounds ?? null, cron_expr: row.cron_expr, params: row.params, enabled: row.enabled }
+    : { name: '', skill_id: skillOptions.value[0]?.value ?? 0, provider_id: undefined, agent_config_id: undefined, model_id: undefined, max_tool_rounds: null, cron_expr: '', params: '{}', enabled: true }
   // 新建任务时自动带入技能参数模板
   if (!row) {
     applySkillParamsTemplate()
   }
   showTaskModal.value = true
+  taskModalKey.value++
 }
 async function saveTask() {
   if (!taskForm.value.skill_id || !taskForm.value.agent_config_id || !taskForm.value.cron_expr) { message.warning('请完善必填项（Agent、技能、Cron）'); return }
@@ -654,6 +661,7 @@ async function saveTask() {
     if (data.agent_config_id === undefined) data.agent_config_id = null
     if (data.provider_id === undefined) data.provider_id = null
     if (data.model_id === undefined) data.model_id = null
+    if (data.max_tool_rounds === undefined) data.max_tool_rounds = null
     if (editingTaskId.value) await updateTask(editingTaskId.value, data)
     else await createTask(data)
     showTaskModal.value = false

@@ -8,6 +8,7 @@ export interface NewsItem {
   content: string
   content_html: string
   status: string
+  topic_type: string
   sort_order: number
   published_at: string | null
   user_id: number | null
@@ -15,16 +16,32 @@ export interface NewsItem {
   updated_at: string
 }
 
-export function fetchNews(params?: { page?: number; page_size?: number }) {
+export function fetchNews(params?: { page?: number; page_size?: number; date_from?: string; date_to?: string }) {
   return api.get<PaginatedData<NewsItem>>('/news', { params })
+}
+
+export function fetchTopicTypes(params?: { date_from?: string; date_to?: string; search?: string }) {
+  return api.get<{ data: string[] }>('/news/topic-types', { params })
 }
 
 export function fetchNewsItem(id: number) {
   return api.get<{ data: NewsItem }>(`/news/${id}`)
 }
 
-export function fetchAdminNews(params?: { page?: number; page_size?: number }) {
+export function fetchAdminNews(params?: {
+  page?: number
+  page_size?: number
+  include_content?: boolean
+  status?: string
+  topic_type?: string
+  date_from?: string
+  date_to?: string
+}) {
   return api.get<PaginatedData<NewsItem>>('/admin/news', { params })
+}
+
+export function fetchAdminNewsItem(id: number) {
+  return api.get<{ data: NewsItem }>(`/admin/news/${id}`)
 }
 
 export function createNews(data: {
@@ -33,6 +50,7 @@ export function createNews(data: {
   content?: string
   content_html?: string
   status?: string
+  topic_type?: string
   sort_order?: number
   published_at?: string | null
 }) {
@@ -45,6 +63,7 @@ export function updateNews(id: number, data: {
   content?: string
   content_html?: string
   status?: string
+  topic_type?: string
   sort_order?: number
   published_at?: string | null
 }) {
