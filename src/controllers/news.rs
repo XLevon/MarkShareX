@@ -57,6 +57,7 @@ pub struct NewsQuery {
     pub include_content: bool,
     pub status: Option<String>,
     pub topic_type: Option<String>,
+    pub search: Option<String>,
     pub date_from: Option<String>,
     pub date_to: Option<String>,
 }
@@ -98,6 +99,13 @@ fn apply_news_filters(mut select: Select<news::Entity>, q: &NewsQuery) -> Select
     if let Some(date_to) = &q.date_to {
         if !date_to.is_empty() {
             select = select.filter(news::Column::CreatedAt.lt(format!("{}T00:00:00", date_to)));
+        }
+    }
+    if let Some(search) = &q.search {
+        let term = search.trim();
+        if !term.is_empty() {
+            let like = format!("%{}%", term.replace('%', "\\%").replace('_', "\\_"));
+            select = select.filter(news::Column::Title.like(&like));
         }
     }
     select

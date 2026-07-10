@@ -350,33 +350,7 @@ const newsLoadingId = ref<number | null>(null)
 const batchSize = computed(() => parseInt(settingsStore.settings.batch_load_size || '5') || 5)
 const scrollSize = computed(() => parseInt(settingsStore.settings.scroll_load_size || '3') || 3)
 
-const filteredNews = computed(() => {
-  let items = newsItems.value
-
-  // Topic type filter (multi-select toggle)
-  if (newsTopicFilters.value.size > 0) {
-    items = items.filter(item => newsTopicFilters.value.has(item.topic_type))
-  }
-
-  // Date range filter
-  if (newsDateRange.value) {
-    const [rangeStart, rangeEnd] = newsDateRange.value
-    items = items.filter(item => {
-      const d = item.published_at || item.created_at
-      if (!d) return false
-      const ts = new Date(d).getTime()
-      return ts >= rangeStart && ts <= rangeEnd
-    })
-  }
-
-  // Text search
-  const q = newsSearch.value.trim().toLowerCase()
-  if (!q) return items
-  return items.filter(item =>
-    item.title.toLowerCase().includes(q) ||
-    (item.summary && item.summary.toLowerCase().includes(q))
-  )
-})
+const filteredNews = computed(() => newsItems.value)
 
 async function toggleNews(item: NewsItem) {
   if (expandedNewsId.value === item.id) {
@@ -419,7 +393,9 @@ function onNewsContentClick(e: MouseEvent) {
 
 async function loadNewsInitial() {
   try {
-    const resp = await fetchNews({ page: 1, page_size: batchSize.value })
+    const params: Record<string, any> = { page: 1, page_size: batchSize.value }
+    buildNewsParams(params)
+    const resp = await fetchNews(params)
     const data = resp.data.data || []
     newsItems.value = data
     newsPage.value = 1
@@ -451,13 +427,39 @@ async function loadMoreNews() {
   loadingMore.value = true
   try {
     const nextPage = newsPage.value + 1
-    const resp = await fetchNews({ page: nextPage, page_size: batchSize.value })
+    const params: Record<string, any> = { page: nextPage, page_size: batchSize.value }
+    buildNewsParams(params)
+    const resp = await fetchNews(params)
     const data = resp.data.data || []
     newsItems.value.push(...data)
     newsPage.value = nextPage
     hasMore.value = data.length >= batchSize.value
   } catch { /* ignore */ }
   finally { loadingMore.value = false }
+}
+
+function buildNewsParams(params: Record<string, any>) {
+  const q = newsSearch.value.trim()
+  if (q) params.search = q
+  if (newsTopicFilters.value.size > 0) {
+    params.topic_type = Array.from(newsTopicFilters.value).join(',')
+  }
+  if (newsDateRange.value) {
+    const [start, end] = newsDateRange.value
+    const sd = new Date(start), ed = new Date(end)
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    params.date_from = `${sd.getFullYear()}-${pad(sd.getMonth()+1)}-${pad(sd.getDate())}`
+    params.date_to = `${ed.getFullYear()}-${pad(ed.getMonth()+1)}-${pad(ed.getDate())}`
+  }
+}
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+function resetAndReloadNews() {
+  newsObserver?.disconnect()
+  newsPage.value = 1
+  loadNewsInitial().then(() => {
+    nextTick(() => setupNewsObserver())
+  })
 }
 
 function formatDate(dateStr: string) {
@@ -507,7 +509,7 @@ function goWrite() {
 
 onMounted(() => {
   loadStats()
-  loadNewsInitial()
+  loadNewsInitial().then(() => nextTick(() => setupNewsObserver()))
   loadTopicTypes()
   setTimeout(() => { heroVisible.value = false }, 3000)
   if (heroSearchRef.value) {
@@ -521,20 +523,32 @@ onMounted(() => {
   }
 })
 
-// Setup infinite scroll observer after news items render
-watch(hasMore, async (val) => {
-  if (newsObserver) { newsObserver.disconnect(); newsObserver = null }
-  if (val) {
-    await nextTick()
-    if (loadMoreRef.value) {
-      newsObserver = new IntersectionObserver(
-        ([entry]) => { if (entry.isIntersecting) loadMoreNews() },
-        { threshold: 0 }
-      )
-      newsObserver.observe(loadMoreRef.value)
-    }
+function setupNewsObserver() {
+  newsObserver?.disconnect()
+  if (loadMoreRef.value && hasMore.value) {
+    newsObserver = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreNews() },
+      { threshold: 0 }
+    )
+    newsObserver.observe(loadMoreRef.value)
   }
+}
+
+// Setup infinite scroll observer after news items render
+watch(hasMore, async () => {
+  await nextTick()
+  setupNewsObserver()
 })
+
+// Debounced search: reset and reload from page 1
+watch(newsSearch, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => resetAndReloadNews(), 400)
+})
+
+// Topic/date filter change: reset and reload
+watch(newsTopicFilters, () => resetAndReloadNews(), { deep: true })
+watch(newsDateRange, () => resetAndReloadNews())
 
 // Re-fetch topic types when date or search changes
 watch([newsDateRange, newsSearch], () => { loadTopicTypes() })

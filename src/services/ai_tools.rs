@@ -703,7 +703,7 @@ impl AiTool for ApiRequestTool {
     fn name(&self) -> &str { "api_request" }
 
     fn description(&self) -> &str {
-        "搜索站内资源并返回超链接。用于调用站内搜索（GET /api/v1/search?q=关键词），或查询分类、标签、用户等。仅支持本站 API 的相对路径。返回 JSON 结果，你自行解析并整理为可读格式，以 Markdown 超链接呈现。"
+        "搜索站内资源并返回超链接。常用接口：① GET /api/v1/search?q=关键词（知识文章Tantivy搜索）② GET /api/v1/news?search=关键词（资讯标题搜索，可选 topic_type/date_from/date_to）③ GET /api/v1/categories（分类列表）④ GET /api/v1/tags（标签列表）。仅支持本站 API 的相对路径。返回 JSON，自行解析整理为 Markdown 超链接。"
     }
 
     fn parameters(&self) -> Value {

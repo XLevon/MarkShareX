@@ -16,7 +16,7 @@ export interface NewsItem {
   updated_at: string
 }
 
-export function fetchNews(params?: { page?: number; page_size?: number; date_from?: string; date_to?: string }) {
+export function fetchNews(params?: { page?: number; page_size?: number; search?: string; topic_type?: string; date_from?: string; date_to?: string }) {
   return api.get<PaginatedData<NewsItem>>('/news', { params })
 }
 
