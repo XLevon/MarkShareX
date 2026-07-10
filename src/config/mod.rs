@@ -52,18 +52,6 @@ impl AiSearchConfig {
         chain
     }
 
-    pub fn api_url(&self) -> String {
-        if self.api_url.is_empty() {
-            match self.provider.as_str() {
-                "tavily" => "https://api.tavily.com".to_string(),
-                "firecrawl" => "https://api.firecrawl.dev".to_string(),
-                "duckduckgo" => "https://lite.duckduckgo.com".to_string(),
-                _ => "https://api.tavily.com".to_string(),
-            }
-        } else {
-            self.api_url.trim_end_matches('/').to_string()
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

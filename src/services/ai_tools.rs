@@ -108,21 +108,6 @@ fn get_search_config(state: &AppState) -> Result<&AiSearchConfig, AppError> {
         .ok_or_else(|| AppError::BadRequest("AI 搜索未配置，请在 config.toml 中设置 [ai.search]".into()))
 }
 
-fn get_search_api_key(state: &AppState) -> Result<String, AppError> {
-    let cfg = get_search_config(state)?;
-    // 优先从环境变量读取
-    if let Ok(key) = std::env::var("MARKSHAREX_AI_SEARCH_API_KEY") {
-        if !key.is_empty() {
-            return Ok(key);
-        }
-    }
-    if cfg.api_key.is_empty() {
-        return Err(AppError::BadRequest(
-            "AI 搜索 API Key 未设置。请在 config.toml [ai.search] 中设置 api_key 或设置环境变量 MARKSHAREX_AI_SEARCH_API_KEY".into()
-        ));
-    }
-    Ok(cfg.api_key.clone())
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Built-in Tool: web_search
