@@ -1,7 +1,8 @@
-//! AI 任务执行追踪缓存 — 支持前端轮询动态刷新
+//! AI 任务执行追踪 — 内存缓存 + 持久化到 DB
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use sea_orm::{DatabaseConnection, Set, ActiveModelTrait};
 
 #[derive(Clone, serde::Serialize)]
 pub struct TraceEntry {
@@ -43,4 +44,28 @@ pub fn trace_get(task_id: i32) -> Option<TraceEntry> {
 #[allow(dead_code)]
 pub fn trace_remove(task_id: i32) {
     CACHE.lock().unwrap().remove(&task_id);
+}
+
+/// 将缓存中的 trace 持久化到 ai_task_logs 表，然后清除缓存
+pub async fn trace_persist(db: &DatabaseConnection, task_id: i32) {
+    let entry = match CACHE.lock().unwrap().remove(&task_id) {
+        Some(e) => e,
+        None => return,
+    };
+
+    use crate::models::entity::ai_task_log;
+    let steps_json = serde_json::to_string(&entry.steps).unwrap_or_else(|_| "[]".to_string());
+
+    let now = crate::utils::now_local();
+    let model = ai_task_log::ActiveModel {
+        task_id: Set(task_id),
+        status: Set(entry.status),
+        steps: Set(steps_json),
+        final_reply: Set(entry.final_reply),
+        error: Set(entry.error),
+        created_at: Set(now),
+        ..Default::default()
+    };
+
+    let _ = model.insert(db).await;
 }

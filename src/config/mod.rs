@@ -26,17 +26,38 @@ pub struct AiSearchConfig {
     #[serde(default)]
     pub api_key: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub api_url: String,
+    /// 主提供商超额时自动降级的备选（默认 firecrawl）
+    #[serde(default = "default_fallback_provider")]
+    pub fallback_provider: String,
+    /// 降级提供商的 API Key
+    #[serde(default)]
+    pub fallback_api_key: String,
 }
 
 fn default_search_provider() -> String { "tavily".to_string() }
+fn default_fallback_provider() -> String { "firecrawl".to_string() }
 
 impl AiSearchConfig {
+    /// 返回降级链：[(provider, api_key), ...]，最后永远是 duckduckgo 兜底
+    pub fn fallback_chain(&self) -> Vec<(&str, &str)> {
+        let mut chain = vec![(self.provider.as_str(), self.api_key.as_str())];
+        if !self.fallback_provider.is_empty() && self.fallback_provider != self.provider {
+            chain.push((self.fallback_provider.as_str(), self.fallback_api_key.as_str()));
+        }
+        if self.provider != "duckduckgo" && self.fallback_provider != "duckduckgo" {
+            chain.push(("duckduckgo", "")); // 终极兜底
+        }
+        chain
+    }
+
     pub fn api_url(&self) -> String {
         if self.api_url.is_empty() {
             match self.provider.as_str() {
                 "tavily" => "https://api.tavily.com".to_string(),
                 "firecrawl" => "https://api.firecrawl.dev".to_string(),
+                "duckduckgo" => "https://lite.duckduckgo.com".to_string(),
                 _ => "https://api.tavily.com".to_string(),
             }
         } else {

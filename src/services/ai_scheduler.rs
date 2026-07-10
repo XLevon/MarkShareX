@@ -141,8 +141,10 @@ impl AiScheduler {
     // 7. 获取模型名（task 指定 → agent 默认 → provider 默认）
     let model_name = get_model_name(state, model_id).await;
 
-    // 8. 执行 function calling
-    let reply = ai_chat::run_function_calling(
+    // 8. 执行 function calling（带追踪）
+    use crate::services::ai_trace;
+    ai_trace::trace_start(task_id);
+    let result = ai_chat::run_function_calling_traced(
         state,
         &registry,
         &system_prompt,
@@ -150,10 +152,27 @@ impl AiScheduler {
         &[], // 无历史消息
         provider_id,
         model_name,
+        Some(task_id),
         task.max_tool_rounds,
-    ).await?;
+    ).await;
 
-        // 7. 更新任务状态
+    // 9. 持久化 trace（必须先更新状态再持久化）
+    let reply = match result {
+        Ok(trace) => {
+            ai_trace::trace_complete(task_id, trace.final_reply.clone());
+            let reply = trace.final_reply;
+            ai_trace::trace_persist(&state.db, task_id).await;
+            reply
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            ai_trace::trace_fail(task_id, err_msg.clone());
+            ai_trace::trace_persist(&state.db, task_id).await;
+            return Err(anyhow::anyhow!("{}", err_msg));
+        }
+    };
+
+        // 10. 更新任务状态
         let now = Local::now().naive_local();
         let new_run_count = task.run_count + 1;
         let mut model: ai_task::ActiveModel = task.into();
@@ -182,10 +201,26 @@ impl AiScheduler {
         let model_id = task.model_id.or(agent_model_id);
         let model_name = get_model_name(state, model_id).await;
 
-        let trace = ai_chat::run_function_calling_traced(
+        let result = ai_chat::run_function_calling_traced(
             state, &registry, &system_prompt, &user_message, &[],
             provider_id, model_name, Some(task_id), task.max_tool_rounds,
-        ).await?;
+        ).await;
+
+        let trace = match result {
+            Ok(t) => {
+                crate::services::ai_trace::trace_complete(task_id, t.final_reply.clone());
+                t
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                crate::services::ai_trace::trace_fail(task_id, err_msg.clone());
+                crate::services::ai_trace::trace_persist(&state.db, task_id).await;
+                return Err(anyhow::anyhow!("{}", err_msg));
+            }
+        };
+
+        // 持久化 trace
+        crate::services::ai_trace::trace_persist(&state.db, task_id).await;
 
         // 更新任务状态
         let now = Local::now().naive_local();

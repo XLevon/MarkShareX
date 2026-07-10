@@ -90,6 +90,31 @@ export function getTaskTrace(id: number) {
   return api.get<{ data: { status: string; steps: TaskTraceStep[]; final_reply: string; error: string | null } }>(`/admin/ai/tasks/${id}/trace`)
 }
 
+export interface TaskLogItem {
+  id: number
+  task_id: number
+  status: string
+  rounds: number
+  final_reply_preview: string
+  error: string | null
+  created_at: string
+}
+export function listTaskLogs(taskId: number) {
+  return api.get<{ data: TaskLogItem[] }>(`/admin/ai/tasks/${taskId}/logs`)
+}
+export function getTaskLog(taskId: number, logId: number) {
+  return api.get<{ data: TaskLogDetail }>(`/admin/ai/tasks/${taskId}/logs/${logId}`)
+}
+export interface TaskLogDetail {
+  id: number
+  task_id: number
+  status: string
+  steps: TaskTraceStep[]
+  final_reply: string
+  error: string | null
+  created_at: string
+}
+
 export interface TaskTraceStep {
   round: number
   llm_content: string | null

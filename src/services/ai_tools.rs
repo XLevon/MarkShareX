@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::Local;
+use regex::Regex;
 use sea_orm::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -164,72 +165,76 @@ impl AiTool for WebSearchTool {
         }
 
         let cfg = get_search_config(state)?;
-        let api_key = get_search_api_key(state)?;
+        let chain = cfg.fallback_chain();
+        let mut last_err = String::new();
 
-        let client = reqwest::Client::new();
-        let payload = match cfg.provider.as_str() {
-            "tavily" => serde_json::json!({
-                "api_key": api_key,
-                "query": query,
-                "max_results": limit,
-                "include_raw_content": false,
-                "include_images": false,
-            }),
-            "firecrawl" => serde_json::json!({
-                "query": query,
-                "limit": limit,
-            }),
-            _ => return Err(AppError::BadRequest(format!("不支持的搜索提供商: {}", cfg.provider))),
-        };
+        for (i, (provider, key)) in chain.iter().enumerate() {
+            // duckduckgo 终极兜底
+            if *provider == "duckduckgo" {
+                tracing::info!("搜索降级到 DuckDuckGo (兜底)");
+                return duckduckgo_search(&query, limit).await;
+            }
 
-        let endpoint = match cfg.provider.as_str() {
-            "tavily" => format!("{}/search", cfg.api_url()),
-            "firecrawl" => format!("{}/v1/search", cfg.api_url()),
-            _ => unreachable!(),
-        };
+            if key.is_empty() {
+                tracing::warn!("{} 未配置 API Key，跳过", provider);
+                continue;
+            }
 
-        let mut req = client.post(&endpoint).json(&payload);
-        if cfg.provider == "firecrawl" {
-            req = req.header("Authorization", format!("Bearer {}", api_key));
+            let client = reqwest::Client::new();
+            let (payload, endpoint) = match *provider {
+                "tavily" => (
+                    serde_json::json!({"api_key": key, "query": query, "max_results": limit, "include_raw_content": false, "include_images": false}),
+                    format!("{}/search", provider_api_url(provider)),
+                ),
+                "firecrawl" => (
+                    serde_json::json!({"query": query, "limit": limit}),
+                    format!("{}/v1/search", provider_api_url(provider)),
+                ),
+                _ => continue,
+            };
+
+            let mut req = client.post(&endpoint).json(&payload);
+            if *provider == "firecrawl" {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+
+            let resp = match req.send().await {
+                Ok(r) => r,
+                Err(e) => { last_err = e.to_string(); continue; }
+            };
+
+            let status = resp.status().as_u16();
+            let body: Value = match resp.json().await {
+                Ok(b) => b,
+                Err(e) => { last_err = e.to_string(); continue; }
+            };
+
+            // 额度耗尽 → 降级到下一级
+            if is_quota_exhausted(status) {
+                tracing::warn!("{} 额度已耗尽 (HTTP {})，降级", provider, status);
+                continue;
+            }
+
+            // 解析结果
+            let results: Vec<Value> = match *provider {
+                "tavily" => body.get("results").cloned().unwrap_or_default()
+                    .as_array().cloned().unwrap_or_default().into_iter()
+                    .map(|r| serde_json::json!({"title": r["title"], "url": r["url"], "description": r["content"]}))
+                    .collect(),
+                "firecrawl" => body.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default()
+                    .into_iter()
+                    .map(|r| serde_json::json!({"title": r["title"], "url": r["url"], "description": r["description"]}))
+                    .collect(),
+                _ => vec![],
+            };
+
+            let mut result = serde_json::json!({"success": true, "count": results.len(), "results": results});
+            if i > 0 { result["degraded"] = serde_json::json!(true); }
+
+            return Ok(serde_json::to_string_pretty(&result).unwrap_or_default());
         }
 
-        let resp = req.send().await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("搜索请求失败: {}", e)))?;
-
-        let body: Value = resp.json().await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("搜索响应解析失败: {}", e)))?;
-
-        // 标准化输出
-        let results: Vec<Value> = match cfg.provider.as_str() {
-            "tavily" => {
-                body.get("results").cloned().unwrap_or_default()
-                    .as_array().cloned().unwrap_or_default()
-                    .into_iter()
-                    .map(|r| serde_json::json!({
-                        "title": r["title"],
-                        "url": r["url"],
-                        "description": r["content"],
-                    }))
-                    .collect()
-            }
-            "firecrawl" => {
-                body.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default()
-                    .into_iter()
-                    .map(|r| serde_json::json!({
-                        "title": r["title"],
-                        "url": r["url"],
-                        "description": r["description"],
-                    }))
-                    .collect()
-            }
-            _ => vec![],
-        };
-
-        Ok(serde_json::to_string_pretty(&serde_json::json!({
-            "success": true,
-            "count": results.len(),
-            "results": results,
-        })).unwrap_or_default())
+        Err(AppError::Internal(anyhow::anyhow!("所有搜索提供商均不可用: {}", last_err)))
     }
 }
 
@@ -273,74 +278,76 @@ impl AiTool for WebExtractTool {
         }
 
         let cfg = get_search_config(state)?;
-        let api_key = get_search_api_key(state)?;
-        let client = reqwest::Client::new();
+        let chain = cfg.fallback_chain();
 
         let mut results = Vec::new();
         for url in urls.iter().take(5) {
-            let payload = match cfg.provider.as_str() {
-                "tavily" => serde_json::json!({
-                    "api_key": api_key,
-                    "urls": [url],
-                    "include_images": false,
-                }),
-                "firecrawl" => serde_json::json!({
-                    "url": url,
-                    "formats": ["markdown"],
-                }),
-                _ => continue,
-            };
+            let mut extracted = false;
 
-            let endpoint = match cfg.provider.as_str() {
-                "tavily" => format!("{}/extract", cfg.api_url()),
-                "firecrawl" => format!("{}/v1/scrape", cfg.api_url()),
-                _ => continue,
-            };
+            // 遍历降级链：tavily → firecrawl → (最终兜底 HTTP GET)
+            for (provider, key) in &chain {
+                if *provider == "duckduckgo" {
+                    // 终极兜底：直接 HTTP GET
+                    match fetch_url_directly(url).await {
+                        Ok(text) => {
+                            results.push(serde_json::json!({
+                                "url": url, "content": truncate_str(&text, 15000), "fallback": true
+                            }));
+                        }
+                        Err(e) => results.push(serde_json::json!({"url": url, "error": e.to_string()})),
+                    }
+                    extracted = true;
+                    break;
+                }
 
-            let mut req = client.post(&endpoint).json(&payload);
-            if cfg.provider == "firecrawl" {
-                req = req.header("Authorization", format!("Bearer {}", api_key));
+                if key.is_empty() { continue; }
+
+                let client = reqwest::Client::new();
+                let (payload, endpoint) = match *provider {
+                    "tavily" => (
+                        serde_json::json!({"api_key": key, "urls": [url], "include_images": false}),
+                        format!("{}/extract", provider_api_url(provider)),
+                    ),
+                    "firecrawl" => (
+                        serde_json::json!({"url": url, "formats": ["markdown"]}),
+                        format!("{}/v1/scrape", provider_api_url(provider)),
+                    ),
+                    _ => continue,
+                };
+
+                let mut req = client.post(&endpoint).json(&payload);
+                if *provider == "firecrawl" {
+                    req = req.header("Authorization", format!("Bearer {}", key));
+                }
+
+                let resp = match req.send().await {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
+
+                let status = resp.status().as_u16();
+                if is_quota_exhausted(status) {
+                    tracing::warn!("{} 抓取额度耗尽 (HTTP {})，降级", provider, status);
+                    continue;
+                }
+
+                if let Ok(body) = resp.json::<Value>().await {
+                    let content = match *provider {
+                        "tavily" => body["results"][0]["raw_content"].as_str().unwrap_or("").to_string(),
+                        "firecrawl" => body["data"]["markdown"].as_str()
+                            .or(body["data"]["content"].as_str()).unwrap_or("").to_string(),
+                        _ => String::new(),
+                    };
+                    if !content.is_empty() {
+                        results.push(serde_json::json!({"url": url, "content": truncate_str(&content, 15000)}));
+                        extracted = true;
+                        break;
+                    }
+                }
             }
 
-            match req.send().await {
-                Ok(resp) => {
-                    if let Ok(body) = resp.json::<Value>().await {
-                        let content = match cfg.provider.as_str() {
-                            "tavily" => body["results"][0]["raw_content"]
-                                .as_str().unwrap_or("").to_string(),
-                            "firecrawl" => body["data"]["markdown"]
-                                .as_str().or(body["data"]["content"].as_str())
-                                .unwrap_or("").to_string(),
-                            _ => String::new(),
-                        };
-                        // 截断过长内容（按字符而非字节，避免 UTF-8 边界 panic）
-                        let truncated = if content.len() > 15000 {
-                            let char_count = content.chars().count();
-                            let max_chars = 15000usize.min(char_count);
-                            let safe: String = content.chars().take(max_chars).collect();
-                            format!("{}...\n\n(内容过长，已截断至前 {} 字符)", safe, max_chars)
-                        } else {
-                            content
-                        };
-                        results.push(serde_json::json!({
-                            "url": url,
-                            "content": truncated,
-                        }));
-                    } else {
-                        // 回退：直接 HTTP GET
-                        match fetch_url_directly(url).await {
-                            Ok(text) => results.push(serde_json::json!({"url": url, "content": text, "fallback": true})),
-                            Err(e) => results.push(serde_json::json!({"url": url, "error": e.to_string()})),
-                        }
-                    }
-                }
-                Err(_e) => {
-                    // 回退：直接 HTTP GET
-                    match fetch_url_directly(url).await {
-                        Ok(text) => results.push(serde_json::json!({"url": url, "content": text, "fallback": true})),
-                        Err(e2) => results.push(serde_json::json!({"url": url, "error": e2.to_string()})),
-                    }
-                }
+            if !extracted {
+                results.push(serde_json::json!({"url": url, "error": "所有抓取方式均失败"}));
             }
         }
 
@@ -793,6 +800,92 @@ impl AiTool for ApiRequestTool {
 
         Ok(format!("HTTP {} — 响应:\n{}", status.as_u16(), truncated))
     }
+}
+
+
+/// DuckDuckGo 免费搜索：抓取 Lite 版 HTML 页面并解析结果
+async fn duckduckgo_search(query: &str, limit: usize) -> Result<String, AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
+        .build()
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
+
+    let url = format!(
+        "https://lite.duckduckgo.com/lite/?q={}",
+        urlencoding(query)
+    );
+
+    let resp = client.get(&url).send().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("DuckDuckGo 搜索请求失败: {}", e)))?;
+
+    let html = resp.text().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("DuckDuckGo 响应读取失败: {}", e)))?;
+
+    // 解析 HTML：匹配 <a class="result-link" href="URL">TITLE</a> 和后面的描述文本
+    let link_re = Regex::new(
+        r#"<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#
+    ).map_err(|e| AppError::Internal(anyhow::anyhow!("正则编译失败: {}", e)))?;
+
+    let snippet_re = Regex::new(
+        r#"<td[^>]*class="[^"]*result-snippet[^"]*"[^>]*>(.*?)</td>"#
+    ).map_err(|e| AppError::Internal(anyhow::anyhow!("正则编译失败: {}", e)))?;
+
+    let links: Vec<(String, String)> = link_re.captures_iter(&html)
+        .map(|cap| {
+            let url = cap[1].to_string();
+            let title = strip_html(&cap[2]);
+            (url, title)
+        })
+        .collect();
+
+    let snippets: Vec<String> = snippet_re.captures_iter(&html)
+        .map(|cap| strip_html(&cap[1]))
+        .collect();
+
+    let results: Vec<Value> = links.into_iter()
+        .zip(snippets.into_iter().chain(std::iter::repeat(String::new())))
+        .take(limit)
+        .map(|((url, title), desc)| serde_json::json!({
+            "title": title.trim(),
+            "url": url.trim(),
+            "description": desc.trim(),
+        }))
+        .filter(|r| !r["title"].as_str().unwrap_or("").is_empty())
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "success": true,
+        "count": results.len(),
+        "results": results,
+        "provider": "duckduckgo",
+    })).unwrap_or_default())
+}
+
+/// 检测 HTTP 状态码是否表示 API 额度耗尽
+fn is_quota_exhausted(status: u16) -> bool {
+    // Tavily: 432, Firecrawl: 402/429
+    matches!(status, 402 | 429 | 432)
+}
+
+/// 根据 provider 名返回默认 API URL
+fn provider_api_url(provider: &str) -> String {
+    match provider {
+        "tavily" => "https://api.tavily.com".to_string(),
+        "firecrawl" => "https://api.firecrawl.dev".to_string(),
+        _ => "".to_string(),
+    }
+}
+
+/// 对搜索关键词进行 URL 编码
+fn urlencoding(s: &str) -> String {
+    s.chars().map(|c| {
+        if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' {
+            c.to_string()
+        } else {
+            format!("%{:02X}", c as u8)
+        }
+    }).collect()
 }
 
 

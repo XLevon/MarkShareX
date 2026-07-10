@@ -257,6 +257,58 @@
       </n-card>
     </n-modal>
 
+    <!-- Task Log List Modal -->
+    <n-modal v-model:show="showLogModal" :mask-closable="false" style="width:600px;max-width:92vw">
+      <n-card :title="`📜 ${logTaskName} — 执行日志`" :bordered="false" size="small">
+        <n-spin :show="logLoading">
+          <div v-if="logItems.length === 0 && !logLoading" style="text-align:center;padding:40px 0;color:var(--color-text-muted)">暂无执行记录</div>
+          <n-data-table v-else :columns="logColumns" :data="logItems" :loading="logLoading" size="small" />
+        </n-spin>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showLogModal=false">关闭</n-button>
+          </n-space>
+        </template>
+      </n-card>
+    </n-modal>
+
+    <!-- Task Log Detail Modal (复用 trace 展示) -->
+    <n-modal v-model:show="showLogDetailModal" :mask-closable="false" style="width:720px;max-width:95vw">
+      <n-card :title="`📋 执行详情`" :bordered="false" size="small">
+        <div v-if="logDetailSteps.length === 0" style="text-align:center;padding:40px 0;color:var(--color-text-muted)">无追踪数据</div>
+        <div v-else style="max-height:60vh;overflow-y:auto">
+          <div v-for="(step, i) in logDetailSteps" :key="i" style="margin-bottom:20px;border:1px solid var(--color-border);border-radius:8px;padding:12px">
+            <div style="font-weight:bold;margin-bottom:8px;color:var(--color-primary)">🔄 第 {{ step.round }} 轮</div>
+            <div v-if="step.llm_content" style="background:var(--color-bg-secondary);border-radius:6px;padding:10px;margin-bottom:10px;white-space:pre-wrap;font-size:13px">{{ step.llm_content }}</div>
+            <div v-for="(tc, j) in step.tool_calls" :key="j" style="margin-bottom:8px">
+              <n-collapse>
+                <n-collapse-item :title="`🔧 ${tc.function_name}`">
+                  <div style="font-size:12px">
+                    <div style="margin-bottom:6px"><b>参数：</b><code style="background:var(--color-bg-secondary);padding:2px 6px;border-radius:4px;word-break:break-all">{{ JSON.stringify(tc.arguments, null, 2) }}</code></div>
+                    <div><b>结果：</b><pre style="background:var(--color-bg-secondary);padding:8px;border-radius:4px;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;margin:0">{{ tc.result_preview }}</pre></div>
+                  </div>
+                </n-collapse-item>
+              </n-collapse>
+            </div>
+          </div>
+          <div v-if="logDetailReply" style="margin-top:16px;padding:12px;background:var(--color-card-bg);border-radius:8px;border:1px solid var(--color-success, #67c23a);border-left:4px solid var(--color-success, #67c23a)">
+            <div v-if="logDetailStatus === 'failed'" style="font-weight:bold;margin-bottom:6px;color:#d03050">❌ 执行失败</div>
+            <div v-else style="font-weight:bold;margin-bottom:6px;color:var(--color-success, #67c23a)">✅ 最终结果</div>
+            <div style="white-space:pre-wrap;font-size:14px;line-height:1.7;color:var(--color-text)">{{ logDetailReply }}</div>
+          </div>
+          <div v-if="logDetailError" style="margin-top:16px;padding:12px;background:#fff0f0;border-radius:8px;border:1px solid #d03050;border-left:4px solid #d03050">
+            <div style="font-weight:bold;margin-bottom:6px;color:#d03050">❌ 错误信息</div>
+            <div style="white-space:pre-wrap;font-size:14px">{{ logDetailError }}</div>
+          </div>
+        </div>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showLogDetailModal=false">关闭</n-button>
+          </n-space>
+        </template>
+      </n-card>
+    </n-modal>
+
     <!-- Model Modal -->
     <n-modal v-model:show="showModelModal" :mask-closable="false">
       <n-card style="width:400px;max-width:90vw" :title="editingModelId ? '编辑模型' : '添加模型'">
@@ -287,6 +339,7 @@ import {
   fetchProviders, createProvider, updateProvider, deleteProvider, testProvider, type AiProvider,
   fetchSkills, createSkill, updateSkill, deleteSkill, type AiSkill,
   fetchTasks, createTask, updateTask, deleteTask, runTask, getTaskTrace, type AiTask, type TaskTraceStep,
+  listTaskLogs, getTaskLog, type TaskLogItem, type TaskLogDetail,
   fetchAgentConfigs, createAgentConfig, updateAgentConfig, deleteAgentConfig, type AgentConfig,
   fetchTools, createTool, updateTool, deleteTool, type AiTool,
   fetchModels, createModel, updateModel, deleteModel, type AiModel,
@@ -304,6 +357,7 @@ const agentModalKey = ref(0)
 const editingAgentId = ref<number | null>(null)
 const agentForm = ref({ name: '', system_prompt: '', user_prompt: '', is_default: false, model_id: undefined as number | undefined })
 const agentProviderFilter = ref<number | null>(null)
+let skipAgentModelWatch = false
 const providerFilterOptions = computed(() => providers.value.map(p => ({ label: p.name, value: p.id })))
 const agentModelOptions = computed(() => {
   if (!agentProviderFilter.value) return []
@@ -327,13 +381,14 @@ async function loadAgentConfigs() { loading.value = true; try { const r = await 
 function openAgentForm(row?: AgentConfig) {
   editingAgentId.value = row?.id ?? null
   agentForm.value = row ? { name: row.name, system_prompt: row.system_prompt, user_prompt: row.user_prompt, is_default: row.is_default, model_id: row.model_id ?? undefined } : { name: '', system_prompt: '', user_prompt: '', is_default: false, model_id: undefined }
-  // 根据已有模型自动推导供应商筛选
+  // 根据已有模型自动推导供应商筛选；模型被删除或未选时保留当前筛选（不清空）
+  skipAgentModelWatch = true
   if (row?.model_id) {
     const m = models.value.find(m => m.id === row.model_id)
-    agentProviderFilter.value = m?.provider_id ?? null
-  } else {
-    agentProviderFilter.value = null
+    if (m) agentProviderFilter.value = m.provider_id ?? null
+    // 模型已被删除时：不碰 supplier（让用户手动重选）
   }
+  // 模型为空时：不碰 supplier（保留用户之前的选择）
   showAgentModal.value = true
   agentModalKey.value++
 }
@@ -341,8 +396,10 @@ async function saveAgent() {
   if (!agentForm.value.name) { message.warning('名称为必填'); return }
   saving.value = true
   try {
-    if (editingAgentId.value) await updateAgentConfig(editingAgentId.value, agentForm.value)
-    else await createAgentConfig(agentForm.value)
+    // undefined → null so JSON.stringify sends the field (backend needs it to clear the value)
+    const payload = { ...agentForm.value, model_id: agentForm.value.model_id ?? null }
+    if (editingAgentId.value) await updateAgentConfig(editingAgentId.value, payload)
+    else await createAgentConfig(payload)
     showAgentModal.value = false
     loadAgentConfigs()
     message.success('Agent 配置已保存')
@@ -616,6 +673,23 @@ let skipModelWatch = false
 const taskForm = ref({ name: '', skill_id: 0, provider_id: undefined as number | undefined, agent_config_id: undefined as number | undefined, model_id: undefined as number | undefined, max_tool_rounds: null as number | null, cron_expr: '', params: '{}', enabled: true })
 const providerOptions = computed(() => providers.value.filter(p => p.is_active).map(p => ({ label: p.name, value: p.id })))
 const skillOptions = computed(() => skills.value.map(s => ({ label: s.name, value: s.id })))
+// 日志列表列定义
+const logColumns = [
+  { title: '时间', key: 'created_at', width: 150, render(row: TaskLogItem) {
+    return new Date(row.created_at).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' })
+  }},
+  { title: '状态', key: 'status', width: 80, render(row: TaskLogItem) {
+    return row.status === 'completed' ? '✅ 完成' : row.status === 'failed' ? '❌ 失败' : row.status
+  }},
+  { title: '轮次', key: 'rounds', width: 60 },
+  { title: '结果预览', key: 'final_reply_preview', ellipsis: { tooltip: true }, render(row: TaskLogItem) {
+    return row.error || row.final_reply_preview || '-'
+  }},
+  { title: '操作', key: 'actions', width: 60, render(row: TaskLogItem) {
+    return h(NButton, { size: 'tiny', onClick: () => openLogDetail(row.id) }, { default: () => '查看' })
+  }},
+]
+
 const taskColumns = [
   { title: '名称', key: 'name', width: 100, ellipsis: { tooltip: true }, render(row: AiTask) { return row.name || '-' } },
   { title: 'Agent', key: 'agent_config_id', width: 75, ellipsis: { tooltip: true }, render(row: AiTask) { return agentConfigs.value.find(a => a.id === row.agent_config_id)?.name || '-' } },
@@ -626,7 +700,11 @@ const taskColumns = [
   { title: '上次执行', key: 'last_run_at', width: 110, render(row: AiTask) {
     return row.last_run_at ? new Date(row.last_run_at).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', month: '2-digit', day: '2-digit' }) : '-'
   }},
-  { title: '次数', key: 'run_count', width: 50 },
+  { title: '次数', key: 'run_count', width: 50, render(row: AiTask) {
+    return row.run_count > 0
+      ? h('a', { style: { color: 'var(--color-primary)', cursor: 'pointer', textDecoration: 'underline' }, onClick: () => openTaskLogs(row) }, row.run_count)
+      : '0'
+  }},
   { title: '启用', key: 'enabled', width: 55, render(row: AiTask) {
     return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleTaskEnabled(row, v) })
   }},
@@ -716,10 +794,48 @@ function clearPollTimer() {
   if (tracePollTimer) { clearInterval(tracePollTimer); tracePollTimer = null }
 }
 
+async function openTaskLogs(row: AiTask) {
+  logTaskId.value = row.id
+  logTaskName.value = row.name || `任务 #${row.id}`
+  logLoading.value = true
+  showLogModal.value = true
+  try {
+    const r = await listTaskLogs(row.id)
+    logItems.value = r.data.data || []
+  } catch { message.error('加载日志失败') } finally { logLoading.value = false }
+}
+
+async function openLogDetail(logId: number) {
+  try {
+    const r = await getTaskLog(logTaskId.value, logId)
+    const d = r.data.data
+    logDetailSteps.value = d.steps || []
+    logDetailReply.value = d.final_reply
+    logDetailStatus.value = d.status
+    logDetailError.value = d.error
+    showLogDetailModal.value = true
+  } catch { message.error('加载日志详情失败') }
+}
+
 // ── Trace state ──
 const showTraceModal = ref(false)
 const traceRunning = ref(false)
 const traceTaskName = ref('')
+const traceTaskId = ref(0)
+
+// 任务日志列表
+const showLogModal = ref(false)
+const logTaskId = ref(0)
+const logTaskName = ref('')
+const logItems = ref<TaskLogItem[]>([])
+const logLoading = ref(false)
+
+// 日志详情（复用 trace 的结构）
+const showLogDetailModal = ref(false)
+const logDetailSteps = ref<TaskTraceStep[]>([])
+const logDetailReply = ref('')
+const logDetailStatus = ref('')
+const logDetailError = ref<string | null>(null)
 const traceSteps = ref<TaskTraceStep[]>([])
 const traceFinalReply = ref('')
 
@@ -741,8 +857,9 @@ watch(() => taskForm.value.skill_id, () => {
   applySkillParamsTemplate()
 })
 
-// 切换 Agent 供应商时清空模型选择
+// 切换 Agent 供应商时清空模型选择（加载表单时跳过）
 watch(agentProviderFilter, () => {
+  if (skipAgentModelWatch) { skipAgentModelWatch = false; return }
   agentForm.value.model_id = undefined
 })
 

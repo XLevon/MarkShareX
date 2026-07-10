@@ -20,6 +20,7 @@ pub mod ai_provider;
 pub mod ai_model;
 pub mod ai_skill;
 pub mod ai_task;
+pub mod ai_task_log;
 pub mod ai_agent_config;
 pub mod ai_tool;
 pub mod ai_chat_session;

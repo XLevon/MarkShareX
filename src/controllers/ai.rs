@@ -9,7 +9,7 @@ use sea_orm::*;
 use sea_orm::sea_query::Expr;
 use crate::utils::{AppState, AppError, ApiResponse};
 use crate::middleware::auth::AuthUser;
-use crate::models::entity::{ai_provider, ai_skill, ai_task, ai_agent_config, ai_tool, ai_model, ai_chat_session, ai_chat_message};
+use crate::models::entity::{ai_provider, ai_skill, ai_task, ai_task_log, ai_agent_config, ai_tool, ai_model, ai_chat_session, ai_chat_message};
 use crate::crypto;
 
 // ── Provider ──
@@ -693,8 +693,15 @@ pub async fn run_task(
     let state_clone = state.clone();
     tokio::spawn(async move {
         match AiScheduler::execute_task_traced(&state_clone, task_id).await {
-            Ok(trace) => ai_trace::trace_complete(task_id, trace.final_reply),
-            Err(e) => ai_trace::trace_fail(task_id, e.to_string()),
+            Ok(trace) => {
+                ai_trace::trace_complete(task_id, trace.final_reply);
+                ai_trace::trace_persist(&state_clone.db, task_id).await;
+            }
+            Err(e) => {
+                let err = e.to_string();
+                ai_trace::trace_fail(task_id, err.clone());
+                ai_trace::trace_persist(&state_clone.db, task_id).await;
+            }
         }
     });
 
@@ -719,6 +726,92 @@ pub async fn get_task_trace(
     });
     Ok(Json(ApiResponse {
         data: serde_json::to_value(entry).unwrap_or_default(),
+        pagination: None,
+    }))
+}
+
+// ═══════════════════════════════════════════════════════
+//  Task Logs
+// ═══════════════════════════════════════════════════════
+
+#[derive(Serialize, ToSchema)]
+pub struct TaskLogListItem {
+    pub id: i32,
+    pub task_id: i32,
+    pub status: String,
+    pub rounds: usize,
+    pub final_reply_preview: String,
+    pub error: Option<String>,
+    pub created_at: chrono::NaiveDateTime,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TaskLogDetail {
+    pub id: i32,
+    pub task_id: i32,
+    pub status: String,
+    pub steps: serde_json::Value,
+    pub final_reply: String,
+    pub error: Option<String>,
+    pub created_at: chrono::NaiveDateTime,
+}
+
+/// GET /api/v1/admin/ai/tasks/{id}/logs — 任务执行日志列表
+pub async fn list_task_logs(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path(task_id): Path<i32>,
+) -> Result<Json<ApiResponse<Vec<TaskLogListItem>>>, AppError> {
+    let items = ai_task_log::Entity::find()
+        .filter(ai_task_log::Column::TaskId.eq(task_id))
+        .order_by_desc(ai_task_log::Column::Id)
+        .all(&state.db)
+        .await?;
+
+    let list: Vec<TaskLogListItem> = items.into_iter().map(|m| {
+        let steps: Vec<serde_json::Value> = serde_json::from_str(&m.steps).unwrap_or_default();
+        let preview: String = m.final_reply.chars().take(120).collect();
+        TaskLogListItem {
+            id: m.id,
+            task_id: m.task_id,
+            status: m.status,
+            rounds: steps.len(),
+            final_reply_preview: if preview.len() < m.final_reply.len() {
+                format!("{}...", preview)
+            } else {
+                preview
+            },
+            error: m.error,
+            created_at: m.created_at,
+        }
+    }).collect();
+
+    Ok(Json(ApiResponse { data: list, pagination: None }))
+}
+
+/// GET /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 单条日志详情
+pub async fn get_task_log(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path((_task_id, log_id)): Path<(i32, i32)>,
+) -> Result<Json<ApiResponse<TaskLogDetail>>, AppError> {
+    let m = ai_task_log::Entity::find_by_id(log_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("日志不存在".into()))?;
+
+    let steps: serde_json::Value = serde_json::from_str(&m.steps).unwrap_or(serde_json::json!([]));
+
+    Ok(Json(ApiResponse {
+        data: TaskLogDetail {
+            id: m.id,
+            task_id: m.task_id,
+            status: m.status,
+            steps,
+            final_reply: m.final_reply,
+            error: m.error,
+            created_at: m.created_at,
+        },
         pagination: None,
     }))
 }
@@ -766,7 +859,8 @@ pub struct UpdateAgentConfigRequest {
     pub system_prompt: Option<String>,
     pub user_prompt: Option<String>,
     pub is_default: Option<bool>,
-    pub model_id: Option<Option<i32>>,
+    #[serde(default)]
+    pub model_id: Option<i32>,
 }
 
 /// GET /api/v1/admin/ai/agent-configs
@@ -816,7 +910,8 @@ pub async fn update_agent_config(
     if let Some(v) = req.name { model.name = Set(v); }
     if let Some(v) = req.system_prompt { model.system_prompt = Set(v); }
     if let Some(v) = req.user_prompt { model.user_prompt = Set(v); }
-    if let Some(v) = req.model_id { model.model_id = Set(v); }
+    // model_id: frontend always sends it (null to clear), so always update
+    model.model_id = Set(req.model_id);
     if let Some(v) = req.is_default {
         // 如果设为默认，先取消其他配置的默认
         if v {
