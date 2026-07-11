@@ -22,16 +22,26 @@ min_connections = 1
 
 # ------------------------------ 认证配置 ------------------------------
 [auth]
+# JWT 签名密钥 — 任意长度字符串，越长越安全。部署时务必修改！
+# 生成: openssl rand -base64 64
+# ⚠️ 多环境必须一致，否则登录态不互通
 jwt_secret = "marksharex-dev-secret-key-2026"
-jwt_expire_seconds = 3600
-refresh_expire_seconds = 604800
-# 加密密钥（用于加密 AI API Key 等敏感数据，部署时生成随机值，之后切勿修改）
+
+# JWT 过期时间（秒）
+jwt_expire_seconds = 3600       # Access Token: 1 小时
+refresh_expire_seconds = 604800  # Refresh Token: 7 天
+
+# AES-256-GCM 加密密钥 — 用于加密 AI API Key 等敏感数据
+# 格式: 任意字符串，取前 32 字节作为密钥（不足补零，超出截断）
+# 生成: openssl rand -base64 32
+# ⚠️ 部署时务必生成并固定，切勿修改！修改后已加密的 API Key 将无法解密，需重新输入
+# ⚠️ 多环境必须一致，否则加密数据不互通
 encrypt_key = ""
 
 # ------------------------------ 存储配置 ------------------------------
 [storage]
 upload_dir = "./data/uploads"
-max_file_size = 20971520
+max_file_size = 20971520   # 20MB
 allowed_types = [
     "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
     "application/pdf",
@@ -45,17 +55,23 @@ allowed_types = [
 
 # ------------------------------ AI 搜索配置 ------------------------------
 [ai.search]
-# 搜索 API 提供商: tavily | firecrawl
+# 主搜索提供商: tavily | firecrawl
+# Tavily 申请: https://app.tavily.com → API Keys → 复制 tvly-xxx
+# Firecrawl 申请: https://firecrawl.dev → API Keys → 复制 fc-xxx
 provider = "tavily"
-# Tavily API Key (https://app.tavily.com) — 部署时填入自己的 Key
 api_key = ""
+
 # API 地址（留空用默认）
+# Tavily 默认: https://api.tavily.com
+# Firecrawl 默认: https://api.firecrawl.dev
 api_url = ""
-# 降级搜索（当主搜索不可用时，降级使用该搜索）
+
+# 降级搜索（主搜索不可用时自动切换）
 fallback_provider = "firecrawl"
-fallback_api_key = "fc-b4b67f37750d43a6a52964bcad0084ac"
-# 降级搜索（duckduckgo 兜底）
-# duckduckgo = 免费无需 API Key，自动兜底
+fallback_api_key = ""
+
+# 终极兜底: DuckDuckGo 免费搜索，无需 API Key
+# 国内服务器需通过代理访问（nginx 反代 lite.duckduckgo.com）
 
 # ------------------------------ AI 通用配置 ------------------------------
 [ai]
