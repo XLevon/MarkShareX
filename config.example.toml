@@ -51,6 +51,11 @@ provider = "tavily"
 api_key = ""
 # API 地址（留空用默认）
 api_url = ""
+# 降级搜索（当主搜索不可用时，降级使用该搜索）
+fallback_provider = "firecrawl"
+fallback_api_key = "fc-b4b67f37750d43a6a52964bcad0084ac"
+# 降级搜索（duckduckgo 兜底）
+# duckduckgo = 免费无需 API Key，自动兜底
 
 # ------------------------------ AI 通用配置 ------------------------------
 [ai]
