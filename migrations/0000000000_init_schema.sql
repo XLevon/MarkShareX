@@ -5,7 +5,7 @@
 -- ============================================================
 
 -- ════════════════════════════════════════════════════════════
---  表结构（含所有字段，无 ALTER TABLE 遗留）
+--  v0.1.0 表结构
 -- ════════════════════════════════════════════════════════════
 
 -- 1. 用户表
@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
     avatar_url VARCHAR,
     role VARCHAR NOT NULL DEFAULT 'visitor',
     status VARCHAR NOT NULL DEFAULT 'active',
+    title VARCHAR,
     bio TEXT,
     api_key VARCHAR,
     is_active BOOLEAN NOT NULL DEFAULT 1,
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_categories_deleted ON categories(deleted_at);
 
 -- 3. 标签表
 CREATE TABLE IF NOT EXISTS tags (
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS tags (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_tags_deleted ON tags(deleted_at);
 
 -- 4. 文章表
 CREATE TABLE IF NOT EXISTS posts (
@@ -87,6 +90,10 @@ CREATE TABLE IF NOT EXISTS posts (
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (category_id) REFERENCES categories(id)
 );
+CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
+CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category_id);
+CREATE INDEX IF NOT EXISTS idx_posts_deleted ON posts(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(status, published_at);
 
 -- 5. 文章-标签关联表
 CREATE TABLE IF NOT EXISTS post_tags (
@@ -96,8 +103,10 @@ CREATE TABLE IF NOT EXISTS post_tags (
     FOREIGN KEY (post_id) REFERENCES posts(id),
     FOREIGN KEY (tag_id) REFERENCES tags(id)
 );
+CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_post_tags_post ON post_tags(post_id);
 
--- 6. 文件表（无 user_id FK）
+-- 6. 文件表
 CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -110,8 +119,10 @@ CREATE TABLE IF NOT EXISTS files (
     md5_hash VARCHAR,
     deleted_at DATETIME,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
+CREATE INDEX IF NOT EXISTS idx_files_deleted ON files(deleted_at);
 
 -- 7. 系统设置表
 CREATE TABLE IF NOT EXISTS settings (
@@ -130,6 +141,8 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
 
 -- 9. 点赞表
 CREATE TABLE IF NOT EXISTS likes (
@@ -162,6 +175,9 @@ CREATE TABLE IF NOT EXISTS comments (
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (parent_id) REFERENCES comments(id)
 );
+CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status);
+CREATE INDEX IF NOT EXISTS idx_comments_deleted ON comments(deleted_at);
 
 -- 11. 作者申请表
 CREATE TABLE IF NOT EXISTS author_applications (
@@ -178,24 +194,6 @@ CREATE TABLE IF NOT EXISTS author_applications (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- ════════════════════════════════════════════════════════════
---  性能索引
--- ════════════════════════════════════════════════════════════
-
-CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
-CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category_id);
-CREATE INDEX IF NOT EXISTS idx_posts_deleted ON posts(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(status, published_at);
-CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_id);
-CREATE INDEX IF NOT EXISTS idx_post_tags_post ON post_tags(post_id);
-CREATE INDEX IF NOT EXISTS idx_files_deleted ON files(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_tags_deleted ON tags(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_categories_deleted ON categories(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
-CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
-CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status);
-CREATE INDEX IF NOT EXISTS idx_comments_deleted ON comments(deleted_at);
 
 -- ══════════════════════════════════════════════
 --  网络资源（network_resources）
@@ -302,10 +300,8 @@ INSERT OR IGNORE INTO article_statuses (code, display_name, color, sort_order) V
     ('space',                  '',           '#6b7280', 1),
     ('latest',                 '✅ 最新',     '#22c55e', 2);
 
--- ═══════════════════════════════════════  
+ 
 --  留言板
--- ═══════════════════════════════════════
-
 CREATE TABLE IF NOT EXISTS guestbook (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nickname TEXT NOT NULL,
@@ -331,7 +327,7 @@ CREATE TABLE IF NOT EXISTS _migrations (
 );
 
 -- ════════════════════════════════════════════════════════════
--- v0.4.0 版本新增的表
+-- v0.4.0 版本新增的表 - 资讯模块
 -- ════════════════════════════════════════════════════════════
 -- 19. 咨询信息表
 CREATE TABLE IF NOT EXISTS news (
@@ -350,13 +346,16 @@ CREATE TABLE IF NOT EXISTS news (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
-
 CREATE INDEX IF NOT EXISTS idx_news_status ON news(status);
 CREATE INDEX IF NOT EXISTS idx_news_topic_type ON news(topic_type);
 CREATE INDEX IF NOT EXISTS idx_news_sort_order ON news(sort_order);
 CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at);
 CREATE INDEX IF NOT EXISTS idx_news_source_url ON news(source_url);
--- 20-22. AI 模块
+
+-- ════════════════════════════════════════════════════════════
+-- v0.4.0 版本新增的表 - AI 模块
+-- ════════════════════════════════════════════════════════════
+-- 20. AI 模型供应商
 CREATE TABLE IF NOT EXISTS ai_providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(100) NOT NULL DEFAULT '',
@@ -379,6 +378,51 @@ CREATE TABLE IF NOT EXISTS ai_models (
     FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE
 );
 
+-- AI 工具（Agent 能力注册表）
+CREATE TABLE IF NOT EXISTS ai_tools (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(200) NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    function_name VARCHAR(200) NOT NULL DEFAULT '',
+    parameters_schema TEXT NOT NULL DEFAULT '{}',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    config TEXT NOT NULL DEFAULT '{}',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_tools_function_name ON ai_tools(function_name);
+
+INSERT OR IGNORE INTO ai_tools (name, description, function_name, parameters_schema, created_at, updated_at)
+VALUES
+('获取当前日期时间', '获取当前日期和时间（含星期），返回服务器本地时间（CST/UTC+8）。无需参数。', 
+    'get_current_datetime', '{"type":"object","properties":{}}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('站内 API 请求', '搜索站内资源，需携带用户token，返回用户权限范围内的数据结果。常用接口：① GET /api/v1/search?q=关键词（知识文章Tantivy全文搜索）② GET /api/v1/news?search=关键词（资讯标题搜索，可组合 topic_type/date_from/date_to 筛选）③ GET /api/v1/categories（分类列表）④ GET /api/v1/tags（标签列表）。仅支持本站 API 的相对路径。返回 JSON 结果，你自行解析并整理为可读格式。', 
+    'api_request', '{{"type":"object","properties":{"url":{"type":"string","description":"请求 URL"},"method":{"type":"string","description":"HTTP 方法：GET 或 POST","enum":["GET","POST"],"default":"GET"},"body":{"type":"string","description":"POST 请求体（JSON 字符串），仅 method=POST 时使用"}},"required":["url"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('网络搜索', '搜索网络资讯，返回标题、URL 和摘要。适合查找最新新闻、技术动态等。', 
+    'web_search', '{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"},"limit":{"type":"integer","description":"返回结果数量，默认 5，最大 10","default":5}},"required":["query"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('网页抓取', '抓取指定 URL 的网页内容，返回 Markdown 格式正文。适合获取文章全文。', 
+    'web_extract', '{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表，最多 5 个","maxItems":5}},"required":["urls"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('创建资讯', '创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）、source_url（来源链接）、topic_type（题材类型，可选）、status（draft 草稿 或 published 已发布，默认 draft）。', 
+    'create_news', '{"type": "object", "properties": {"title": {"type": "string", "description": "资讯标题"}, "summary": {"type": "string", "description": "简短摘要，200字以内"}, "content": {"type": "string", "description": "Markdown 格式正文"}, "source_url": {"type": "string", "description": "原文链接"}, "status": {"type": "string", "description": "发布状态：draft（草稿，默认）或 published（已发布）", "enum": ["draft", "published"], "default": "draft"}, "topic_type": {"type": "string", "description": "题材类型，为空则不分类。可选值：politics(时政新闻)、finance(财经新闻)、technology(科技新闻)、society(社会新闻)、entertainment(文娱新闻)、sports(体育新闻)、international(国际新闻)、law(法治新闻)、education(教育新闻)", "enum": ["politics", "finance", "technology", "society", "entertainment", "sports", "international", "law", "education"], "default": ""}}, "required": ["title", "summary", "content", "source_url"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+('创建文章', '创建一篇知识库文章。需要提供 title（标题）、content（Markdown 正文，支持本地路径/nr:ID 引用资源库/外部URL 三种图片格式）、category_id（分类 ID）。可选 summary、cover_image（nr:ID 或 URL）、status（draft 或 published，默认 draft）。', 
+    'create_post', '{"type": "object", "properties": {"title": {"type": "string", "description": "文章标题"}, "content": {"type": "string", "description": "Markdown 格式正文。图片可用 nr:ID 引用资源库图片"}, "category_id": {"type": "integer", "description": "分类 ID（必填，需先查询 categories 获取）"}, "summary": {"type": "string", "description": "文章摘要（可选）"}, "cover_image": {"type": "string", "description": "封面图：nr: 资源 ID 或完整 URL（可选）"}, "status": {"type": "string", "description": "发布状态：draft（草稿，默认）或 published（已发布）", "enum": ["draft", "published"], "default": "draft"}, "article_type": {"type": "string", "description": "文章类型：space、original（原创）、ai_organized（AI 整理）、tutorial（教程）、repost（转载）、translation（翻译）、opinion_essay（随笔）", "enum": ["space", "original", "ai_organized", "tutorial", "repost", "translation", "opinion_essay"], "default": "space"}}, "required": ["title", "content", "category_id"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- AI Agent 配置
+CREATE TABLE IF NOT EXISTS ai_agent_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) NOT NULL DEFAULT '',
+    system_prompt TEXT NOT NULL DEFAULT '',
+    user_prompt TEXT NOT NULL DEFAULT '',
+    is_default BOOLEAN NOT NULL DEFAULT 0,
+    model_id INTEGER REFERENCES ai_models(id) ON DELETE SET NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO ai_agent_config (id, name, system_prompt, user_prompt, is_default)
+VALUES (1, ' AI助手', '', '', 0);
+
+-- AI 技能（每个技能对应一个可执行的任务）
 CREATE TABLE IF NOT EXISTS ai_skills (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name VARCHAR(200) NOT NULL DEFAULT '',
@@ -389,6 +433,8 @@ CREATE TABLE IF NOT EXISTS ai_skills (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- AI 任务（每个任务对应一个 AI 技能）
 CREATE TABLE IF NOT EXISTS ai_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL DEFAULT '',
@@ -408,6 +454,19 @@ CREATE TABLE IF NOT EXISTS ai_tasks (
     FOREIGN KEY (agent_config_id) REFERENCES ai_agent_config(id) ON DELETE SET NULL,
     FOREIGN KEY (model_id) REFERENCES ai_models(id) ON DELETE SET NULL
 );
+
+-- AI 任务日志
+CREATE TABLE IF NOT EXISTS ai_task_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    steps TEXT NOT NULL DEFAULT '[]',
+    final_reply TEXT NOT NULL DEFAULT '',
+    error TEXT,
+    created_at DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (task_id) REFERENCES ai_tasks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_ai_task_logs_task_id ON ai_task_logs(task_id);
 
 -- AI 聊天会话
 CREATE TABLE IF NOT EXISTS ai_chat_sessions (
@@ -431,45 +490,6 @@ CREATE TABLE IF NOT EXISTS ai_chat_messages (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
 );
-
--- AI Agent 配置
-CREATE TABLE IF NOT EXISTS ai_agent_config (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name VARCHAR(100) NOT NULL DEFAULT '默认配置',
-    system_prompt TEXT NOT NULL DEFAULT '',
-    user_prompt TEXT NOT NULL DEFAULT '',
-    is_default BOOLEAN NOT NULL DEFAULT 0,
-    model_id INTEGER REFERENCES ai_models(id) ON DELETE SET NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT OR IGNORE INTO ai_agent_config (id, name, system_prompt, user_prompt, is_default)
-VALUES (1, '默认配置', '', '', 1);
-
--- AI 可调用工具（Agent 能力注册表）
-CREATE TABLE IF NOT EXISTS ai_tools (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name VARCHAR(200) NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    function_name VARCHAR(200) NOT NULL DEFAULT '',
-    parameters_schema TEXT NOT NULL DEFAULT '{}',
-    enabled INTEGER NOT NULL DEFAULT 1,
-    config TEXT NOT NULL DEFAULT '{}',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_tools_function_name ON ai_tools(function_name);
-
-INSERT OR IGNORE INTO ai_tools (name, description, function_name, parameters_schema, created_at, updated_at)
-VALUES
-('获取当前日期时间', '获取当前日期和时间（含星期），返回服务器本地时间（CST/UTC+8）。无需参数。', 'get_current_datetime', '{"type":"object","properties":{}}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('站内 API 请求', '搜索站内资源或调用外部 API 并返回超链接。用于调用站内搜索（GET /api/v1/search?q=关键词），或查询分类、标签、用户等。返回 JSON 结果，你自行解析并整理为可读格式，以 Markdown 超链接呈现。也可调用外部接口。', 'api_request', '{"type":"object","properties":{"url":{"type":"string","description":"请求 URL"},"method":{"type":"string","description":"HTTP 方法：GET 或 POST","enum":["GET","POST"],"default":"GET"},"body":{"type":"string","description":"POST 请求体（JSON 字符串），仅 method=POST 时使用"}},"required":["url"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('网络搜索', '搜索网络资讯，返回标题、URL 和摘要。适合查找最新新闻、技术动态等。', 'web_search', '{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"},"limit":{"type":"integer","description":"返回结果数量，默认 5，最大 10","default":5}},"required":["query"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('网页抓取', '抓取指定 URL 的网页内容，返回 Markdown 格式正文。适合获取文章全文。', 'web_extract', '{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表，最多 5 个","maxItems":5}},"required":["urls"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('创建资讯', '创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）、source_url（来源链接）、status（draft 草稿 或 published 已发布，默认 draft）。', 'create_news', '{"type":"object","properties":{"title":{"type":"string","description":"资讯标题"},"summary":{"type":"string","description":"简短摘要，200字以内"},"content":{"type":"string","description":"Markdown 格式正文"},"source_url":{"type":"string","description":"原文链接"},"status":{"type":"string","description":"发布状态：draft（草稿，默认）或 published（已发布）","enum":["draft","published"],"default":"draft"}},"required":["title","summary","content","source_url"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-('创建文章', '创建一篇知识库文章。需要提供 title（标题）、content（Markdown 正文，可用 nr:ID 引用资源库图片）、category_id（分类 ID）。可选 summary、cover_image（nr:ID 或 URL）、status（draft 或 published，默认 draft）。', 'create_post', '{"type":"object","properties":{"title":{"type":"string","description":"文章标题"},"content":{"type":"string","description":"Markdown 格式正文。图片可用 nr:ID 引用资源库图片"},"category_id":{"type":"integer","description":"分类 ID（必填，需先查询分类获取）"},"summary":{"type":"string","description":"文章摘要（可选）"},"cover_image":{"type":"string","description":"封面图：nr:资源ID 或完整 URL（可选）"},"status":{"type":"string","description":"发布状态：draft（草稿，默认）或 published（已发布）","enum":["draft","published"],"default":"draft"}},"required":["title","content","category_id"]}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 -- ════════════════════════════════════════════════════════════
 --  默认系统设置（首次启动，key 不存在时插入）
