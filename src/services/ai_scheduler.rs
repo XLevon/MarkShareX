@@ -240,13 +240,9 @@ impl AiScheduler {
             Err(e) => {
                 let err_msg = e.to_string();
                 crate::services::ai_trace::trace_fail(task_id, err_msg.clone());
-                crate::services::ai_trace::trace_persist(&state.db, task_id).await;
                 return Err(anyhow::anyhow!("{}", err_msg));
             }
         };
-
-        // 持久化 trace
-        crate::services::ai_trace::trace_persist(&state.db, task_id).await;
 
         // 更新任务状态
         let now = Local::now().naive_local();

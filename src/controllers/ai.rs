@@ -693,13 +693,16 @@ pub async fn run_task(
     let state_clone = state.clone();
     tokio::spawn(async move {
         match AiScheduler::execute_task_traced(&state_clone, task_id).await {
-            Ok(trace) => {
-                ai_trace::trace_complete(task_id, trace.final_reply);
+            Ok(_trace) => {
+                // trace_complete 已在 execute_task_traced 内调用
+                // 延迟 2s 确保前端轮询已读到 completed 状态
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 ai_trace::trace_persist(&state_clone.db, task_id).await;
             }
             Err(e) => {
-                let err = e.to_string();
-                ai_trace::trace_fail(task_id, err.clone());
+                let _err = e.to_string();
+                // trace_fail 已在 execute_task_traced 内调用
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 ai_trace::trace_persist(&state_clone.db, task_id).await;
             }
         }

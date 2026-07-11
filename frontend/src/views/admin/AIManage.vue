@@ -226,10 +226,7 @@
           无追踪数据
         </div>
         <!-- 有数据：执行中逐轮显示 / 完成后完整展示 -->
-        <div v-else style="max-height:60vh;overflow-y:auto">
-          <div v-if="traceRunning" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--color-primary)">
-            <n-spin size="small" /><span style="font-size:13px">执行中，已获取 {{ traceSteps.length }} 轮数据...</span>
-          </div>
+        <div v-else ref="traceScrollRef" style="max-height:60vh;overflow-y:auto">
           <div v-for="(step, si) in traceSteps" :key="si" style="margin-bottom:20px;border:1px solid var(--color-border);border-radius:8px;padding:12px">
             <div style="font-weight:bold;margin-bottom:8px;color:var(--color-primary)">🔄 第 {{ step.round }} 轮</div>
             <div v-if="step.llm_content" style="background:var(--color-bg-secondary);border-radius:6px;padding:10px;margin-bottom:10px;white-space:pre-wrap;font-size:13px">{{ step.llm_content }}</div>
@@ -244,7 +241,10 @@
               </n-collapse>
             </div>
           </div>
-          <div style="margin-top:16px;padding:12px;background:var(--color-card-bg);border-radius:8px;border:1px solid var(--color-success, #67c23a);border-left:4px solid var(--color-success, #67c23a)">
+          <div v-if="traceRunning" style="display:flex;align-items:center;gap:8px;margin-bottom:16px;color:var(--color-primary)">
+            <n-spin size="small" /><span style="font-size:13px">执行中，第 {{ traceSteps.length + 1 }} 轮...</span>
+          </div>
+          <div style="padding:12px;background:var(--color-card-bg);border-radius:8px;border:1px solid var(--color-success, #67c23a);border-left:4px solid var(--color-success, #67c23a)">
             <div style="font-weight:bold;margin-bottom:6px;color:var(--color-success, #67c23a)">✅ 最终结果</div>
             <div style="white-space:pre-wrap;font-size:14px;line-height:1.7;color:var(--color-text)">{{ traceFinalReply }}</div>
           </div>
@@ -333,7 +333,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, h } from 'vue'
+import { ref, computed, onMounted, watch, h, nextTick } from 'vue'
 import { NButton, NTag, NSpace, NSwitch, NSelect, useMessage } from 'naive-ui'
 import {
   fetchProviders, createProvider, updateProvider, deleteProvider, testProvider, type AiProvider,
@@ -822,6 +822,15 @@ const showTraceModal = ref(false)
 const traceRunning = ref(false)
 const traceTaskName = ref('')
 const traceTaskId = ref(0)
+const traceScrollRef = ref<HTMLElement | null>(null)
+
+// 自动滚动到底部
+function scrollTraceToBottom() {
+  nextTick(() => {
+    const el = traceScrollRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
 
 // 任务日志列表
 const showLogModal = ref(false)
@@ -838,6 +847,9 @@ const logDetailStatus = ref('')
 const logDetailError = ref<string | null>(null)
 const traceSteps = ref<TaskTraceStep[]>([])
 const traceFinalReply = ref('')
+
+watch(traceSteps, () => scrollTraceToBottom(), { deep: true })
+watch(traceRunning, (v) => { if (!v) scrollTraceToBottom() })
 
 // 关闭弹窗时停止轮询
 watch(showTraceModal, (v) => { if (!v) clearPollTimer() })

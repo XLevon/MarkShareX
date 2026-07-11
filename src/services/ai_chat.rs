@@ -89,6 +89,7 @@ pub async fn run_function_calling_traced(
     let max_rounds: u32 = resolve_max_rounds(max_rounds_override, state);
 
     let mut trace_steps: Vec<TraceStep> = Vec::new();
+    let mut consecutive_empty: u32 = 0; // 连续空响应计数
 
     for round in 0..max_rounds {
         let resp = client
@@ -119,9 +120,33 @@ pub async fn run_function_calling_traced(
         let llm_text = msg["content"].as_str().map(|s| s.to_string());
 
         if tool_calls.is_none() || tool_calls.unwrap().is_empty() {
-            let reply = llm_text.unwrap_or_else(|| "(空回复)".to_string());
-            return Ok(TraceResult { steps: trace_steps, final_reply: reply });
+            // 有文本内容 → LLM 正常结束
+            if let Some(ref t) = llm_text {
+                if !t.trim().is_empty() {
+                    return Ok(TraceResult { steps: trace_steps, final_reply: t.clone() });
+                }
+            }
+
+            // 空内容：可能是 LLM 提前放弃
+            consecutive_empty += 1;
+            if consecutive_empty >= 2 {
+                // 连续两次空响应 → 确实无法继续
+                let total_rounds = trace_steps.len();
+                tracing::warn!("LLM 连续 {} 次返回空内容，强制终止 (round={})", consecutive_empty, round + 1);
+                return Ok(TraceResult {
+                    steps: trace_steps,
+                    final_reply: format!("任务已终止（LLM 连续返回空内容，共 {} 轮工具调用）", total_rounds),
+                });
+            }
+
+            // 第一次空响应：注入续接提示，让 LLM 继续
+            tracing::info!("LLM 返回空内容 (round={})，注入续接提示", round + 1);
+            let reminder = "你还没有完成任务。请继续搜索并创建资讯，不要提前停止。";
+            messages.push(serde_json::json!({"role": "user", "content": reminder}));
+            continue;
         }
+
+        consecutive_empty = 0; // 有工具调用，重置空响应计数
 
         let calls = tool_calls.unwrap();
         messages.push(msg.clone());
