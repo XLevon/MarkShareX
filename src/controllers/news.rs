@@ -6,6 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use sea_orm::*;
+use sea_orm::sea_query::Expr;
 use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::news;
@@ -79,6 +80,16 @@ pub struct CreateNewsRequest {
 
 fn default_status() -> String { "draft".to_string() }
 
+#[derive(Deserialize, IntoParams)]
+pub struct UpdateNewsRequest {
+    pub title: Option<String>,
+    pub summary: Option<String>,
+    pub content: Option<String>,
+    pub status: Option<String>,
+    pub topic_type: Option<String>,
+    pub sort_order: Option<i32>,
+}
+
 fn apply_news_filters(mut select: Select<news::Entity>, q: &NewsQuery) -> Select<news::Entity> {
     if let Some(status) = &q.status {
         if status != "all" {
@@ -93,12 +104,12 @@ fn apply_news_filters(mut select: Select<news::Entity>, q: &NewsQuery) -> Select
     }
     if let Some(date_from) = &q.date_from {
         if !date_from.is_empty() {
-            select = select.filter(news::Column::CreatedAt.gte(format!("{}T00:00:00", date_from)));
+            select = select.filter(Expr::cust(&format!("DATE(created_at) >= '{}'", date_from)));
         }
     }
     if let Some(date_to) = &q.date_to {
         if !date_to.is_empty() {
-            select = select.filter(news::Column::CreatedAt.lt(format!("{}T00:00:00", date_to)));
+            select = select.filter(Expr::cust(&format!("DATE(created_at) <= '{}'", date_to)));
         }
     }
     if let Some(search) = &q.search {
@@ -240,12 +251,12 @@ pub async fn list_topic_types(
 
     if let Some(ref date_from) = params.date_from {
         if !date_from.is_empty() {
-            sql.push_str(&format!(" AND created_at >= '{}T00:00:00'", date_from));
+            sql.push_str(&format!(" AND DATE(created_at) >= '{}'", date_from));
         }
     }
     if let Some(ref date_to) = params.date_to {
         if !date_to.is_empty() {
-            sql.push_str(&format!(" AND created_at < '{}T00:00:00'", date_to));
+            sql.push_str(&format!(" AND DATE(created_at) <= '{}'", date_to));
         }
     }
     if let Some(ref search) = params.search {
@@ -315,7 +326,7 @@ pub async fn update_news(
     State(state): State<AppState>,
     _auth: AuthUser,
     Path(id): Path<i32>,
-    Json(req): Json<CreateNewsRequest>,
+    Json(req): Json<UpdateNewsRequest>,
 ) -> Result<Json<ApiResponse<NewsResponse>>, AppError> {
     let item = news::Entity::find_by_id(id)
         .one(&state.db)
@@ -325,18 +336,20 @@ pub async fn update_news(
     let now = crate::utils::now_local();
     let mut model: news::ActiveModel = item.into();
 
-    model.title = Set(req.title);
-    model.summary = Set(req.summary);
-    model.content = Set(req.content);
-    model.topic_type = Set(req.topic_type);
-    model.sort_order = Set(req.sort_order);
+    if let Some(title) = req.title { model.title = Set(title); }
+    if let Some(summary) = req.summary { model.summary = Set(summary); }
+    if let Some(content) = req.content { model.content = Set(content); }
+    if let Some(topic_type) = req.topic_type { model.topic_type = Set(topic_type); }
+    if let Some(sort_order) = req.sort_order { model.sort_order = Set(sort_order); }
     model.updated_at = Set(now);
 
-    if req.status == "published" && model.status.as_ref() != "published" {
-        model.status = Set("published".to_string());
-        model.published_at = Set(Some(now));
-    } else if req.status != "published" {
-        model.status = Set(req.status);
+    if let Some(status) = req.status {
+        if status == "published" && model.status.as_ref() != "published" {
+            model.status = Set("published".to_string());
+            model.published_at = Set(Some(now));
+        } else if status != "published" {
+            model.status = Set(status);
+        }
     }
 
     let updated = model.update(&state.db).await?;

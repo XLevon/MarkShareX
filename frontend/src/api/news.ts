@@ -34,6 +34,7 @@ export function fetchAdminNews(params?: {
   include_content?: boolean
   status?: string
   topic_type?: string
+  search?: string
   date_from?: string
   date_to?: string
 }) {

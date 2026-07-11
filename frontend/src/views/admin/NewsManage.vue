@@ -9,7 +9,8 @@
     <n-card size="small" style="margin-bottom:16px">
       <n-space align="center" :wrap="true">
         <span style="font-size:13px;color:var(--color-text-muted)">日期</span>
-        <n-date-picker v-model:value="filterDateRange" type="daterange" clearable size="small" style="width:220px">
+        <n-date-picker v-model:value="filterDateRange" type="daterange" clearable size="small" style="width:220px"
+          @update:value="applyFilter">
           <template #footer>
             <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
               <n-button size="tiny" quaternary @click="setDateRange('today')">今天</n-button>
@@ -22,10 +23,13 @@
           </template>
         </n-date-picker>
         <span style="font-size:13px;color:var(--color-text-muted)">状态</span>
-        <n-select v-model:value="filterStatus" :options="filterStatusOptions" clearable size="small" style="width:100px" placeholder="全部" />
+        <n-select v-model:value="filterStatus" :options="filterStatusOptions" clearable size="small" style="width:100px" placeholder="全部"
+          @update:value="applyFilter" />
         <span style="font-size:13px;color:var(--color-text-muted)">题材</span>
-        <n-select v-model:value="filterTopicTypes" :options="filterTopicOptions" multiple clearable size="small" style="width:180px" placeholder="全部" />
-        <n-button size="small" type="primary" @click="applyFilter">查询</n-button>
+        <n-select v-model:value="filterTopicTypes" :options="filterTopicOptions" multiple clearable size="small" style="width:180px" placeholder="全部"
+          @update:value="applyFilter" />
+        <n-input v-model:value="filterSearch" placeholder="搜索资讯..." clearable size="small" style="width:160px"
+          @keydown.enter="applyFilter" @clear="applyFilter" />
         <n-button v-if="checkedIds.length" size="small" type="success" @click="batchPublish">发布 {{ checkedIds.length }}</n-button>
         <n-button v-if="checkedIds.length" size="small" type="warning" @click="batchUnpublish">撤回 {{ checkedIds.length }}</n-button>
       </n-space>
@@ -129,6 +133,7 @@ function loadFilters() {
     const saved = localStorage.getItem(FILTER_KEY)
     if (saved) {
       const f = JSON.parse(saved)
+      if (f.search) filterSearch.value = f.search
       if (f.dateRange) filterDateRange.value = f.dateRange
       if (f.status) filterStatus.value = f.status
       if (f.topicTypes) filterTopicTypes.value = f.topicTypes
@@ -138,6 +143,7 @@ function loadFilters() {
 
 function saveFilters() {
   localStorage.setItem(FILTER_KEY, JSON.stringify({
+    search: filterSearch.value,
     dateRange: filterDateRange.value,
     status: filterStatus.value,
     topicTypes: filterTopicTypes.value,
@@ -185,6 +191,7 @@ function setDateRange(preset: 'today' | 'yesterday' | 'week' | 'lastWeek' | 'mon
 const filterDateRange = ref<[number, number] | null>(null)
 const filterStatus = ref<string | null>(null)
 const filterTopicTypes = ref<string[]>([])
+const filterSearch = ref('')
 
 const filterStatusOptions = [
   { label: '草稿', value: 'draft' },
@@ -272,6 +279,7 @@ function buildFilterParams() {
     page_size: pagination.value.pageSize,
     status: 'all',
   }
+  if (filterSearch.value.trim()) params.search = filterSearch.value.trim()
   if (filterStatus.value) params.status = filterStatus.value
   if (filterTopicTypes.value.length) params.topic_type = filterTopicTypes.value.join(',')
   if (filterDateRange.value) {
@@ -381,11 +389,12 @@ async function toggleNewsStatus(row: NewsItem, v: boolean) {
 async function batchPublish() {
   if (!checkedIds.value.length) return
   saving.value = true
-  let ok = 0
+  let ok = 0, fail = 0
   for (const id of checkedIds.value) {
-    try { await updateNews(id, { status: 'published' }); ok++ } catch {}
+    try { await updateNews(id, { status: 'published' }); ok++ } catch { fail++ }
   }
-  message.success(`已发布 ${ok}/${checkedIds.value.length} 条`)
+  if (fail) message.warning(`已发布 ${ok} 条，${fail} 条失败`)
+  else message.success(`已发布 ${ok}/${checkedIds.value.length} 条`)
   saving.value = false
   loadData()
 }
@@ -393,11 +402,12 @@ async function batchPublish() {
 async function batchUnpublish() {
   if (!checkedIds.value.length) return
   saving.value = true
-  let ok = 0
+  let ok = 0, fail = 0
   for (const id of checkedIds.value) {
-    try { await updateNews(id, { status: 'draft' }); ok++ } catch {}
+    try { await updateNews(id, { status: 'draft' }); ok++ } catch { fail++ }
   }
-  message.success(`已取消发布 ${ok}/${checkedIds.value.length} 条`)
+  if (fail) message.warning(`已取消发布 ${ok} 条，${fail} 条失败`)
+  else message.success(`已取消发布 ${ok}/${checkedIds.value.length} 条`)
   saving.value = false
   loadData()
 }
