@@ -33,6 +33,8 @@ impl AiScheduler {
 
     /// 启动调度循环（后台运行，永不返回）
     pub async fn start(self) {
+        // 启动时清理僵尸 running 记录（上次异常退出遗留）
+        self.cleanup_stale_running().await;
         info!("🤖 AI 定时调度器已启动，每 60 秒检查一次");
 
         loop {
@@ -43,7 +45,31 @@ impl AiScheduler {
         }
     }
 
-    /// 单次检查：查询到期任务并执行
+    /// 清理启动前遗留的僵尸 running 记录（上次异常退出未标记完成）
+    async fn cleanup_stale_running(&self) {
+        use crate::models::entity::ai_task_log;
+        use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
+
+        let stale = ai_task_log::Entity::find()
+            .filter(ai_task_log::Column::Status.eq("running"))
+            .all(&self.state.db)
+            .await;
+
+        match stale {
+            Ok(ref entries) if !entries.is_empty() => {
+                let count = entries.len();
+                for entry in entries {
+                    let mut model: ai_task_log::ActiveModel = entry.clone().into();
+                    model.status = Set("failed".to_string());
+                    model.error = Set(Some("任务超时（服务重启前未完成）".to_string()));
+                    let _ = model.update(&self.state.db).await;
+                }
+                info!("🧹 清理了 {} 条僵尸 running 记录", count);
+            }
+            Ok(_) => {}
+            Err(e) => warn!("清理僵尸记录失败: {}", e),
+        }
+    }
     async fn tick(&self) -> Result<(), anyhow::Error> {
         let tasks = ai_task::Entity::find()
             .filter(ai_task::Column::Enabled.eq(true))

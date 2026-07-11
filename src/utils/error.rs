@@ -15,7 +15,7 @@ pub enum AppError {
     BadRequest(String),
     #[error("验证错误: {0}")]
     Validation(String),
-    #[error("内部错误")]
+    #[error("内部错误: {0}")]
     Internal(#[from] anyhow::Error),
     #[error("数据库错误")]
     DbError(#[from] sea_orm::DbErr),

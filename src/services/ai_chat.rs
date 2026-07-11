@@ -104,8 +104,14 @@ pub async fn run_function_calling_traced(
             .send().await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("LLM 请求失败: {}", e)))?;
 
-        let body: Value = resp.json().await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("LLM 响应解析失败: {}", e)))?;
+        let status = resp.status();
+        let resp_text = resp.text().await.unwrap_or_default();
+        let body: Value = serde_json::from_str(&resp_text)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!(
+                "LLM 响应解析失败 (HTTP {}): {} — body: {}",
+                status.as_u16(), e,
+                &resp_text[..resp_text.len().min(500)]
+            )))?;
 
         let choice = &body["choices"][0];
         let msg = &choice["message"];

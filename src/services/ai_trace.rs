@@ -50,7 +50,10 @@ pub fn trace_remove(task_id: i32) {
 pub async fn trace_persist(db: &DatabaseConnection, task_id: i32) {
     let entry = match CACHE.lock().unwrap().remove(&task_id) {
         Some(e) => e,
-        None => return,
+        None => {
+            tracing::warn!("trace_persist: 任务 #{} 缓存已不存在，可能被重复持久化", task_id);
+            return;
+        }
     };
 
     use crate::models::entity::ai_task_log;
@@ -67,5 +70,7 @@ pub async fn trace_persist(db: &DatabaseConnection, task_id: i32) {
         ..Default::default()
     };
 
-    let _ = model.insert(db).await;
+    if let Err(e) = model.insert(db).await {
+        tracing::error!("trace_persist: 持久化任务 #{} 失败: {}", task_id, e);
+    }
 }
