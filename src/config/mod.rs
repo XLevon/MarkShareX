@@ -34,10 +34,14 @@ pub struct AiSearchConfig {
     /// 降级提供商的 API Key
     #[serde(default)]
     pub fallback_api_key: String,
+    /// DuckDuckGo 搜索地址（默认 lite.duckduckgo.com，可改为代理地址）
+    #[serde(default = "default_duckduckgo_url")]
+    pub duckduckgo_url: String,
 }
 
 fn default_search_provider() -> String { "tavily".to_string() }
 fn default_fallback_provider() -> String { "firecrawl".to_string() }
+fn default_duckduckgo_url() -> String { "https://lite.duckduckgo.com/lite/".to_string() }
 
 impl AiSearchConfig {
     /// 返回降级链：[(provider, api_key), ...]，最后永远是 duckduckgo 兜底

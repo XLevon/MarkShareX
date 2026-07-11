@@ -157,7 +157,7 @@ impl AiTool for WebSearchTool {
             // duckduckgo 终极兜底
             if *provider == "duckduckgo" {
                 tracing::info!("搜索降级到 DuckDuckGo (兜底)");
-                return duckduckgo_search(&query, limit).await;
+                return duckduckgo_search(&query, limit, &cfg.duckduckgo_url).await;
             }
 
             if key.is_empty() {
@@ -789,7 +789,7 @@ impl AiTool for ApiRequestTool {
 
 
 /// DuckDuckGo 免费搜索：抓取 Lite 版 HTML 页面并解析结果
-async fn duckduckgo_search(query: &str, limit: usize) -> Result<String, AppError> {
+async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<String, AppError> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
@@ -797,7 +797,8 @@ async fn duckduckgo_search(query: &str, limit: usize) -> Result<String, AppError
         .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
 
     let url = format!(
-        "https://lite.duckduckgo.com/lite/?q={}",
+        "{}?q={}",
+        base_url.trim_end_matches('/'),
         urlencoding(query)
     );
 
