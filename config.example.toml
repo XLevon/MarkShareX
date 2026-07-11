@@ -36,7 +36,8 @@ refresh_expire_seconds = 604800  # Refresh Token: 7 天
 # 生成: openssl rand -base64 32
 # ⚠️ 部署时务必生成并固定，切勿修改！修改后已加密的 API Key 将无法解密，需重新输入
 # ⚠️ 多环境必须一致，否则加密数据不互通
-encrypt_key = ""
+# 留空则启动时自动生成随机密钥（仅开发环境，生产请固定）
+encrypt_key = "change-me-32byte-encrypt-key!!"
 
 # ------------------------------ 存储配置 ------------------------------
 [storage]
