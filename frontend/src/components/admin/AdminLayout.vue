@@ -669,4 +669,33 @@ if (!settingsStore.loaded) {
   border-top-color: #4f46e5; border-radius: 50%; animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 640px) {
+  .admin-main {
+    padding: 16px 12px 48px;
+  }
+  .admin-nav-links {
+    gap: 2px;
+  }
+  .admin-nav-link {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-box {
+    width: 94%;
+    padding: 20px 16px;
+    border-radius: 10px;
+  }
+  .modal-box h3 {
+    font-size: 16px;
+    margin-bottom: 16px;
+  }
+  .form-input, .form-textarea {
+    font-size: 16px; /* 防止 iOS 缩放 */
+  }
+}
 </style>

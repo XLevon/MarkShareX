@@ -446,10 +446,33 @@ onMounted(() => { loadFilters(); loadData() })
   align-items: center;
   margin-bottom: 24px;
 }
-.page-header h2 {
+:page-header h2 {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
   color: var(--input-color);
+}
+
+@media (max-width: 640px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .page-header h2 {
+    font-size: 22px;
+  }
+  /* 筛选栏控件纵向堆叠 */
+  .news-manage :deep(.n-card .n-space) {
+    flex-wrap: wrap;
+  }
+  .news-manage :deep(.n-card .n-space > *) {
+    min-width: 100%;
+  }
+  /* 表格横向滚动 */
+  .news-manage :deep(.n-data-table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 </style>

@@ -899,4 +899,21 @@ onMounted(() => loadAll())
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
 .page-header h2 { margin: 0; font-size: 28px; font-weight: 700; color: var(--input-color); }
 .tab-toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; align-items: center; }
+
+@media (max-width: 640px) {
+  .page-header h2 { font-size: 22px; }
+  .ai-manage :deep(.n-data-table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 模型筛选栏纵向堆叠 */
+  .tab-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tab-toolbar .n-select,
+  .tab-toolbar .n-button {
+    min-width: 100%;
+  }
+}
 </style>

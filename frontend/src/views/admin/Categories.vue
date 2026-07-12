@@ -545,4 +545,12 @@ defineExpose({ openCreateModal })
 :deep(.drag-handle) {
   cursor: grab;
 }
+
+@media (max-width: 640px) {
+  :deep(.n-data-table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 </style>

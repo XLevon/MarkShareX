@@ -1438,4 +1438,39 @@ watch(() => route.query.status, (newVal) => {
   color: var(--color-text-muted);
   font-size: 12px;
 }
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 640px) {
+  .page-title { font-size: 22px; }
+  .filter-bar {
+    flex-wrap: wrap;
+  }
+  .filter-bar > * {
+    min-width: 100%;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .filter-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-shrink: 0;
+  }
+  .filter-tab {
+    white-space: nowrap;
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+  .main-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .main-tab {
+    white-space: nowrap;
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+}
+
 </style>
