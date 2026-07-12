@@ -356,6 +356,28 @@ pub async fn update_news(
     Ok(Json(ApiResponse { data: NewsResponse::from(updated), pagination: None }))
 }
 
+/// POST /api/v1/admin/news/batch-delete — 批量删除咨询
+#[derive(Deserialize, ToSchema)]
+pub struct BatchDeleteRequest {
+    pub ids: Vec<i32>,
+}
+
+pub async fn batch_delete_news(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<BatchDeleteRequest>,
+) -> Result<Json<ApiResponse<i32>>, AppError> {
+    if auth.role != "admin" {
+        return Err(AppError::Forbidden);
+    }
+    let count = news::Entity::delete_many()
+        .filter(news::Column::Id.is_in(req.ids))
+        .exec(&state.db)
+        .await?
+        .rows_affected as i32;
+    Ok(Json(ApiResponse { data: count, pagination: None }))
+}
+
 /// DELETE /api/v1/admin/news/{id} — 删除咨询
 #[utoipa::path(
     delete,

@@ -121,6 +121,10 @@
             <polyline v-else points="6 15 12 9 18 15"/>
           </svg>
         </button>
+        <button v-if="activeTab === 'draft' && isAdmin && posts.length > 0"
+          class="btn-danger btn-sm" style="margin-left: 8px" @click="batchDeleteDrafts">
+          批量删除草稿
+        </button>
       </div>
 
       <!-- 卡片列表 -->
@@ -318,6 +322,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { fetchAdminPosts, deletePost, pinPost, unpinPost, updatePinOrder, updatePost, fetchPost } from '@/api/posts'
 import { fetchUsers } from '@/api/admin'
 import type { Post } from '@/api/index'
+import api from '@/api'
 import { marked } from 'marked'
 import dayjs from 'dayjs'
 import { NSelect } from 'naive-ui'
@@ -339,6 +344,7 @@ const isPrivileged = computed(() => {
   const role = authStore.user?.role
   return role === 'admin' || role === 'sub_admin'
 })
+const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const categoriesRef = ref<InstanceType<typeof CategoriesTab> | null>(null)
 const tagsRef = ref<InstanceType<typeof TagsTab> | null>(null)
@@ -746,6 +752,19 @@ async function handleDelete() {
     resetAndLoad()
     loadCounts()
   } catch { /* ignore */ }
+}
+
+async function batchDeleteDrafts() {
+  if (!posts.value.length) return
+  if (!confirm(`确定删除当前列表中已加载的 ${posts.value.length} 篇草稿吗？此操作不可恢复。`)) return
+  const ids = posts.value.map(p => p.id)
+  try {
+    await api.post('/admin/posts/batch-delete', { ids })
+    resetAndLoad()
+    loadCounts()
+  } catch (e: any) {
+    alert(e?.response?.data?.error || '批量删除失败')
+  }
 }
 
 // ── 拖拽排序 ──

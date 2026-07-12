@@ -32,6 +32,7 @@
           @keydown.enter="applyFilter" @clear="applyFilter" />
         <n-button v-if="checkedIds.length" size="small" type="success" @click="batchPublish">发布 {{ checkedIds.length }}</n-button>
         <n-button v-if="checkedIds.length" size="small" type="warning" @click="batchUnpublish">撤回 {{ checkedIds.length }}</n-button>
+        <n-button v-if="isAdmin && checkedIds.length" size="small" type="error" @click="batchDelete">删除 {{ checkedIds.length }}</n-button>
       </n-space>
     </n-card>
 
@@ -111,8 +112,13 @@
 import { ref, onMounted, h, computed } from 'vue'
 import { NButton, NSwitch, NSpace, NCheckbox, useMessage } from 'naive-ui'
 import { fetchAdminNews, fetchAdminNewsItem, createNews, updateNews, deleteNews, type NewsItem } from '@/api/news'
+import api from '@/api'
+
+import { useAuthStore } from '@/stores/auth'
 
 const message = useMessage()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 const loading = ref(false)
 const saving = ref(false)
@@ -410,6 +416,21 @@ async function batchUnpublish() {
   else message.success(`已取消发布 ${ok}/${checkedIds.value.length} 条`)
   saving.value = false
   loadData()
+}
+
+async function batchDelete() {
+  if (!checkedIds.value.length) return
+  if (!confirm(`确定删除选中的 ${checkedIds.value.length} 条资讯吗？此操作不可恢复。`)) return
+  saving.value = true
+  try {
+    await api.post('/admin/news/batch-delete', { ids: checkedIds.value })
+    message.success(`已删除 ${checkedIds.value.length} 条`)
+    loadData()
+  } catch (e: any) {
+    message.error(e?.response?.data?.error || '批量删除失败')
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(() => { loadFilters(); loadData() })

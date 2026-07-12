@@ -220,6 +220,7 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         .route("/api/v1/admin/applications/:id/reject", post(author_applications::reject_application))
         // Admin posts
         .route("/api/v1/admin/posts", get(posts::list_admin_posts))
+        .route("/api/v1/admin/posts/batch-delete", post(posts::batch_delete_posts))
         .route("/api/v1/admin/posts/pin-order", put(posts::update_pin_order))
         .route("/api/v1/admin/posts/:id/pin", post(posts::pin_post))
         .route("/api/v1/admin/posts/:id/unpin", post(posts::unpin_post))
@@ -278,6 +279,7 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         .route("/api/v1/news/:id", get(news::get_news))
         // News (admin)
         .route("/api/v1/admin/news", get(news::list_admin_news).post(news::create_news))
+        .route("/api/v1/admin/news/batch-delete", post(news::batch_delete_news))
         .route("/api/v1/admin/news/:id", get(news::get_news).put(news::update_news).delete(news::delete_news))
         // AI (admin)
         .route("/api/v1/admin/ai/providers", get(ai::list_providers).post(ai::create_provider))

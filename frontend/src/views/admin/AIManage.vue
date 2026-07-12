@@ -334,6 +334,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, h, nextTick } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { NButton, NTag, NSpace, NSwitch, NSelect, useMessage } from 'naive-ui'
 import {
   fetchProviders, createProvider, updateProvider, deleteProvider, testProvider, type AiProvider,
@@ -346,7 +347,20 @@ import {
 } from '@/api/ai'
 
 const message = useMessage()
-const activeTab = ref('providers')
+const router = useRouter()
+const route = useRoute()
+
+const validTabs = ['providers', 'tools', 'agent', 'skills', 'tasks']
+const activeTab = ref<string>(
+  (route.query.ai_tab as string) && validTabs.includes(route.query.ai_tab as string)
+    ? (route.query.ai_tab as string)
+    : 'providers'
+)
+
+// Tab 切换时同步到 URL
+watch(activeTab, (val) => {
+  router.replace({ query: { ...route.query, ai_tab: val } })
+})
 const loading = ref(false)
 const saving = ref(false)
 

@@ -1000,6 +1000,30 @@ pub async fn delete_post(
 
     Ok(Json(ApiResponse::new(())))
 }
+
+/// POST /api/v1/admin/posts/batch-delete — 批量删除文章（仅 admin）
+#[derive(Deserialize, ToSchema)]
+pub struct BatchDeletePostsRequest {
+    pub ids: Vec<i32>,
+}
+
+pub async fn batch_delete_posts(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(req): Json<BatchDeletePostsRequest>,
+) -> Result<Json<ApiResponse<i32>>, AppError> {
+    if auth.role != "admin" {
+        return Err(AppError::Forbidden);
+    }
+    let mut count = 0;
+    for id in &req.ids {
+        crate::services::posts::delete_post(&state.db, *id).await?;
+        let _ = state.search_engine.delete_from_index(*id as u64);
+        count += 1;
+    }
+    Ok(Json(ApiResponse { data: count, pagination: None }))
+}
+
 /// GET /api/v1/posts/slug/{slug} — Get post by slug
 
 #[utoipa::path(
