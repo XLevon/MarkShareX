@@ -70,6 +70,10 @@ api_url = ""
 fallback_provider = "firecrawl"
 fallback_api_key = ""
 
+# 自托管: SearXNG 搜索（聚合多个搜索引擎，配置地址后自动加入降级链）
+# 默认: 留空不使用
+searxng_url = ""
+
 # 终极兜底: DuckDuckGo 免费搜索，无需 API Key
 # 国内服务器需通过代理访问（nginx 反代 lite.duckduckgo.com）
 duckduckgo_url = ""

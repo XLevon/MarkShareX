@@ -34,6 +34,9 @@ pub struct AiSearchConfig {
     /// 降级提供商的 API Key
     #[serde(default)]
     pub fallback_api_key: String,
+    /// SearXNG 自托管搜索地址（留空则不加入降级链）
+    #[serde(default)]
+    pub searxng_url: String,
     /// DuckDuckGo 搜索地址（默认 lite.duckduckgo.com，可改为代理地址）
     #[serde(default = "default_duckduckgo_url")]
     pub duckduckgo_url: String,
@@ -49,6 +52,10 @@ impl AiSearchConfig {
         let mut chain = vec![(self.provider.as_str(), self.api_key.as_str())];
         if !self.fallback_provider.is_empty() && self.fallback_provider != self.provider {
             chain.push((self.fallback_provider.as_str(), self.fallback_api_key.as_str()));
+        }
+        // SearXNG 自托管搜索（配置了才加入降级链）
+        if !self.searxng_url.is_empty() {
+            chain.push(("searxng", ""));
         }
         if self.provider != "duckduckgo" && self.fallback_provider != "duckduckgo" {
             chain.push(("duckduckgo", "")); // 终极兜底

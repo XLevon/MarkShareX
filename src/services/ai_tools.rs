@@ -154,6 +154,11 @@ impl AiTool for WebSearchTool {
         let mut last_err = String::new();
 
         for (i, (provider, key)) in chain.iter().enumerate() {
+            // searxng 自托管搜索（跳过 key 检查）
+            if *provider == "searxng" {
+                tracing::info!("搜索降级到 SearXNG (自托管)");
+                return searxng_search(&query, limit, &cfg.searxng_url).await;
+            }
             // duckduckgo 终极兜底
             if *provider == "duckduckgo" {
                 tracing::info!("搜索降级到 DuckDuckGo (兜底)");
@@ -269,9 +274,9 @@ impl AiTool for WebExtractTool {
         for url in urls.iter().take(5) {
             let mut extracted = false;
 
-            // 遍历降级链：tavily → firecrawl → (最终兜底 HTTP GET)
+            // 遍历降级链：tavily → firecrawl → searxng → (最终兜底 HTTP GET)
             for (provider, key) in &chain {
-                if *provider == "duckduckgo" {
+                if *provider == "searxng" || *provider == "duckduckgo" {
                     // 终极兜底：直接 HTTP GET
                     match fetch_url_directly(url).await {
                         Ok(text) => {
@@ -796,9 +801,14 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
         .build()
         .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
 
+    let base = if base_url.is_empty() {
+        "https://lite.duckduckgo.com/lite/"
+    } else {
+        base_url
+    };
     let url = format!(
         "{}?q={}",
-        base_url.trim_end_matches('/'),
+        base.trim_end_matches('/'),
         urlencoding(query)
     );
 
@@ -845,6 +855,50 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
         "count": results.len(),
         "results": results,
         "provider": "duckduckgo",
+    })).unwrap_or_default())
+}
+
+/// SearXNG 自托管搜索：调用 JSON API
+async fn searxng_search(query: &str, limit: usize, base_url: &str) -> Result<String, AppError> {
+    if base_url.is_empty() {
+        return Err(AppError::Internal(anyhow::anyhow!("SearXNG 未配置地址")));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
+        .build()
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
+
+    let url = format!(
+        "{}/search?q={}&format=json&language=zh-CN",
+        base_url.trim_end_matches('/'),
+        urlencoding(query)
+    );
+
+    let resp = client.get(&url).send().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("SearXNG 搜索请求失败: {}", e)))?;
+
+    let body: Value = resp.json().await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("SearXNG 响应解析失败: {}", e)))?;
+
+    let results: Vec<Value> = body["results"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .take(limit)
+        .map(|r| serde_json::json!({
+            "title": r["title"].as_str().unwrap_or(""),
+            "url": r["url"].as_str().unwrap_or(""),
+            "description": r["content"].as_str().unwrap_or(""),
+        }))
+        .filter(|r| !r["title"].as_str().unwrap_or("").is_empty())
+        .collect();
+
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "success": true,
+        "count": results.len(),
+        "results": results,
+        "provider": "searxng",
     })).unwrap_or_default())
 }
 
