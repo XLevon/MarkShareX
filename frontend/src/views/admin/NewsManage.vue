@@ -1,7 +1,7 @@
 <template>
   <div class="news-manage">
     <div class="page-header">
-      <h2 class="font-bold mb-6" style="color: var(--input-color); font-size: 28px">📢 资讯管理</h2>
+      <h2 class="font-bold" style="color: var(--input-color); font-size: 28px">📢 资讯管理</h2>
       <n-button type="primary" @click="openCreate">+ 新建资讯</n-button>
     </div>
 
@@ -62,6 +62,13 @@
     <!-- Create/Edit Modal -->
     <n-modal v-model:show="showModal" :mask-closable="false" title="资讯管理">
       <n-card style="width: 720px; max-width: 90vw" :title="editingId ? '编辑资讯' : '新建资讯'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevEdit" :disabled="editingIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextEdit" :disabled="editingIndex < 0 || editingIndex >= items.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="left" label-width="80">
           <n-form-item label="标题" required>
             <n-input v-model:value="form.title" placeholder="输入资讯标题" />
@@ -96,6 +103,13 @@
     <!-- Preview Modal -->
     <n-modal v-model:show="showPreview" :mask-closable="false">
       <n-card style="width:800px;max-width:95vw" :title="previewTitle">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevPreview" :disabled="previewIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextPreview" :disabled="previewIndex < 0 || previewIndex >= items.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showPreview = false">✕</n-button>
+          </n-space>
+        </template>
         <div v-if="previewHtml" class="markdown-body" v-html="previewHtml"></div>
         <div v-else style="color:var(--color-text-muted);text-align:center;padding:40px">暂无内容</div>
         <template #footer>
@@ -218,7 +232,9 @@ const filterTopicOptions = [
 
 const showModal = ref(false)
 const editingId = ref<number | null>(null)
+const editingIndex = ref(-1)
 const showPreview = ref(false)
+const previewIndex = ref(-1)
 const previewTitle = ref('')
 const previewHtml = ref('')
 const form = ref({
@@ -321,25 +337,35 @@ function applyFilter() { saveFilters(); pagination.value.page = 1; loadData() }
 
 function openCreate() {
   editingId.value = null
+  editingIndex.value = -1
   form.value = { title: '', summary: '', content: '', status: 'draft', topic_type: '', sort_order: 0 }
   showModal.value = true
 }
 
-function openEdit(row: NewsItem) {
+async function openEdit(row: NewsItem) {
   editingId.value = row.id
+  editingIndex.value = items.value.findIndex(item => item.id === row.id)
   form.value = {
     title: row.title,
     summary: row.summary,
-    content: row.content,
+    content: row.content || '',
     status: row.status,
     topic_type: row.topic_type,
     sort_order: row.sort_order,
   }
   showModal.value = true
+  // 列表 API 不含正文，需要单独加载
+  try {
+    const { data } = await fetchAdminNewsItem(row.id)
+    form.value.content = data.data.content || ''
+  } catch {}
 }
+function navPrevEdit() { const idx = editingIndex.value; if (idx > 0) openEdit(items.value[idx - 1]) }
+function navNextEdit() { const idx = editingIndex.value; if (idx >= 0 && idx < items.value.length - 1) openEdit(items.value[idx + 1]) }
 
 async function openPreview(row: NewsItem) {
   previewTitle.value = row.title
+  previewIndex.value = items.value.findIndex(item => item.id === row.id)
   previewHtml.value = ''
   showPreview.value = true
   try {
@@ -349,6 +375,8 @@ async function openPreview(row: NewsItem) {
     previewHtml.value = '<p style="color:var(--color-text-muted);text-align:center;padding:40px">加载失败</p>'
   }
 }
+function navPrevPreview() { const idx = previewIndex.value; if (idx > 0) openPreview(items.value[idx - 1]) }
+function navNextPreview() { const idx = previewIndex.value; if (idx >= 0 && idx < items.value.length - 1) openPreview(items.value[idx + 1]) }
 
 async function handleSave() {
   if (!form.value.title.trim()) { message.warning('请输入标题'); return }

@@ -495,10 +495,10 @@ const allNavItems = [
   { label: '知识库', key: 'posts', to: '/admin/posts', icon: postsIcon, roles: ['admin', 'sub_admin', 'author'] },
   { label: '资源库', key: 'files', to: '/admin/files', icon: filesIcon, roles: ['admin', 'sub_admin', 'author'] },
   { label: '批导', key: 'import', to: '/admin/import', icon: importIcon, roles: ['admin', 'sub_admin', 'author'] },
+  { label: '资讯', key: 'news', to: '/admin/news', icon: newsIcon, roles: ['admin', 'sub_admin'] },
+  { label: 'AI', key: 'ai', to: '/admin/ai', icon: aiIcon, roles: ['admin'] },
   { label: '用户', key: 'users', to: '/admin/users', icon: usersIcon, roles: ['admin', 'sub_admin'] },
   { label: '设置', key: 'settings', to: '/admin/settings', icon: settingsIcon, roles: ['admin'] },
-  { label: '资讯', key: 'news', to: '/admin/news', icon: newsIcon, roles: ['admin', 'sub_admin'] },
-  { label: 'AI', key: 'ai', to: '/admin/ai', icon: aiIcon, roles: ['admin', 'sub_admin'] },
 ]
 
 const navItems = computed(() =>

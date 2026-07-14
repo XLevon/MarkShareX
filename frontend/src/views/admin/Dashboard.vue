@@ -57,7 +57,7 @@
           <span class="stat-label">评论数</span>
         </div>
       </router-link>
-      <router-link to="/admin/guestbook" class="stat-card stat-link">
+      <router-link v-if="isAdmin || isSubAdmin" to="/admin/guestbook" class="stat-card stat-link">
         <div class="stat-icon guestbook">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
         </div>
@@ -106,7 +106,7 @@
         <span class="quick-label">基础设置</span>
         <span class="quick-desc">站点标题、描述等配置</span>
       </router-link>
-      <router-link to="/admin/news" class="quick-card">
+      <router-link v-if="isAdmin || isSubAdmin" to="/admin/news" class="quick-card">
         <div class="quick-icon news-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 4l8 8 8-8"/></svg>
         </div>
@@ -218,6 +218,14 @@ const isAdmin = computed(() => {
   try {
     const stored = localStorage.getItem('marksharex_user') || sessionStorage.getItem('marksharex_user')
     if (stored) return JSON.parse(stored).role === 'admin'
+  } catch {}
+  return false
+})
+
+const isSubAdmin = computed(() => {
+  try {
+    const stored = localStorage.getItem('marksharex_user') || sessionStorage.getItem('marksharex_user')
+    if (stored) return JSON.parse(stored).role === 'sub_admin'
   } catch {}
   return false
 })

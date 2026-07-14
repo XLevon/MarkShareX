@@ -116,6 +116,10 @@ router.beforeEach(async (to, from) => {
         if (!adminRoles.includes(user.role)) {
           return { name: 'home' }
         }
+        // only admin can access AI module
+        if (user.role !== 'admin' && to.path.startsWith('/admin/ai')) {
+          return { name: 'admin-dashboard' }
+        }
       } catch { /* corrupted user data, let through */ }
     }
   }

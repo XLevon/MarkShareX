@@ -105,7 +105,7 @@
     </section>
 
     <!-- News Section -->
-    <section v-if="newsItems.length > 0" class="max-w-4xl mx-auto px-4 pt-12 md:pt-16 pb-0">
+    <section class="max-w-4xl mx-auto px-4 pt-12 md:pt-16 pb-0">
       <!-- Header row: title + search + date -->
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-4">
         <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>

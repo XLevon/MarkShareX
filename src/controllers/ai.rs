@@ -768,6 +768,7 @@ pub async fn list_task_logs(
     let items = ai_task_log::Entity::find()
         .filter(ai_task_log::Column::TaskId.eq(task_id))
         .order_by_desc(ai_task_log::Column::Id)
+        .limit(50)
         .all(&state.db)
         .await?;
 
@@ -819,9 +820,20 @@ pub async fn get_task_log(
     }))
 }
 
-// ═══════════════════════════════════════════════════════
-//  Agent Config
-// ═══════════════════════════════════════════════════════
+/// DELETE /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 删除单条日志
+pub async fn delete_task_log(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path((_task_id, log_id)): Path<(i32, i32)>,
+) -> Result<Json<ApiResponse<String>>, AppError> {
+    let result = ai_task_log::Entity::delete_by_id(log_id)
+        .exec(&state.db)
+        .await?;
+    if result.rows_affected == 0 {
+        return Err(AppError::NotFound("日志不存在".into()));
+    }
+    Ok(Json(ApiResponse { data: "已删除".to_string(), pagination: None }))
+}
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct AgentConfigResponse {

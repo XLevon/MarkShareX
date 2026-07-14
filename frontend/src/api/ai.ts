@@ -105,6 +105,9 @@ export function listTaskLogs(taskId: number) {
 export function getTaskLog(taskId: number, logId: number) {
   return api.get<{ data: TaskLogDetail }>(`/admin/ai/tasks/${taskId}/logs/${logId}`)
 }
+export function deleteTaskLog(taskId: number, logId: number) {
+  return api.delete<{ data: string }>(`/admin/ai/tasks/${taskId}/logs/${logId}`)
+}
 export interface TaskLogDetail {
   id: number
   task_id: number

@@ -59,6 +59,13 @@
     <!-- Dialogs follow -->
     <n-modal v-model:show="showProviderModal" :mask-closable="false">
       <n-card style="width:520px;max-width:90vw" :title="editingProviderId ? '编辑供应商' : '添加供应商'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevProvider" :disabled="editingProviderIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextProvider" :disabled="editingProviderIndex < 0 || editingProviderIndex >= providers.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showProviderModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="left" label-width="80">
           <n-form-item label="名称" required><n-input v-model:value="providerForm.name" placeholder="硅基流动" /></n-form-item>
           <n-form-item label="类型"><n-select v-model:value="providerForm.provider_type" :options="providerTypeOptions" /></n-form-item>
@@ -85,6 +92,13 @@
     <!-- Agent Modal -->
     <n-modal v-model:show="showAgentModal" :mask-closable="false" :key="'agent-'+agentModalKey">
       <n-card style="width:640px;max-width:92vw" :title="editingAgentId ? '编辑智能体' : '添加智能体'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevAgent" :disabled="editingAgentIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextAgent" :disabled="editingAgentIndex < 0 || editingAgentIndex >= agentConfigs.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showAgentModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="left" label-width="80">
           <n-form-item label="名称" required><n-input v-model:value="agentForm.name" placeholder="对话框助手" /></n-form-item>
           <n-form-item label="系统提示词">
@@ -115,6 +129,13 @@
     <!-- Skill Modal -->
     <n-modal v-model:show="showSkillModal" :mask-closable="false">
       <n-card style="width:700px;max-width:92vw" :title="editingSkillId ? '编辑技能' : '添加技能'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevSkill" :disabled="editingSkillIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextSkill" :disabled="editingSkillIndex < 0 || editingSkillIndex >= skills.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showSkillModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="top">
           <n-form-item label="名称" required><n-input v-model:value="skillForm.name" placeholder="每日AI快讯" /></n-form-item>
           <n-form-item label="描述"><n-input v-model:value="skillForm.description" placeholder="自动生成每日科技资讯摘要" /></n-form-item>
@@ -151,6 +172,13 @@
     <!-- Tool Modal -->
     <n-modal v-model:show="showToolModal" :mask-closable="false">
       <n-card style="width:560px;max-width:90vw" :title="editingToolId ? '编辑工具' : '添加工具'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevTool" :disabled="editingToolIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextTool" :disabled="editingToolIndex < 0 || editingToolIndex >= tools.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showToolModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="left" label-width="90">
           <n-form-item label="工具名称" required><n-input v-model:value="toolForm.name" placeholder="搜索文章" :disabled="!!editingToolId" /></n-form-item>
           <n-form-item label="功能名" required><n-input v-model:value="toolForm.function_name" placeholder="search_posts" :disabled="!!editingToolId" /></n-form-item>
@@ -178,6 +206,13 @@
     <!-- Task Modal -->
     <n-modal v-model:show="showTaskModal" :mask-closable="false" :key="'task-'+taskModalKey">
       <n-card style="width:520px;max-width:90vw" :title="editingTaskId ? '编辑任务' : '添加任务'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevTask" :disabled="editingTaskIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextTask" :disabled="editingTaskIndex < 0 || editingTaskIndex >= tasks.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showTaskModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="left" label-width="80">
           <n-form-item label="任务名称">
             <n-input v-model:value="taskForm.name" placeholder="如：每日AI资讯" />
@@ -216,7 +251,7 @@
 
     <!-- Task Trace Modal -->
     <n-modal v-model:show="showTraceModal" :mask-closable="false" style="width:720px;max-width:95vw">
-      <n-card :title="`📋 执行追踪 — ${traceTaskName}`" :bordered="false" size="small">
+      <n-card :title="`📋 执行追踪 — ${traceTaskName}`" :bordered="false" size="small" closable @close="showTraceModal = false">
         <!-- 等待首轮数据 -->
         <div v-if="traceRunning && traceSteps.length === 0" style="text-align:center;padding:60px 0">
           <n-spin size="large" /><p style="margin-top:16px;color:var(--color-text-muted)">正在执行任务，请稍候...</p>
@@ -259,7 +294,7 @@
 
     <!-- Task Log List Modal -->
     <n-modal v-model:show="showLogModal" :mask-closable="false" style="width:600px;max-width:92vw">
-      <n-card :title="`📜 ${logTaskName} — 执行日志`" :bordered="false" size="small">
+      <n-card :title="`📜 ${logTaskName} — 执行日志`" :bordered="false" size="small" closable @close="showLogModal = false">
         <n-spin :show="logLoading">
           <div v-if="logItems.length === 0 && !logLoading" style="text-align:center;padding:40px 0;color:var(--color-text-muted)">暂无执行记录</div>
           <n-data-table v-else :columns="logColumns" :data="logItems" :loading="logLoading" size="small" />
@@ -275,6 +310,13 @@
     <!-- Task Log Detail Modal (复用 trace 展示) -->
     <n-modal v-model:show="showLogDetailModal" :mask-closable="false" style="width:720px;max-width:95vw">
       <n-card :title="`📋 执行详情`" :bordered="false" size="small">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevLogDetail" :disabled="logDetailIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextLogDetail" :disabled="logDetailIndex < 0 || logDetailIndex >= logItems.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showLogDetailModal = false">✕</n-button>
+          </n-space>
+        </template>
         <div v-if="logDetailSteps.length === 0" style="text-align:center;padding:40px 0;color:var(--color-text-muted)">无追踪数据</div>
         <div v-else style="max-height:60vh;overflow-y:auto">
           <div v-for="(step, i) in logDetailSteps" :key="i" style="margin-bottom:20px;border:1px solid var(--color-border);border-radius:8px;padding:12px">
@@ -312,6 +354,13 @@
     <!-- Model Modal -->
     <n-modal v-model:show="showModelModal" :mask-closable="false">
       <n-card style="width:400px;max-width:90vw" :title="editingModelId ? '编辑模型' : '添加模型'">
+        <template #header-extra>
+          <n-space :size="2">
+            <n-button size="tiny" quaternary @click="navPrevModel" :disabled="editingModelIndex <= 0">&lt;</n-button>
+            <n-button size="tiny" quaternary @click="navNextModel" :disabled="editingModelIndex < 0 || editingModelIndex >= filteredModels.length - 1">&gt;</n-button>
+            <n-button size="tiny" quaternary @click="showModelModal = false">✕</n-button>
+          </n-space>
+        </template>
         <n-form label-placement="left" label-width="80">
           <n-form-item label="供应商" required>
             <n-select v-model:value="modelForm.provider_id" :options="providerOptions" :disabled="!!editingModelId" />
@@ -340,7 +389,7 @@ import {
   fetchProviders, createProvider, updateProvider, deleteProvider, testProvider, type AiProvider,
   fetchSkills, createSkill, updateSkill, deleteSkill, type AiSkill,
   fetchTasks, createTask, updateTask, deleteTask, runTask, getTaskTrace, type AiTask, type TaskTraceStep,
-  listTaskLogs, getTaskLog, type TaskLogItem, type TaskLogDetail,
+  listTaskLogs, getTaskLog, deleteTaskLog, type TaskLogItem, type TaskLogDetail,
   fetchAgentConfigs, createAgentConfig, updateAgentConfig, deleteAgentConfig, type AgentConfig,
   fetchTools, createTool, updateTool, deleteTool, type AiTool,
   fetchModels, createModel, updateModel, deleteModel, type AiModel,
@@ -369,6 +418,7 @@ const agentConfigs = ref<AgentConfig[]>([])
 const showAgentModal = ref(false)
 const agentModalKey = ref(0)
 const editingAgentId = ref<number | null>(null)
+const editingAgentIndex = ref(-1)
 const agentForm = ref({ name: '', system_prompt: '', user_prompt: '', is_default: false, model_id: undefined as number | undefined })
 const agentProviderFilter = ref<number | null>(null)
 let skipAgentModelWatch = false
@@ -394,6 +444,7 @@ const agentColumns = [
 async function loadAgentConfigs() { loading.value = true; try { const r = await fetchAgentConfigs(); agentConfigs.value = r.data.data || [] } catch {} finally { loading.value = false } }
 function openAgentForm(row?: AgentConfig) {
   editingAgentId.value = row?.id ?? null
+  editingAgentIndex.value = row ? agentConfigs.value.findIndex(a => a.id === row.id) : -1
   agentForm.value = row ? { name: row.name, system_prompt: row.system_prompt, user_prompt: row.user_prompt, is_default: row.is_default, model_id: row.model_id ?? undefined } : { name: '', system_prompt: '', user_prompt: '', is_default: false, model_id: undefined }
   // 根据已有模型自动推导供应商筛选；模型被删除或未选时保留当前筛选（不清空）
   skipAgentModelWatch = true
@@ -424,6 +475,8 @@ async function handleDeleteAgent(row: AgentConfig) {
   if (!confirm(`确定删除「${row.name}」？`)) return
   try { await deleteAgentConfig(row.id); loadAgentConfigs() } catch (e: any) { message.error(e?.response?.data?.error || '删除失败') }
 }
+function navPrevAgent() { const idx = editingAgentIndex.value; if (idx > 0) openAgentForm(agentConfigs.value[idx - 1]) }
+function navNextAgent() { const idx = editingAgentIndex.value; if (idx >= 0 && idx < agentConfigs.value.length - 1) openAgentForm(agentConfigs.value[idx + 1]) }
 async function toggleAgentDefault(row: AgentConfig, v: boolean) {
   try {
     await updateAgentConfig(row.id, { is_default: v })
@@ -441,6 +494,7 @@ const models = ref<AiModel[]>([])
 const modelProviderFilter = ref<number | null>(null)
 const showModelModal = ref(false)
 const editingModelId = ref<number | null>(null)
+const editingModelIndex = ref(-1)
 const modelForm = ref({ provider_id: 0, name: '', is_default: false })
 const modelColumns = [
   { title: '供应商', key: 'provider_id', width: 130, render(row: AiModel) { return providers.value.find(p => p.id === row.provider_id)?.name || '-' } },
@@ -470,6 +524,7 @@ async function loadModels() {
 }
 function openModelForm(row?: AiModel) {
   editingModelId.value = row?.id ?? null
+  editingModelIndex.value = row ? filteredModels.value.findIndex(m => m.id === row.id) : -1
   modelForm.value = row ? { provider_id: row.provider_id, name: row.name, is_default: row.is_default } : { provider_id: modelProviderFilter.value || 0, name: '', is_default: false }
   showModelModal.value = true
 }
@@ -495,11 +550,14 @@ async function toggleModelDefault(row: AiModel, v: boolean) {
     message.success(v ? '已设为默认' : '已取消默认')
   } catch (e: any) { message.error(e?.response?.data?.error || '切换失败') }
 }
+function navPrevModel() { const idx = editingModelIndex.value; if (idx > 0) openModelForm(filteredModels.value[idx - 1]) }
+function navNextModel() { const idx = editingModelIndex.value; if (idx >= 0 && idx < filteredModels.value.length - 1) openModelForm(filteredModels.value[idx + 1]) }
 
 // ── Providers ──
 const providers = ref<AiProvider[]>([])
 const showProviderModal = ref(false)
 const editingProviderId = ref<number | null>(null)
+const editingProviderIndex = ref(-1)
 const providerForm = ref({ name: '', provider_type: 'openai', base_url: '', api_key: '', is_active: true })
 const keyCleared = ref(false)
 const providerTypeOptions = [
@@ -526,6 +584,7 @@ const providerColumns = [
 async function loadProviders() { loading.value = true; try { const r = await fetchProviders(); providers.value = r.data.data || [] } catch {} finally { loading.value = false } }
 function openProviderForm(row?: AiProvider) {
   editingProviderId.value = row?.id ?? null
+  editingProviderIndex.value = row ? providers.value.findIndex(p => p.id === row.id) : -1
   keyCleared.value = false
   if (row) {
     providerForm.value = { name: row.name, provider_type: row.provider_type, base_url: row.base_url, api_key: row.key_preview || '', is_active: row.is_active }
@@ -556,6 +615,8 @@ async function handleDeleteProvider(row: AiProvider) {
   if (!confirm(`确定删除「${row.name}」？`)) return
   try { await deleteProvider(row.id); loadProviders() } catch (e: any) { message.error(e?.response?.data?.error || '删除失败') }
 }
+function navPrevProvider() { const idx = editingProviderIndex.value; if (idx > 0) openProviderForm(providers.value[idx - 1]) }
+function navNextProvider() { const idx = editingProviderIndex.value; if (idx >= 0 && idx < providers.value.length - 1) openProviderForm(providers.value[idx + 1]) }
 async function toggleProviderActive(row: AiProvider, v: boolean) {
   try { await updateProvider(row.id, { is_active: v }); row.is_active = v; message.success(v ? '已启用' : '已停用') }
   catch (e: any) { message.error(e?.response?.data?.error || '切换失败') }
@@ -583,6 +644,7 @@ async function handleTestProvider(row: AiProvider) {
 const skills = ref<AiSkill[]>([])
 const showSkillModal = ref(false)
 const editingSkillId = ref<number | null>(null)
+const editingSkillIndex = ref(-1)
 const skillForm = ref({ name: '', description: '', content: '', output_format: 'markdown', params_template: '{}' })
 const outputFormatOptions = [
   { label: 'Markdown', value: 'markdown' },
@@ -618,6 +680,7 @@ const skillColumns = [
 async function loadSkills() { loading.value = true; try { const r = await fetchSkills(); skills.value = r.data.data || [] } catch {} finally { loading.value = false } }
 function openSkillForm(row?: AiSkill) {
   editingSkillId.value = row?.id ?? null
+  editingSkillIndex.value = row ? skills.value.findIndex(s => s.id === row.id) : -1
   skillForm.value = row ? { name: row.name, description: row.description, content: row.content, output_format: row.output_format, params_template: row.params_template } : { name: '', description: '', content: '', output_format: 'markdown', params_template: '{}' }
   showSkillModal.value = true
 }
@@ -647,16 +710,20 @@ async function handleDeleteSkill(row: AiSkill) {
   if (!confirm(`确定删除「${row.name}」？`)) return
   try { await deleteSkill(row.id); loadSkills() } catch (e: any) { message.error(e?.response?.data?.error || '删除失败') }
 }
+function navPrevSkill() { const idx = editingSkillIndex.value; if (idx > 0) openSkillForm(skills.value[idx - 1]) }
+function navNextSkill() { const idx = editingSkillIndex.value; if (idx >= 0 && idx < skills.value.length - 1) openSkillForm(skills.value[idx + 1]) }
 
 // ── Tools ──
 const tools = ref<AiTool[]>([])
 const showToolModal = ref(false)
 const editingToolId = ref<number | null>(null)
+const editingToolIndex = ref(-1)
 const toolForm = ref({ name: '', description: '', function_name: '', parameters_schema: '', enabled: true })
 
 async function loadTools() { loading.value = true; try { const r = await fetchTools(); tools.value = r.data.data || [] } catch {} finally { loading.value = false } }
 function openToolForm(row?: AiTool) {
   editingToolId.value = row?.id ?? null
+  editingToolIndex.value = row ? tools.value.findIndex(t => t.id === row.id) : -1
   toolForm.value = row ? { name: row.name, description: row.description, function_name: row.function_name, parameters_schema: row.parameters_schema, enabled: row.enabled } : { name: '', description: '', function_name: '', parameters_schema: '', enabled: true }
   showToolModal.value = true
 }
@@ -677,12 +744,15 @@ async function handleDeleteTool(row: AiTool) {
 async function toggleToolEnabled(row: AiTool, v: boolean) {
   try { await updateTool(row.id, { enabled: v }); row.enabled = v } catch { message.error('切换失败') }
 }
+function navPrevTool() { const idx = editingToolIndex.value; if (idx > 0) openToolForm(tools.value[idx - 1]) }
+function navNextTool() { const idx = editingToolIndex.value; if (idx >= 0 && idx < tools.value.length - 1) openToolForm(tools.value[idx + 1]) }
 
 // ── Tasks ──
 const tasks = ref<AiTask[]>([])
 const showTaskModal = ref(false)
 const taskModalKey = ref(0)
 const editingTaskId = ref<number | null>(null)
+const editingTaskIndex = ref(-1)
 let skipModelWatch = false
 const taskForm = ref({ name: '', skill_id: 0, provider_id: undefined as number | undefined, agent_config_id: undefined as number | undefined, model_id: undefined as number | undefined, max_tool_rounds: null as number | null, cron_expr: '', params: '{}', enabled: true })
 const providerOptions = computed(() => providers.value.filter(p => p.is_active).map(p => ({ label: p.name, value: p.id })))
@@ -699,8 +769,11 @@ const logColumns = [
   { title: '结果预览', key: 'final_reply_preview', ellipsis: { tooltip: true }, render(row: TaskLogItem) {
     return row.error || row.final_reply_preview || '-'
   }},
-  { title: '操作', key: 'actions', width: 60, render(row: TaskLogItem) {
-    return h(NButton, { size: 'tiny', onClick: () => openLogDetail(row.id) }, { default: () => '查看' })
+  { title: '操作', key: 'actions', width: 100, render(row: TaskLogItem) {
+    return h(NSpace, { size: 'small' }, { default: () => [
+      h(NButton, { size: 'tiny', onClick: () => openLogDetail(row.id) }, { default: () => '查看' }),
+      h(NButton, { size: 'tiny', type: 'error', onClick: () => handleDeleteLog(row.id) }, { default: () => '删除' }),
+    ]})
   }},
 ]
 
@@ -734,6 +807,7 @@ const taskColumns = [
 async function loadTasks() { loading.value = true; try { const r = await fetchTasks(); tasks.value = r.data.data || [] } catch {} finally { loading.value = false } }
 function openTaskForm(row?: AiTask) {
   editingTaskId.value = row?.id ?? null
+  editingTaskIndex.value = row ? tasks.value.findIndex(t => t.id === row.id) : -1
   skipModelWatch = true
   taskForm.value = row
     ? { name: row.name || '', skill_id: row.skill_id, provider_id: row.provider_id ?? undefined, agent_config_id: row.agent_config_id ?? undefined, model_id: row.model_id ?? undefined, max_tool_rounds: row.max_tool_rounds ?? null, cron_expr: row.cron_expr, params: row.params, enabled: row.enabled }
@@ -764,6 +838,8 @@ async function handleDeleteTask(row: AiTask) {
   if (!confirm('确定删除此任务？')) return
   try { await deleteTask(row.id); loadTasks() } catch (e: any) { message.error(e?.response?.data?.error || '删除失败') }
 }
+function navPrevTask() { const idx = editingTaskIndex.value; if (idx > 0) openTaskForm(tasks.value[idx - 1]) }
+function navNextTask() { const idx = editingTaskIndex.value; if (idx >= 0 && idx < tasks.value.length - 1) openTaskForm(tasks.value[idx + 1]) }
 async function toggleTaskEnabled(row: AiTask, v: boolean) {
   try { await updateTask(row.id, { enabled: v }); row.enabled = v; message.success(v ? '已启用' : '已停用') }
   catch (e: any) { message.error(e?.response?.data?.error || '切换失败') }
@@ -823,12 +899,23 @@ async function openLogDetail(logId: number) {
   try {
     const r = await getTaskLog(logTaskId.value, logId)
     const d = r.data.data
+    logDetailIndex.value = logItems.value.findIndex(item => item.id === logId)
     logDetailSteps.value = d.steps || []
     logDetailReply.value = d.final_reply
     logDetailStatus.value = d.status
     logDetailError.value = d.error
     showLogDetailModal.value = true
   } catch { message.error('加载日志详情失败') }
+}
+function navPrevLogDetail() { const idx = logDetailIndex.value; if (idx > 0) openLogDetail(logItems.value[idx - 1].id) }
+function navNextLogDetail() { const idx = logDetailIndex.value; if (idx >= 0 && idx < logItems.value.length - 1) openLogDetail(logItems.value[idx + 1].id) }
+async function handleDeleteLog(logId: number) {
+  if (!confirm('确定删除此日志？')) return
+  try { await deleteTaskLog(logTaskId.value, logId); openTaskLogsById(logTaskId.value) } catch { message.error('删除失败') }
+}
+function openTaskLogsById(taskId: number) {
+  logLoading.value = true
+  listTaskLogs(taskId).then(r => { logItems.value = r.data.data || [] }).catch(() => {}).finally(() => { logLoading.value = false })
 }
 
 // ── Trace state ──
@@ -855,6 +942,7 @@ const logLoading = ref(false)
 
 // 日志详情（复用 trace 的结构）
 const showLogDetailModal = ref(false)
+const logDetailIndex = ref(-1)
 const logDetailSteps = ref<TaskTraceStep[]>([])
 const logDetailReply = ref('')
 const logDetailStatus = ref('')
