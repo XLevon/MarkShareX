@@ -153,9 +153,9 @@
 
     <!-- 移动端导航悬浮层 -->
     <template v-if="mobileMenuOpen">
-      <div class="lg:hidden fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)" @click="mobileMenuOpen = false"></div>
+      <div class="lg:hidden fixed inset-0 z-[1200]" style="background: rgba(0,0,0,0.4)" @click="mobileMenuOpen = false"></div>
       <div
-        class="lg:hidden fixed top-0 left-0 right-0 z-50 shadow-2xl"
+        class="lg:hidden fixed top-0 left-0 right-0 z-[1300] shadow-2xl"
         :style="{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-card)', marginTop: '64px', borderBottom: '1px solid var(--color-border)' }"
       >
         <nav class="grid grid-cols-3 gap-2 p-4">
