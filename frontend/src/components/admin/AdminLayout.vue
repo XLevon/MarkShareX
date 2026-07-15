@@ -21,7 +21,7 @@
     '--text-dim': isDark ? '#9ca3af' : '#6b7280',
   }">
     <!-- 顶部导航栏 + 移动端菜单（sticky 包裹） -->
-    <div class="sticky top-0 z-[1100]">
+    <div class="sticky top-0 z-[1180]">
       <NavBar
         :logo-text="settingsStore.settings.site_title || 'MarkShareX'"
         :logo-image="settingsStore.resolvedLogoUrl"

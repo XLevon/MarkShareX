@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen flex flex-col transition-theme" :style="{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }">
     <!-- Navigation Bar + Hero Toggle -->
-    <div class="sticky top-0 z-[1100]">
+    <div class="sticky top-0 z-[1180]">
       <NavBar
         :logo-text="settingsStore.settings.site_title || 'MarkShareX'"
         :logo-image="settingsStore.resolvedLogoUrl"
