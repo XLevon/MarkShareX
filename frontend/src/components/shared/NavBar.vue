@@ -52,7 +52,7 @@
                 <span style="font-size: 14px" :style="{ color: isDark ? '#d1d5db' : '#1f2937' }">{{ displayUser }}</span>
                 <svg class="transition-transform duration-150" :class="{ 'rotate-180': showUserMenu }" width="16" height="16" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
               </button>
-              <div v-if="showUserMenu" class="absolute right-0 top-full mt-1.5 rounded-lg overflow-hidden z-[100]" :style="dropdownStyle" @click="showUserMenu = false">
+              <div v-if="showUserMenu" class="absolute right-0 top-full mt-1.5 rounded-lg overflow-hidden z-[1400]" :style="dropdownStyle" @click="showUserMenu = false">
                 <slot name="dropdown-items" />
               </div>
             </div>
@@ -111,6 +111,7 @@ const dropdownStyle = computed(() => ({
   border: props.isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb',
   boxShadow: props.isDark ? '0 12px 40px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.08)',
   minWidth: '150px',
+  zIndex: 1400,
 }))
 </script>
 
