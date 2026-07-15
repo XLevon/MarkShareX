@@ -86,10 +86,10 @@
     <!-- 移动端导航悬浮层 -->
     <template v-if="mobileMenuOpen">
       <!-- 半透明遮罩 -->
-      <div class="fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)" @click="mobileMenuOpen = false"></div>
+      <div class="fixed inset-0 z-[1200]" style="background: rgba(0,0,0,0.4)" @click="mobileMenuOpen = false"></div>
       <!-- 菜单面板（全部导航项平铺） -->
       <div
-        class="fixed top-0 left-0 right-0 z-50 shadow-2xl overflow-hidden"
+        class="fixed top-0 left-0 right-0 z-[1300] shadow-2xl overflow-hidden"
         style="max-width: 100vw"
         :style="{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb', backgroundColor: isDark ? '#16161d' : '#ffffff', marginTop: '64px' }"
       >
