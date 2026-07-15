@@ -23,7 +23,6 @@ cd "$PROJECT_DIR"
 IMAGE_NAME="${IMAGE_NAME:-marksharex}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
-PORT="${MARKSHAREX_SERVER_PORT:-5023}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -149,6 +148,10 @@ fi
 
 info "启动容器..."
 docker compose up -d --no-build
+
+# ── 获取容器实际对外端口 ──
+HOST_PORT=$(docker compose port marksharex 5023 2>/dev/null | grep -o ':[0-9]\+' | tr -d ':')
+PORT="${HOST_PORT:-5023}"
 
 # ── 等待就绪 ──
 
