@@ -96,7 +96,19 @@ git clone https://github.com/XLevon/MarkShareX.git
 cd MarkShareX
 cp .env.example .env
 # 编辑 .env 设置 JWT_SECRET 等
+
+# 国外直接从 Docker Hub 拉取基础镜像进行构建并启动容器
 docker compose up -d
+
+# 国内推荐分步构建并启动容器
+./scripts/start.sh
+
+# 从本地基础镜像进行构建并启动容器
+docker compose -f docker-compose.local.yml up -d
+
+# 删除容器
+docker compose down            # 停止并删除容器（数据保留，volume 还在）
+docker compose down -v         # 停止 + 删除容器 + 删除数据卷（⚠️ 清空数据库/上传文件）
 ```
 
 访问 `http://localhost:5023`，首次启动进入安装向导创建管理员账号。
