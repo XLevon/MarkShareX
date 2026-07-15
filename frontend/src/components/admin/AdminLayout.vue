@@ -89,7 +89,8 @@
       <div class="fixed inset-0 z-40" style="background: rgba(0,0,0,0.4)" @click="mobileMenuOpen = false"></div>
       <!-- 菜单面板（全部导航项平铺） -->
       <div
-        class="fixed top-0 left-0 right-0 z-50 shadow-2xl"
+        class="fixed top-0 left-0 right-0 z-50 shadow-2xl overflow-hidden"
+        style="max-width: 100vw"
         :style="{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#e5e7eb', backgroundColor: isDark ? '#16161d' : '#ffffff', marginTop: '64px' }"
       >
         <nav class="grid grid-cols-3 gap-2 p-4">
