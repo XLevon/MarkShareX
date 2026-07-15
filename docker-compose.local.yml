@@ -1,8 +1,22 @@
+# ==============================================================================
+# docker-compose.local.yml — 使用本地预构建 base 镜像
+#
+# 前提：已执行过 ./scripts/start.sh --base-only（生成本地 base 缓存）
+#
+# 使用方式：
+#   docker compose -f docker-compose.local.yml build   # 仅构建
+#   docker compose -f docker-compose.local.yml up -d   # 构建 + 启动
+# ==============================================================================
+
 services:
   marksharex:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        FRONTEND_BASE: marksharex-frontend-base
+        BACKEND_BASE: marksharex-backend-base
+        RUNTIME_BASE: marksharex-runtime-base
     image: marksharex:latest
     container_name: marksharex
     restart: unless-stopped
@@ -17,10 +31,7 @@ services:
       - MARKSHAREX_DATA_DIR=/data
       - MARKSHAREX_STORAGE_UPLOAD_DIR=/data/uploads
     volumes:
-      # 持久化数据目录
       - marksharex_data:/data
-      # 或：自定义映射目录
-      # - /root/marksharex/data:/data
     networks:
       - marksharex_net
 

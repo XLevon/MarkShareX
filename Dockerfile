@@ -14,7 +14,7 @@
 
 ARG FRONTEND_BASE=node:20-alpine
 ARG BACKEND_BASE=rust:1.95-slim
-ARG RUNTIME_BASE=debian:bookworm-slim
+ARG RUNTIME_BASE=ubuntu:24.04
 
 # ------------------------------ 阶段 1: 构建前端 ------------------------------
 FROM ${FRONTEND_BASE} AS frontend-builder
@@ -38,17 +38,19 @@ FROM ${BACKEND_BASE} AS backend-builder
 
 WORKDIR /app
 
-# 安装构建依赖（使用本地基础镜像时已预装，但仍保留确保兼容）
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libssl-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+# 构建依赖（使用本地 base 镜像时已预装，可注释跳过）
+# 如果从 Docker Hub 直接构建（rust:1.95-slim），取消下面注释
+# RUN apt-get update && apt-get install -y \
+#     build-essential \
+#     libssl-dev \
+#     pkg-config \
+#     && rm -rf /var/lib/apt/lists/*
 
 # 复制 Rust 项目文件
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
+COPY templates ./templates
 COPY build.rs ./
 
 # 复制前端构建产物
@@ -62,11 +64,13 @@ FROM ${RUNTIME_BASE}
 
 WORKDIR /app
 
-# 安装运行时依赖
-RUN apt-get update && apt-get install -y \
-    libssl3 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# 运行时依赖（使用本地 base 镜像时已预装，可注释跳过）
+# 如果从 Docker Hub 直接构建（debian:bookworm-slim），取消下面注释
+# RUN apt-get update && apt-get install -y \
+#     libssl3 \
+#     ca-certificates \
+#     curl \
+#     && rm -rf /var/lib/apt/lists/*
 
 # 创建非特权用户
 RUN useradd -m marksharex
