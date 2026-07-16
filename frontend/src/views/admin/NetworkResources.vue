@@ -10,42 +10,44 @@
 
     <!-- 列表 -->
     <div v-if="loading" class="loading">加载中...</div>
-    <table v-else class="data-table">
-      <thead>
-        <tr>
-          <th style="width:50px">ID</th>
-          <th style="width:80px">缩略图</th>
-          <th style="width:200px">URL</th>
-          <th style="width:200px">标签</th>
-          <th style="width:80px">类型</th>
-          <th style="width:130px">创建时间</th>
-          <th style="width:140px">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="item in items" :key="item.id">
-          <td>{{ item.id }}</td>
-          <td>
-            <a v-if="item.source_type === 'image'" :href="item.url" target="_blank">
-              <img :src="item.url" class="thumb-img" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).style.display='none'" />
-            </a>
-            <span v-else class="thumb-placeholder">—</span>
-          </td>
-          <td class="url-cell">{{ item.url }}</td>
-          <td>{{ item.label || '-' }}</td>
-          <td><span class="type-badge">{{ item.source_type }}</span></td>
-          <td>{{ item.created_at }}</td>
-          <td class="actions">
-            <button class="btn-action" @click="openRefs(item)">引用</button>
-            <button class="btn-action" @click="openEdit(item)">编辑</button>
-            <button v-if="!item.referenced" class="btn-action btn-danger" @click="confirmDelete(item)">删除</button>
-          </td>
-        </tr>
-        <tr v-if="items.length === 0">
-          <td colspan="7" class="empty-row">暂无网络资源</td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-else class="table-scroll" aria-label="网络资源列表，可左右滑动查看全部列">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:50px">ID</th>
+            <th style="width:80px">缩略图</th>
+            <th style="width:200px">URL</th>
+            <th style="width:200px">标签</th>
+            <th style="width:80px">类型</th>
+            <th style="width:130px">创建时间</th>
+            <th style="width:190px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in items" :key="item.id">
+            <td>{{ item.id }}</td>
+            <td>
+              <a v-if="item.source_type === 'image'" :href="item.url" target="_blank">
+                <img :src="item.url" class="thumb-img" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).style.display='none'" />
+              </a>
+              <span v-else class="thumb-placeholder">—</span>
+            </td>
+            <td class="url-cell">{{ item.url }}</td>
+            <td>{{ item.label || '-' }}</td>
+            <td><span class="type-badge">{{ item.source_type }}</span></td>
+            <td>{{ item.created_at }}</td>
+            <td class="actions">
+              <button class="btn-action" @click="openRefs(item)">引用</button>
+              <button class="btn-action" @click="openEdit(item)">编辑</button>
+              <button v-if="!item.referenced" class="btn-action btn-danger" @click="confirmDelete(item)">删除</button>
+            </td>
+          </tr>
+          <tr v-if="items.length === 0">
+            <td colspan="7" class="empty-row">暂无网络资源</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <!-- 分页 -->
     <div v-if="pagination && pagination.pages > 1" class="pagination">
@@ -284,15 +286,21 @@ onMounted(load)
 </script>
 
 <style scoped>
-.network-resources-page { padding: 24px; }
+.network-resources-page {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 24px;
+  box-sizing: border-box;
+}
 
 .btn-add { padding: 8px 20px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
 .btn-add:hover { background: #4338ca; }
 
 /* 搜索栏 — 使用 AdminLayout 变量 */
-.search-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+.search-bar { display: flex; gap: 8px; max-width: 100%; margin-bottom: 20px; }
 .search-input {
-  flex: 1; padding: 9px 14px;
+  flex: 1; min-width: 0; padding: 9px 14px;
   border: 1px solid var(--card-border-color);
   border-radius: 10px;
   background: var(--card-bg);
@@ -314,7 +322,15 @@ onMounted(load)
 .thumb-img:hover { opacity: 0.8; }
 .thumb-placeholder { color: var(--text-dim); font-size: 13px; }
 
-.data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.data-table { width: 930px; min-width: 930px; border-collapse: collapse; table-layout: fixed; }
 .data-table th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--card-border-color); font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .data-table td { padding: 10px 12px; border-bottom: 1px solid rgba(128,128,128,0.1); font-size: 14px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .url-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -405,4 +421,25 @@ onMounted(load)
 .btn-save { padding: 8px 20px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-save.btn-danger { background: #dc2626; }
+
+@media (max-width: 640px) {
+  .network-resources-page {
+    padding: 12px 0 0;
+  }
+  .search-bar {
+    flex-wrap: wrap;
+  }
+  .search-input {
+    flex: 1 0 100%;
+  }
+  .btn-search,
+  .btn-clear,
+  .btn-add {
+    flex: 1;
+    min-width: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+  }
+}
 </style>

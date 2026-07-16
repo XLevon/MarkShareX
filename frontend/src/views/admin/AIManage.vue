@@ -11,14 +11,14 @@
           <div class="tab-toolbar">
             <n-button type="primary" size="small" @click="openProviderForm()">+ 添加供应商</n-button>
           </div>
-          <n-data-table :columns="providerColumns" :data="providers" :loading="loading" size="small" />
+          <n-data-table :columns="providerColumns" :data="providers" :loading="loading" :scroll-x="460" size="small" />
           <div style="margin-top: 24px">
             <h4 style="margin: 0 0 8px">模型列表</h4>
             <div class="tab-toolbar" style="justify-content:space-between">
               <n-select v-model:value="modelProviderFilter" :options="providerOptions" placeholder="按供应商筛选" clearable style="width:200px" />
               <n-button type="primary" size="small" @click="openModelForm()" :disabled="!modelProviderFilter">+ 添加模型</n-button>
             </div>
-            <n-data-table :columns="modelColumns" :data="filteredModels" :loading="loading" size="small" />
+            <n-data-table :columns="modelColumns" :data="filteredModels" :loading="loading" :scroll-x="460" size="small" />
           </div>
         </n-tab-pane>
 
@@ -27,7 +27,7 @@
           <div class="tab-toolbar">
             <!-- 「添加工具」暂未实现执行逻辑，隐藏入口 -->
           </div>
-          <n-data-table :columns="toolColumns" :data="tools" :loading="loading" size="small" />
+          <n-data-table :columns="toolColumns" :data="tools" :loading="loading" :scroll-x="730" size="small" />
         </n-tab-pane>
 
         <!-- Agent -->
@@ -35,7 +35,7 @@
           <div class="tab-toolbar">
             <n-button type="primary" size="small" @click="openAgentForm()">+ 添加智能体</n-button>
           </div>
-          <n-data-table :columns="agentColumns" :data="agentConfigs" :loading="loading" size="small" />
+          <n-data-table :columns="agentColumns" :data="agentConfigs" :loading="loading" :scroll-x="770" size="small" />
         </n-tab-pane>
 
         <!-- Skills -->
@@ -43,7 +43,7 @@
           <div class="tab-toolbar">
             <n-button type="primary" size="small" @click="openSkillForm()">+ 添加技能</n-button>
           </div>
-          <n-data-table :columns="skillColumns" :data="skills" :loading="loading" size="small" />
+          <n-data-table :columns="skillColumns" :data="skills" :loading="loading" :scroll-x="850" size="small" />
         </n-tab-pane>
 
         <!-- Tasks -->
@@ -51,7 +51,7 @@
           <div class="tab-toolbar">
             <n-button type="primary" size="small" @click="openTaskForm()">+ 添加任务</n-button>
           </div>
-          <n-data-table :columns="taskColumns" :data="tasks" :loading="loading" size="small" />
+          <n-data-table :columns="taskColumns" :data="tasks" :loading="loading" :scroll-x="875" size="small" />
         </n-tab-pane>
       </n-tabs>
     </n-card>
@@ -141,7 +141,7 @@
           <n-form-item label="描述"><n-input v-model:value="skillForm.description" placeholder="自动生成每日科技资讯摘要" /></n-form-item>
           <n-form-item label="指令内容（Markdown）" required>
             <n-input v-model:value="skillForm.content" type="textarea" :rows="14" placeholder="你是一个科技资讯编辑，请根据以下要求生成内容...
-            
+
 支持 {{变量}} 占位符，如 {{topic}}、{{count}}" />
           </n-form-item>
           <n-form-item>
@@ -297,7 +297,7 @@
       <n-card :title="`📜 ${logTaskName} — 执行日志`" :bordered="false" size="small" closable @close="showLogModal = false">
         <n-spin :show="logLoading">
           <div v-if="logItems.length === 0 && !logLoading" style="text-align:center;padding:40px 0;color:var(--color-text-muted)">暂无执行记录</div>
-          <n-data-table v-else :columns="logColumns" :data="logItems" :loading="logLoading" size="small" />
+          <n-data-table v-else :columns="logColumns" :data="logItems" :loading="logLoading" :scroll-x="710" size="small" />
         </n-spin>
         <template #footer>
           <n-space justify="end">
@@ -429,7 +429,7 @@ const agentModelOptions = computed(() => {
 })
 const agentColumns = [
   { title: '名称', key: 'name', width: 140 },
-  { title: '系统提示词', key: 'system_prompt', ellipsis: { tooltip: true }, render(row: AgentConfig) { return row.system_prompt || '-' } },
+  { title: '系统提示词', key: 'system_prompt', width: 420, ellipsis: { tooltip: true }, render(row: AgentConfig) { return row.system_prompt || '-' } },
   { title: '默认', key: 'is_default', width: 70, render(row: AgentConfig) {
     return h(NSwitch, { size: 'small', value: row.is_default, onUpdateValue: (v: boolean) => toggleAgentDefault(row, v) })
   }},
@@ -655,7 +655,7 @@ const outputFormatOptions = [
 const toolColumns = [
   { title: '名称', key: 'name', width: 120 },
   { title: '功能名', key: 'function_name', width: 140 },
-  { title: '描述', key: 'description', ellipsis: { tooltip: true } },
+  { title: '描述', key: 'description', width: 320, ellipsis: { tooltip: true } },
   { title: '启用', key: 'enabled', width: 70, render(row: AiTool) {
     return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: (v: boolean) => toggleToolEnabled(row, v) })
   }},
@@ -667,7 +667,7 @@ const toolColumns = [
 ]
 const skillColumns = [
   { title: '名称', key: 'name', width: 150 },
-  { title: '描述', key: 'description', ellipsis: { tooltip: true } },
+  { title: '描述', key: 'description', width: 300, ellipsis: { tooltip: true } },
   { title: '参数模板', key: 'params_template', width: 260, ellipsis: { tooltip: true }, render(row: AiSkill) { return row.params_template || '{}' } },
   { title: '操作', key: 'actions', width: 140, render(row: AiSkill) {
     return h(NSpace, { size: 'small' }, { default: () => [
@@ -766,7 +766,7 @@ const logColumns = [
     return row.status === 'completed' ? '✅ 完成' : row.status === 'failed' ? '❌ 失败' : row.status
   }},
   { title: '轮次', key: 'rounds', width: 60 },
-  { title: '结果预览', key: 'final_reply_preview', ellipsis: { tooltip: true }, render(row: TaskLogItem) {
+  { title: '结果预览', key: 'final_reply_preview', width: 320, ellipsis: { tooltip: true }, render(row: TaskLogItem) {
     return row.error || row.final_reply_preview || '-'
   }},
   { title: '操作', key: 'actions', width: 100, render(row: TaskLogItem) {

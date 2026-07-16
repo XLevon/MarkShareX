@@ -6,34 +6,53 @@
     </div>
 
     <!-- Filter Bar -->
-    <n-card size="small" style="margin-bottom:16px">
-      <n-space align="center" :wrap="true">
-        <span style="font-size:13px;color:var(--color-text-muted)">日期</span>
-        <n-date-picker v-model:value="filterDateRange" type="daterange" clearable size="small" style="width:220px"
-          @update:value="applyFilter">
-          <template #footer>
-            <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
-              <n-button size="tiny" quaternary @click="setDateRange('today')">今天</n-button>
-              <n-button size="tiny" quaternary @click="setDateRange('yesterday')">昨天</n-button>
-              <n-button size="tiny" quaternary @click="setDateRange('week')">本周</n-button>
-              <n-button size="tiny" quaternary @click="setDateRange('lastWeek')">上周</n-button>
-              <n-button size="tiny" quaternary @click="setDateRange('month')">本月</n-button>
-              <n-button size="tiny" quaternary @click="setDateRange('lastMonth')">上月</n-button>
-            </div>
-          </template>
-        </n-date-picker>
-        <span style="font-size:13px;color:var(--color-text-muted)">状态</span>
-        <n-select v-model:value="filterStatus" :options="filterStatusOptions" clearable size="small" style="width:100px" placeholder="全部"
-          @update:value="applyFilter" />
-        <span style="font-size:13px;color:var(--color-text-muted)">题材</span>
-        <n-select v-model:value="filterTopicTypes" :options="filterTopicOptions" multiple clearable size="small" style="width:180px" placeholder="全部"
-          @update:value="applyFilter" />
-        <n-input v-model:value="filterSearch" placeholder="搜索资讯..." clearable size="small" style="width:160px"
-          @keydown.enter="applyFilter" @clear="applyFilter" />
-        <n-button v-if="checkedIds.length" size="small" type="success" @click="batchPublish">发布 {{ checkedIds.length }}</n-button>
-        <n-button v-if="checkedIds.length" size="small" type="warning" @click="batchUnpublish">撤回 {{ checkedIds.length }}</n-button>
-        <n-button v-if="isAdmin && checkedIds.length" size="small" type="error" @click="batchDelete">删除 {{ checkedIds.length }}</n-button>
-      </n-space>
+    <n-card class="filter-card" size="small">
+      <div class="filter-grid">
+        <div class="filter-item">
+          <span class="filter-label">日期</span>
+          <div class="filter-control">
+            <n-date-picker v-model:value="filterDateRange" type="daterange" clearable size="small"
+              @update:value="applyFilter">
+              <template #footer>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
+                  <n-button size="tiny" quaternary @click="setDateRange('today')">今天</n-button>
+                  <n-button size="tiny" quaternary @click="setDateRange('yesterday')">昨天</n-button>
+                  <n-button size="tiny" quaternary @click="setDateRange('week')">本周</n-button>
+                  <n-button size="tiny" quaternary @click="setDateRange('lastWeek')">上周</n-button>
+                  <n-button size="tiny" quaternary @click="setDateRange('month')">本月</n-button>
+                  <n-button size="tiny" quaternary @click="setDateRange('lastMonth')">上月</n-button>
+                </div>
+              </template>
+            </n-date-picker>
+          </div>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">状态</span>
+          <div class="filter-control">
+            <n-select v-model:value="filterStatus" :options="filterStatusOptions" clearable size="small" placeholder="全部"
+              @update:value="applyFilter" />
+          </div>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">题材</span>
+          <div class="filter-control">
+            <n-select v-model:value="filterTopicTypes" :options="filterTopicOptions" multiple clearable size="small" placeholder="全部"
+              @update:value="applyFilter" />
+          </div>
+        </div>
+        <div class="filter-item">
+          <span class="filter-label">搜索</span>
+          <div class="filter-control">
+            <n-input v-model:value="filterSearch" placeholder="搜索资讯..." clearable size="small"
+              @keydown.enter="applyFilter" @clear="applyFilter" />
+          </div>
+        </div>
+      </div>
+      <div v-if="checkedIds.length" class="batch-actions">
+        <n-button size="small" type="success" @click="batchPublish">发布 {{ checkedIds.length }}</n-button>
+        <n-button size="small" type="warning" @click="batchUnpublish">撤回 {{ checkedIds.length }}</n-button>
+        <n-button v-if="isAdmin" size="small" type="error" @click="batchDelete">删除 {{ checkedIds.length }}</n-button>
+      </div>
     </n-card>
 
     <n-card>
@@ -43,16 +62,18 @@
         :loading="loading"
         :row-key="rowKey"
         :checked-row-keys="checkedIds"
+        :scroll-x="1040"
         @update:checked-row-keys="onCheckedChange"
         :pagination="false"
       />
-      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+      <div class="pagination-wrap">
         <n-pagination
           v-model:page="pagination.page"
           :page-size="pagination.pageSize"
           :item-count="pagination.itemCount"
           :page-sizes="[10,20,50]"
-          show-size-picker
+          :page-slot="isMobile ? 3 : 9"
+          :show-size-picker="!isMobile"
           @update:page="loadData"
           @update:page-size="onPageSizeChange"
         />
@@ -123,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, h, computed } from 'vue'
+import { ref, onMounted, onUnmounted, h, computed } from 'vue'
 import { NButton, NSwitch, NSpace, NCheckbox, useMessage } from 'naive-ui'
 import { fetchAdminNews, fetchAdminNewsItem, createNews, updateNews, deleteNews, type NewsItem } from '@/api/news'
 import api from '@/api'
@@ -133,6 +154,11 @@ import { useAuthStore } from '@/stores/auth'
 const message = useMessage()
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+const isMobile = ref(false)
+
+function updateMobileState() {
+  isMobile.value = window.innerWidth <= 640
+}
 
 const loading = ref(false)
 const saving = ref(false)
@@ -271,7 +297,7 @@ function onCheckedChange(keys: number[]) { checkedIds.value = keys }
 const columns = computed(() => [
   { type: 'selection' as const, width: 40 },
   { title: 'ID', key: 'id', width: 60 },
-  { title: '标题', key: 'title', ellipsis: { tooltip: true } },
+  { title: '标题', key: 'title', width: 320, ellipsis: { tooltip: true } },
   { title: '发布', key: 'status', width: 70, render(row: NewsItem) {
     const published = row.status === 'published'
     return h(NSwitch, { size: 'small', value: published, onUpdateValue: (v: boolean) => toggleNewsStatus(row, v) })
@@ -461,12 +487,20 @@ async function batchDelete() {
   }
 }
 
-onMounted(() => { loadFilters(); loadData() })
+onMounted(() => {
+  updateMobileState()
+  window.addEventListener('resize', updateMobileState)
+  loadFilters()
+  loadData()
+})
+onUnmounted(() => window.removeEventListener('resize', updateMobileState))
 </script>
 
 <style scoped>
 .news-manage {
   padding: 0 0 24px;
+  min-width: 0;
+  max-width: 100%;
 }
 .page-header {
   display: flex;
@@ -480,6 +514,48 @@ onMounted(() => { loadFilters(); loadData() })
   font-weight: 700;
   color: var(--input-color);
 }
+.filter-card {
+  margin-bottom: 16px;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 16px;
+}
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.filter-label {
+  flex: 0 0 32px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.filter-control {
+  flex: 1;
+  min-width: 0;
+}
+.filter-control :deep(.n-date-picker),
+.filter-control :deep(.n-select),
+.filter-control :deep(.n-input) {
+  width: 100% !important;
+  min-width: 0;
+}
+.batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-top: 12px;
+}
 
 @media (max-width: 640px) {
   .page-header {
@@ -490,17 +566,18 @@ onMounted(() => { loadFilters(); loadData() })
   .page-header h2 {
     font-size: 22px;
   }
-  /* 筛选栏控件纵向堆叠 */
-  .news-manage :deep(.n-card .n-space) {
-    flex-wrap: wrap;
+  .filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
-  .news-manage :deep(.n-card .n-space > *) {
-    min-width: 100%;
+  .filter-label {
+    flex-basis: 40px;
   }
-  /* 表格横向滚动 */
-  .news-manage :deep(.n-data-table) {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  .pagination-wrap {
+    justify-content: center;
+  }
+  .pagination-wrap :deep(.n-pagination) {
+    max-width: 100%;
   }
 }
 </style>

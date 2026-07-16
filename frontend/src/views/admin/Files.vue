@@ -623,6 +623,8 @@ onMounted(loadFiles)
 <style scoped>
 .files-page {
   animation: fadeIn 0.3s ease;
+  min-width: 0;
+  max-width: 100%;
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -666,6 +668,8 @@ onMounted(loadFiles)
 }
 .network-tab-content {
   animation: fadeIn 0.2s ease;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ===== Storage ===== */
