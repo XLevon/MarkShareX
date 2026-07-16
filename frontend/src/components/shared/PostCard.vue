@@ -499,5 +499,11 @@ function handleClick() {
     width: 100%;
     height: 180px;
   }
+  .edge-badges {
+    right: 4px;
+  }
+  .brush-badge {
+    transform: rotate(-6deg);
+  }
 }
 </style>

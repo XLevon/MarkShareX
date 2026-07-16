@@ -1463,10 +1463,15 @@ watch(() => route.query.status, (newVal) => {
     padding: 4px 10px;
   }
   .main-tabs {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
   }
   .main-tab {
+    flex: 0 0 auto;
     white-space: nowrap;
     font-size: 13px;
     padding: 6px 14px;

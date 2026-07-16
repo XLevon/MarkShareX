@@ -316,7 +316,8 @@
           <button class="btn-refresh" @click="openLogsModal">更多</button>
         </div>
       </div>
-      <table class="logs-table" v-if="loginLogs.length > 0">
+      <div v-if="loginLogs.length > 0" class="table-scroll">
+      <table class="logs-table">
         <thead>
           <tr>
             <th>用户</th>
@@ -338,6 +339,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
       <div v-else class="text-dim text-sm">暂无登录记录</div>
     </div>
 
@@ -357,7 +359,8 @@
           <button class="btn-refresh" @click="showLogsModal = false">关闭</button>
         </div>
         <!-- 表格 -->
-        <table class="logs-table" v-if="allLoginLogs.length > 0">
+        <div v-if="allLoginLogs.length > 0" class="table-scroll">
+        <table class="logs-table">
           <thead>
             <tr>
               <th>用户</th>
@@ -379,6 +382,7 @@
             </tr>
           </tbody>
         </table>
+        </div>
         <div v-else class="text-dim text-sm py-4">暂无匹配记录</div>
         <!-- 分页 -->
         <div v-if="logsTotalPages > 1" class="flex justify-center gap-2 mt-4">
@@ -962,9 +966,21 @@ onMounted(async () => {
   background: var(--card-bg);
   border: 1px solid var(--card-border-color);
   border-radius: 12px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .logs-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 13px;
 }

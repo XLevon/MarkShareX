@@ -555,6 +555,13 @@ watch(chartRange, (days) => loadTrendData(days))
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
+  min-width: 0;
+  max-width: 100%;
+}
+.bottom-grid > * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* ===== 最近文章 ===== */
@@ -718,5 +725,11 @@ watch(chartRange, (days) => loadTrendData(days))
 @media (max-width: 640px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .quick-actions { grid-template-columns: repeat(2, 1fr); }
+  .stats-row,
+  .quick-actions { min-width: 0; }
+  .stat-card,
+  .quick-card { min-width: 0; box-sizing: border-box; }
+  .post-meta { flex-wrap: wrap; gap: 4px 8px; }
+  .chart-svg { display: block; max-width: 100%; }
 }
 </style>

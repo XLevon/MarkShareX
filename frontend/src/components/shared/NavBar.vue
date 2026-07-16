@@ -4,17 +4,17 @@
     :class="{ sticky: sticky, 'top-0': sticky, relative: !sticky }"
     :style="headerStyle"
   >
-    <div class="max-w-7xl mx-auto px-6">
-      <div class="flex items-center justify-between h-16 gap-4">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6">
+      <div class="flex items-center justify-between h-16 gap-2 sm:gap-4 min-w-0">
         <!-- Left: Logo + Nav -->
-        <div class="flex items-center gap-1 sm:gap-4 flex-shrink-0" :style="{ minWidth: isMobile ? 'auto' : '240px' }">
+        <div class="flex items-center gap-1 sm:gap-4 min-w-0" :style="{ minWidth: isMobile ? '0' : '240px' }">
           <router-link
             to="/"
-            class="flex items-center font-bold no-underline flex-shrink-0 gap-1"
+            class="flex items-center font-bold no-underline min-w-0 gap-1"
             style="font-size: 22px; letter-spacing: -0.5px"
           >
             <img v-if="logoImage" :src="logoImage" class="h-6 w-auto object-contain" alt="Logo" />
-            <span class="flex"><span v-for="(part, i) in logoParts" :key="i" :style="{ color: part.color }">{{ part.text }}</span></span>
+            <span class="nav-logo-text flex min-w-0"><span v-for="(part, i) in logoParts" :key="i" :style="{ color: part.color }">{{ part.text }}</span></span>
           </router-link>
           <slot name="nav-left" />
         </div>
@@ -49,8 +49,8 @@
                   {{ userInitial }}
                   <span v-if="badgeCount > 0" class="avatar-badge">{{ badgeCount > 99 ? '99+' : badgeCount }}</span>
                 </span>
-                <span style="font-size: 14px" :style="{ color: isDark ? '#d1d5db' : '#1f2937' }">{{ displayUser }}</span>
-                <svg class="transition-transform duration-150" :class="{ 'rotate-180': showUserMenu }" width="16" height="16" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                <span class="hidden sm:inline" style="font-size: 14px" :style="{ color: isDark ? '#d1d5db' : '#1f2937' }">{{ displayUser }}</span>
+                <svg class="hidden sm:block transition-transform duration-150" :class="{ 'rotate-180': showUserMenu }" width="16" height="16" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
               </button>
               <div v-if="showUserMenu" class="absolute right-0 top-full mt-1.5 rounded-lg overflow-hidden z-[1400]" :style="dropdownStyle" @click="showUserMenu = false">
                 <slot name="dropdown-items" />
@@ -116,6 +116,16 @@ const dropdownStyle = computed(() => ({
 </script>
 
 <style scoped>
+.nav-logo-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 639px) {
+  .nav-logo-text {
+    max-width: 120px;
+  }
+}
 .avatar-badge {
   position: absolute;
   top: -4px;
