@@ -46,7 +46,7 @@
             margin-bottom: 24px;
         }
         header .container { display: flex; justify-content: space-between; align-items: center; }
-        header h1 a {
+        header .site-brand a {
             color: var(--color-text);
             text-decoration: none;
             font-family: var(--font-heading);
@@ -176,7 +176,7 @@
 <body>
     <header>
         <div class="container">
-            <h1><a href="/">{{ site_title | default(value="MarkShareX") }}</a></h1>
+            <div class="site-brand"><a href="/">{{ site_title | default(value="MarkShareX") }}</a></div>
             <nav>
                 <a href="/">首页</a>
             </nav>

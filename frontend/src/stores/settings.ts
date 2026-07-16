@@ -14,6 +14,7 @@ export const useSettingsStore = defineStore('settings', () => {
     comment_moderation: 'false',
     sidebar_collapse: 'false',
     guestbook_enabled: 'true',
+    guest_copy_enabled: 'true',
     batch_load_size: '5',
     scroll_load_size: '3',
     'site-manager': '',

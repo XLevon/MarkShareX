@@ -664,6 +664,11 @@ pub async fn get_post(
         resp.content_html = Some(super::network_resources::resolve_nr_in_content(&state.db, html).await);
     }
 
+    // Keep the Vue article title as the only H1 without writing normalized HTML back to the DB.
+    if let Some(html) = resp.content_html.take() {
+        resp.content_html = Some(super::pages::normalize_article_headings(&html, &resp.title));
+    }
+
     resp.category_name = category_name;
     resp.tags = Some(tags.into_iter().map(|t| t.name).collect());
     resp.view_count = view_count as i32;
@@ -1112,6 +1117,11 @@ pub async fn get_post_by_slug(
     // 如果 content_html 已存在于 DB（含 <img src="nr:N">），也需解析
     if let Some(ref html) = resp.content_html {
         resp.content_html = Some(super::network_resources::resolve_nr_in_content(&state.db, html).await);
+    }
+
+    // Keep the Vue article title as the only H1 without writing normalized HTML back to the DB.
+    if let Some(html) = resp.content_html.take() {
+        resp.content_html = Some(super::pages::normalize_article_headings(&html, &resp.title));
     }
 
     resp.category_name = category_name;

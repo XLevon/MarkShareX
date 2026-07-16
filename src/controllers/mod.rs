@@ -309,11 +309,25 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
 
 pub fn page_routes(state: AppState) -> Router<AppState> {
     Router::new()
+        .route("/", get(pages::aggregate_page))
+        .route("/knowledge-base", get(pages::aggregate_page))
+        .route("/categories", get(pages::aggregate_page))
+        .route("/category/:slug", get(pages::aggregate_page))
+        .route("/tags", get(pages::aggregate_page))
+        .route("/tag/:slug", get(pages::aggregate_page))
+        .route("/authors", get(pages::aggregate_page))
+        .route("/author/:id", get(pages::aggregate_page))
+        .route("/types", get(pages::aggregate_page))
+        .route("/type/:code", get(pages::aggregate_page))
+        .route("/statuses", get(pages::aggregate_page))
+        .route("/status/:code", get(pages::aggregate_page))
+        .route("/pinned", get(pages::aggregate_page))
         .route("/post/:slug", get(pages::post_detail))
         .route("/robots.txt", get(pages::robots_txt))
         .route("/sitemap.xml", get(pages::sitemap_xml))
         .route("/favicon.svg", get(pages::favicon_svg))
         .route("/favicon.png", get(pages::favicon_png))
+        .route("/default-og.png", get(pages::default_og_image))
         .nest_service("/assets", ServeDir::new("static/frontend/assets"))
         .with_state(state)
 }
@@ -333,4 +347,30 @@ async fn version() -> axum::Json<VersionInfo> {
         version: env!("CARGO_PKG_VERSION"),
         name: env!("CARGO_PKG_NAME"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum_test::TestServer;
+
+    #[tokio::test]
+    async fn unknown_page_returns_http_404() {
+        let app = Router::new().fallback(pages::spa_fallback);
+        let server = TestServer::new(app).expect("test server should start");
+
+        let response = server.get("/nonexistent-seo-test-404").await;
+
+        assert_eq!(response.status_code(), axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn known_spa_page_returns_http_200() {
+        let app = Router::new().fallback(pages::spa_fallback);
+        let server = TestServer::new(app).expect("test server should start");
+
+        let response = server.get("/knowledge-base").await;
+
+        assert_eq!(response.status_code(), axum::http::StatusCode::OK);
+    }
 }

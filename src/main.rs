@@ -1,7 +1,6 @@
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use std::net::SocketAddr;
-use tower_http::services::ServeFile;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::prelude::*;
 
@@ -171,7 +170,13 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .merge(controllers::api_routes(state.clone()))
         .merge(controllers::page_routes(state.clone()))
-        .fallback_service(ServeFile::new("static/frontend/index.html"))
+        .fallback(controllers::pages::spa_fallback)
+        // ── 压缩：对 text/html/js/css/json/svg 等开启 gzip + Brotli ──
+        .layer(middleware::compression())
+        // ── 安全响应头：HSTS / X-Content-Type-Options / Referrer-Policy / X-Frame-Options ──
+        .layer(middleware::SecurityHeadersLayer)
+        // ── 哈希静态资源缓存：/assets/* → 1 年 immutable ──
+        .layer(middleware::AssetCacheLayer)
         .layer(DefaultBodyLimit::max(config.storage.max_file_size as usize))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

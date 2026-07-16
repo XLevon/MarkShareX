@@ -101,3 +101,18 @@ pub async fn run(db: &DatabaseConnection) -> anyhow::Result<usize> {
 
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn guest_copy_default_is_present_in_initial_and_incremental_migrations() {
+        let initial = include_str!("../migrations/0000000000_init_schema.sql");
+        let incremental = include_str!("../migrations/0000000011_guest_copy_enabled.sql");
+
+        for sql in [initial, incremental] {
+            assert!(sql.contains("guest_copy_enabled"));
+            assert!(sql.contains("'true'"));
+            assert!(sql.contains("INSERT OR IGNORE INTO settings"));
+        }
+    }
+}

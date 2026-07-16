@@ -105,11 +105,12 @@
       </div>
 
       <!-- Content -->
-      <div @contextmenu="handleContextMenu">
+      <div @contextmenu="handleRestrictedContentAction" @copy="handleRestrictedContentAction">
         <CodeCopyWrapper
           class="markdown-body"
           :html="post.content_html || ''"
-          @need-login="showLoginDialog = true"
+          :copy-enabled="canCopyContent"
+          @copy-restricted="showLoginDialog = true"
         />
       </div>
 
@@ -117,8 +118,8 @@
       <Teleport to="body">
         <div v-if="showLoginDialog" class="login-dialog-overlay" @click.self="showLoginDialog = false">
           <div class="login-dialog-box">
-            <h3 class="login-dialog-title">登录后可复制代码</h3>
-            <p class="login-dialog-desc">登录后即可使用代码复制、点赞等全部功能</p>
+            <h3 class="login-dialog-title">登录后可复制文章内容</h3>
+            <p class="login-dialog-desc">当前站点仅允许登录用户复制正文、代码和使用文章右键菜单</p>
             <div class="login-dialog-actions">
               <button class="login-dialog-cancel" @click="showLoginDialog = false">稍后再说</button>
               <button class="login-dialog-login" @click="goToLogin">立即登录</button>
@@ -305,8 +306,10 @@ import { recordReadLog } from '@/api/admin'
 import dayjs from 'dayjs'
 import { fetchComments, createComment } from '@/api/comments'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 import ActionBar from '@/components/front/ActionBar.vue'
 import CodeCopyWrapper from '@/components/shared/CodeCopyWrapper.vue'
+import { canCopyArticleContent } from '@/utils/guestContentAccess'
 
 // TOC state
 const tocRef = ref<HTMLElement | null>(null)
@@ -425,31 +428,6 @@ function cleanupObserver() {
   }
 }
 
-// ── Code block enhancement ──
-function enhanceCodeBlocks() {
-  const container = document.querySelector('.markdown-body')
-  if (!container) return
-  const pres = container.querySelectorAll('pre')
-  pres.forEach(pre => {
-    // Skip if already enhanced
-    if (pre.parentElement?.classList.contains('code-block-wrapper')) return
-    const code = pre.querySelector('code')
-    const lang = code?.className.match(/language-(\w+)/)?.[1] || ''
-    
-    const wrapper = document.createElement('div')
-    wrapper.className = 'code-block-wrapper'
-    
-    // Header bar with language label + copy button
-    const header = document.createElement('div')
-    header.className = 'code-block-header'
-    header.innerHTML = `<span class="code-lang">${lang}</span><button class="code-copy-btn" onclick="navigator.clipboard.writeText(this.closest('.code-block-wrapper')!.querySelector('code')!.textContent!).then(()=>{this.textContent='已复制';setTimeout(()=>{this.textContent='复制'},1500)})">复制</button>`
-    
-    pre.parentNode!.insertBefore(wrapper, pre)
-    wrapper.appendChild(header)
-    wrapper.appendChild(pre)
-  })
-}
-
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
@@ -461,6 +439,11 @@ const likeLoading = ref(false)
 
 const authStore = useAuthStore()
 const isLoggedIn = computed(() => authStore.isAuthenticated)
+const settingsStore = useSettingsStore()
+const canCopyContent = computed(() => canCopyArticleContent(
+  isLoggedIn.value,
+  settingsStore.settings.guest_copy_enabled,
+))
 const showLoginDialog = ref(false)
 
 // ── Article type & status badges ──
@@ -495,20 +478,8 @@ function goToLogin() {
   router.push({ name: 'login', query: { redirect: route.fullPath } })
 }
 
-function handleContextMenu(e: MouseEvent) {
-  if (!isLoggedIn.value) {
-    e.preventDefault()
-    showLoginDialog.value = true
-  }
-}
-
-function handleKeyDown(e: KeyboardEvent) {
-  if (isLoggedIn.value) return
-  // Only intercept Ctrl+C / Cmd+C
-  if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-    // Don't intercept when focused on input/textarea (user might be copying from form)
-    const tag = (e.target as HTMLElement)?.tagName
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+function handleRestrictedContentAction(e: Event) {
+  if (!canCopyContent.value) {
     e.preventDefault()
     showLoginDialog.value = true
   }
@@ -572,7 +543,6 @@ async function loadPost() {
         '<img referrerpolicy="no-referrer" '
       )
       await nextTick()
-      enhanceCodeBlocks()
       if (items.length > 0) {
         setupTocObserver()
       }
@@ -778,10 +748,8 @@ async function submitReply(parentId: number) {
 
 onMounted(() => {
   loadPost()
-  document.addEventListener('keydown', handleKeyDown)
 })
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeyDown)
   // Record read duration on leave
   if (readStartTime.value && post.value?.id) {
     const duration = Math.round((Date.now() - readStartTime.value) / 1000)

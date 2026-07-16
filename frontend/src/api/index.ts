@@ -198,6 +198,7 @@ export interface Settings {
   comment_moderation: string
   sidebar_collapse: string
   guestbook_enabled: string
+  guest_copy_enabled?: string
   batch_load_size: string
   scroll_load_size: string
   'site-manager'?: string

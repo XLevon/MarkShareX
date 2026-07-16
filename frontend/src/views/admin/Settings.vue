@@ -54,6 +54,12 @@
                 <n-switch v-model:value="form.guestbook_enabled" />
                 <span class="ml-2 text-gray-400 text-sm">{{ form.guestbook_enabled ? '开启' : '关闭' }}</span>
               </n-form-item>
+              <n-form-item label="访客复制权限">
+                <n-switch v-model:value="form.guest_copy_enabled" />
+                <span class="ml-2 text-gray-400 text-sm">
+                  {{ form.guest_copy_enabled ? '允许复制正文、代码和使用右键菜单' : '仅登录用户可复制文章内容' }}
+                </span>
+              </n-form-item>
               <n-form-item label="批量装载数量">
                 <n-input-number v-model:value="form.batch_load_size" :min="1" :max="20" style="width:120px" />
                 <span class="ml-2 text-gray-400 text-sm">首页/分类等首次加载的文章数</span>
@@ -293,6 +299,7 @@ const form = reactive({
   comment_moderation: false,
   sidebar_collapse: false,
   guestbook_enabled: true,
+  guest_copy_enabled: true,
   batch_load_size: 5,
   scroll_load_size: 3,
   site_manager: null as number | null,
@@ -405,6 +412,7 @@ async function loadSettings() {
       comment_moderation: s.comment_moderation === 'true',
       sidebar_collapse: s.sidebar_collapse === 'true',
       guestbook_enabled: s.guestbook_enabled !== 'false',
+      guest_copy_enabled: s.guest_copy_enabled !== 'false',
       batch_load_size: Number(s.batch_load_size) || 5,
       scroll_load_size: Number(s.scroll_load_size) || 3,
       site_manager: s['site-manager'] ? Number(s['site-manager']) : null,
@@ -445,6 +453,7 @@ async function handleSave() {
       comment_moderation: form.comment_moderation ? 'true' : 'false',
       sidebar_collapse: form.sidebar_collapse ? 'true' : 'false',
       guestbook_enabled: form.guestbook_enabled ? 'true' : 'false',
+      guest_copy_enabled: form.guest_copy_enabled ? 'true' : 'false',
       batch_load_size: String(form.batch_load_size),
       scroll_load_size: String(form.scroll_load_size),
       'site-manager': form.site_manager ? String(form.site_manager) : '',

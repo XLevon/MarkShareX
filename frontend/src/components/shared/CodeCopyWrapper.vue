@@ -4,12 +4,12 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, nextTick } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 
-const props = defineProps<{ html: string }>()
-const emit = defineEmits<{ 'need-login': [] }>()
+const props = withDefaults(defineProps<{ html: string; copyEnabled?: boolean }>(), {
+  copyEnabled: true,
+})
+const emit = defineEmits<{ 'copy-restricted': [] }>()
 const containerRef = ref<HTMLElement>()
-const authStore = useAuthStore()
 
 const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`
 const CHECK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
@@ -20,16 +20,21 @@ function enhanceCodeBlocks() {
   const blocks = containerRef.value.querySelectorAll('pre code')
   blocks.forEach((block) => {
     const pre = block.parentElement
-    if (!pre || pre.querySelector('.code-copy-btn')) return
+    if (!pre) return
+    const existingButton = pre.querySelector<HTMLButtonElement>('.code-copy-btn')
+    if (existingButton) {
+      existingButton.title = props.copyEnabled ? '复制代码' : '登录后复制'
+      return
+    }
 
     const btn = document.createElement('button')
     btn.className = 'code-copy-btn'
     btn.innerHTML = COPY_ICON
-    btn.title = authStore.isAuthenticated ? '复制代码' : '登录后复制'
+    btn.title = props.copyEnabled ? '复制代码' : '登录后复制'
     btn.onclick = async (e: Event) => {
       e.stopPropagation()
-      if (!authStore.isAuthenticated) {
-        emit('need-login')
+      if (!props.copyEnabled) {
+        emit('copy-restricted')
         return
       }
       try {
@@ -54,7 +59,7 @@ function enhanceCodeBlocks() {
 
 onMounted(() => enhanceCodeBlocks())
 watch(() => props.html, () => nextTick(() => enhanceCodeBlocks()))
-watch(() => authStore.isAuthenticated, () => nextTick(() => enhanceCodeBlocks()))
+watch(() => props.copyEnabled, () => nextTick(() => enhanceCodeBlocks()))
 </script>
 
 <style>

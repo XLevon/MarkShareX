@@ -513,3 +513,5 @@ INSERT OR IGNORE INTO settings (key, value, updated_at)
 VALUES ('batch_load_size', '5', datetime('now'));
 INSERT OR IGNORE INTO settings (key, value, updated_at) 
 VALUES ('scroll_load_size', '3', datetime('now'));
+INSERT OR IGNORE INTO settings (key, value, updated_at)
+VALUES ('guest_copy_enabled', 'true', datetime('now'));
