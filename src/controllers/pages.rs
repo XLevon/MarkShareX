@@ -28,7 +28,7 @@ fn display_site_title(raw_title: &str) -> String {
     let title = raw_title.replace('-', "");
     let title = title.trim();
     if title.is_empty() {
-        "MarkShareX".to_string()
+        "Mark-Share-X_用AI学AI".to_string()
     } else {
         title.to_string()
     }
@@ -99,7 +99,7 @@ pub async fn post_detail(
 
     let raw_site_title = get_setting(&state.db, "site_title")
         .await
-        .unwrap_or_else(|| "MarkShareX".to_string());
+        .unwrap_or_else(|| "Mark-Share-X_用AI学AI".to_string());
     let site_title = display_site_title(&raw_site_title);
     let site_description = get_setting(&state.db, "site_description").await.unwrap_or_default();
     let configured_site_logo = get_setting(&state.db, "site_logo")
@@ -552,7 +552,7 @@ pub async fn aggregate_page(
 ) -> Result<Html<String>, AppError> {
     let raw_site_title = get_setting(&state.db, "site_title")
         .await
-        .unwrap_or_else(|| "MarkShareX".to_string());
+        .unwrap_or_else(|| "Mark-Share-X_用AI学AI".to_string());
     let site_title = display_site_title(&raw_site_title);
     let site_description = get_setting(&state.db, "site_description")
         .await
@@ -1123,7 +1123,7 @@ mod tests {
         assert_eq!(display_site_title("Mark-Share-X"), "MarkShareX");
         assert_eq!(display_site_title("Mark---Share--X"), "MarkShareX");
         assert_eq!(display_site_title("-Mark-Share-X-"), "MarkShareX");
-        assert_eq!(display_site_title("----"), "MarkShareX");
+        assert_eq!(display_site_title("----"), "Mark-Share-X_用AI学AI");
     }
 
     #[test]

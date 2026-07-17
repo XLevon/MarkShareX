@@ -15,7 +15,9 @@ export interface TitlePart {
 export function useTitleParts(title: () => string, isDark: () => boolean) {
   return computed<TitlePart[]>(() => {
     const t = title() || ''
-    const parts = t.split('-').filter(s => s.length > 0)
+    // 提取 _ 前面的部分作为 Logo 文字，去掉连字符后颜色化显示
+    const logoPart = t.split('_')[0]
+    const parts = logoPart.split('-').filter(s => s.length > 0)
     if (parts.length === 0) return [{ text: t || 'MarkShareX', color: 'var(--color-primary)' }]
     if (parts.length === 1) return [{ text: parts[0], color: 'var(--color-primary)' }]
 
