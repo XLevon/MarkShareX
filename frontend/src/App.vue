@@ -1,4 +1,5 @@
 <template>
+  <div v-cloak>
   <!-- Global SVG filter for brush-stroke badges (defined once to avoid FOUC) -->
   <svg style="position:absolute;width:0;height:0;pointer-events:none" aria-hidden="true">
     <filter id="brush-edge" x="-30%" y="-30%" width="160%" height="160%">
@@ -14,6 +15,7 @@
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
+  </div>
 </template>
 
 <script setup lang="ts">
