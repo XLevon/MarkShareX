@@ -45,6 +45,7 @@ import { fetchPosts } from '@/api/posts'
 import { fetchCategories } from '@/api/categories'
 import type { Post, Category } from '@/api/index'
 import PostCard from '@/components/shared/PostCard.vue'
+import { useDocumentTitle } from '@/composables/useDocumentTitle'
 
 
 const router = useRouter()
@@ -67,6 +68,7 @@ const categoryName = computed(() => {
   const slug = route.params.slug as string
   return categories.value.find((c) => c.slug === slug)?.name || slug
 })
+useDocumentTitle(categoryName)
 
 const categoryDescription = computed(() => {
   const slug = route.params.slug as string

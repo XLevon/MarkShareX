@@ -25,10 +25,14 @@ import { darkTheme, zhCN, dateZhCN } from 'naive-ui'
 import { useDarkMode } from '@/composables/useDarkMode'
 import AiChatWidget from '@/components/shared/AiChatWidget.vue'
 import { fetchDefaultAgent } from '@/api/ai'
+import { useDocumentTitle } from '@/composables/useDocumentTitle'
+import { staticRoutePageTitle } from '@/utils/documentTitle'
 
 const route = useRoute()
 const router = useRouter()
 const { isDark, initDarkMode } = useDarkMode()
+const staticPageTitle = computed(() => staticRoutePageTitle(route.name?.toString()))
+useDocumentTitle(staticPageTitle)
 
 const naiveTheme = computed(() => isDark.value ? darkTheme : null)
 

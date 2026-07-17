@@ -43,6 +43,7 @@ import { useSettingsStore } from '@/stores/settings'
 import api from '@/api/index'
 import type { Post, PaginatedData } from '@/api/index'
 import PostCard from '@/components/shared/PostCard.vue'
+import { useDocumentTitle } from '@/composables/useDocumentTitle'
 
 interface AuthorItem {
   id: number
@@ -74,6 +75,7 @@ const authorName = computed(() => {
   const a = authors.value.find(x => x.id === parseInt(authorId.value))
   return a?.display_name || a?.username || '作者'
 })
+useDocumentTitle(authorName)
 
 async function loadFirst() {
   loading.value = true

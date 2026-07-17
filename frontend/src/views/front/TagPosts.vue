@@ -47,6 +47,7 @@ import { fetchPosts } from '@/api/posts'
 import { fetchTags } from '@/api/tags'
 import type { Post, Tag } from '@/api/index'
 import PostCard from '@/components/shared/PostCard.vue'
+import { useDocumentTitle } from '@/composables/useDocumentTitle'
 
 const router = useRouter()
 const route = useRoute()
@@ -69,6 +70,7 @@ const tagSlug = computed(() => route.params.slug as string)
 const tagName = computed(() => {
   return tags.value.find((t) => t.slug === tagSlug.value)?.name || tagSlug.value
 })
+useDocumentTitle(tagName)
 
 async function loadFirst() {
   loading.value = true

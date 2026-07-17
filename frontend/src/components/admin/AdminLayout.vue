@@ -202,7 +202,7 @@ import NavBar from '@/components/shared/NavBar.vue'
 import ProfileView from '@/views/admin/Profile.vue'
 
 import { useDarkMode } from '@/composables/useDarkMode'
-import { displaySiteTitle } from '@/composables/useTitleParts'
+import { displaySiteTitle } from '@/utils/documentTitle'
 
 const router = useRouter()
 const route = useRoute()

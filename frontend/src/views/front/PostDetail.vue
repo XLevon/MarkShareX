@@ -310,6 +310,7 @@ import { useSettingsStore } from '@/stores/settings'
 import ActionBar from '@/components/front/ActionBar.vue'
 import CodeCopyWrapper from '@/components/shared/CodeCopyWrapper.vue'
 import { canCopyArticleContent } from '@/utils/guestContentAccess'
+import { useDocumentTitle } from '@/composables/useDocumentTitle'
 
 // TOC state
 const tocRef = ref<HTMLElement | null>(null)
@@ -432,10 +433,30 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const post = ref<Post | null>(null)
+type PostTitleState = 'initial' | 'loading' | 'not-found'
+const postTitleState = ref<PostTitleState>('initial')
+const postDocumentTitle = computed(() => {
+  if (post.value?.title) return post.value.title
+  if (postTitleState.value === 'initial') return undefined
+  return postTitleState.value === 'loading' ? '文章加载中' : '文章未找到'
+})
+useDocumentTitle(postDocumentTitle)
+let postRequestId = 0
+const currentSlug = () => route.params.slug as string
+function isStalePostRequest(requestId: number, slug: string): boolean {
+  return requestId !== postRequestId || currentSlug() !== slug
+}
 const readStartTime = ref(0)
 const adjacent = ref<{ prev: {id:number,title:string,slug:string}|null, next: {id:number,title:string,slug:string}|null }>({ prev: null, next: null })
 const likeStatus = ref({ liked: false, like_count: 0 })
 const likeLoading = ref(false)
+let likeActionRequestId = 0
+function isStaleLikeAction(actionId: number, requestId: number, slug: string, postId: number): boolean {
+  return actionId !== likeActionRequestId
+    || requestId !== postRequestId
+    || currentSlug() !== slug
+    || post.value?.id !== postId
+}
 
 const authStore = useAuthStore()
 const isLoggedIn = computed(() => authStore.isAuthenticated)
@@ -510,21 +531,38 @@ const canEdit = computed(() => {
 })
 
 async function loadPost() {
-  const slug = route.params.slug as string
+  const slug = currentSlug()
   if (!slug) return
+
+  const requestId = ++postRequestId
+  loading.value = true
+  post.value = null
+  postTitleState.value = 'loading'
+  adjacent.value = { prev: null, next: null }
+  likeActionRequestId++
+  likeLoading.value = false
+  likeStatus.value = { liked: false, like_count: 0 }
+  readStartTime.value = 0
+
   // Backward compat: if param is numeric ID, fetch by ID → redirect to slug-based URL
   if (/^\d+$/.test(slug)) {
     try {
       const { data: resp } = await api.get<{ data: Post }>(`/posts/${slug}`)
+      if (isStalePostRequest(requestId, slug)) return
       if (resp.data?.slug) {
         router.replace(`/post/${resp.data.slug}`)
         return
       }
-    } catch { /* fall through to 404 */ }
+    } catch {
+      if (isStalePostRequest(requestId, slug)) return
+      // Fall through to the slug endpoint and render its not-found state.
+    }
   }
-  loading.value = true
+
   try {
     const { data: resp } = await api.get<{ data: Post }>(`/posts/slug/${slug}`)
+    if (isStalePostRequest(requestId, slug)) return
+
     post.value = resp.data
     // Record read log entry — use post.id from loaded data
     readStartTime.value = Date.now()
@@ -543,61 +581,79 @@ async function loadPost() {
         '<img referrerpolicy="no-referrer" '
       )
       await nextTick()
+      if (isStalePostRequest(requestId, slug)) return
       if (items.length > 0) {
         setupTocObserver()
       }
     }
 
     // Init like count from post
-    likeStatus.value.like_count = post.value?.like_count || 0
+    const postId = post.value.id
+    likeStatus.value.like_count = post.value.like_count || 0
 
     // Fetch adjacent posts
-    if (post.value?.id) {
-      try {
-        const { data: adjResp } = await api.get<{ data: { prev: any, next: any } }>(`/posts/${post.value.id}/adjacent`)
-        adjacent.value = adjResp.data
-      } catch { /* ignore */ }
+    try {
+      const { data: adjResp } = await api.get<{ data: { prev: any, next: any } }>(`/posts/${postId}/adjacent`)
+      if (isStalePostRequest(requestId, slug)) return
+      adjacent.value = adjResp.data
+    } catch { /* ignore */ }
 
-      // Fetch like status if logged in
-      if (isLoggedIn.value) {
-        try {
-          const { data: likeResp } = await api.get<{ data: { liked: boolean, like_count: number } }>(
-            `/posts/${post.value.id}/like-status`
-          )
-          likeStatus.value = likeResp.data
-        } catch { /* ignore */ }
-      }
+    // Fetch like status if logged in
+    if (isLoggedIn.value) {
+      try {
+        const { data: likeResp } = await api.get<{ data: { liked: boolean, like_count: number } }>(
+          `/posts/${postId}/like-status`
+        )
+        if (isStalePostRequest(requestId, slug)) return
+        likeStatus.value = likeResp.data
+      } catch { /* ignore */ }
     }
 
-    // Load comments
+    if (isStalePostRequest(requestId, slug)) return
     loadComments()
   } catch {
-    post.value = null
+    if (!isStalePostRequest(requestId, slug)) {
+      post.value = null
+      postTitleState.value = 'not-found'
+    }
   } finally {
-    loading.value = false
+    if (!isStalePostRequest(requestId, slug)) {
+      loading.value = false
+    }
   }
 }
 
 async function toggleLike() {
-  if (!post.value?.id || !isLoggedIn.value) {
+  const postId = post.value?.id
+  if (!postId || !isLoggedIn.value) {
     router.replace('/login')
     return
   }
+
+  const requestId = postRequestId
+  const slug = currentSlug()
+  const actionId = ++likeActionRequestId
   likeLoading.value = true
   try {
     const { data: resp } = await api.post<{ data: { liked: boolean, like_count: number } }>(
-      `/posts/${post.value.id}/like`
+      `/posts/${postId}/like`
     )
+    if (isStaleLikeAction(actionId, requestId, slug, postId)) return
     likeStatus.value = resp.data
   } catch {
+    if (isStaleLikeAction(actionId, requestId, slug, postId)) return
     // If 401, redirect to login
     router.replace('/login')
+  } finally {
+    if (!isStaleLikeAction(actionId, requestId, slug, postId)) {
+      likeLoading.value = false
+    }
   }
-  likeLoading.value = false
 }
 
 // ── Comments ──
 const comments = ref<Comment[]>([])
+let commentsRequestId = 0
 const commentLoading = ref(false)
 const commentSubmitting = ref(false)
 const commentError = ref('')
@@ -615,16 +671,23 @@ const totalCommentCount = computed(() => {
 })
 
 async function loadComments() {
-  if (!post.value?.id) return
+  const postId = post.value?.id
+  if (!postId) return
+
+  const requestId = ++commentsRequestId
   commentLoading.value = true
   try {
-    const { data: resp } = await fetchComments(post.value.id, isAdminOrSubAdmin.value)
+    const { data: resp } = await fetchComments(postId, isAdminOrSubAdmin.value)
+    if (requestId !== commentsRequestId || post.value?.id !== postId) return
     comments.value = resp.data || []
     // After loading comments, scroll to anchor if present
     await nextTick()
+    if (requestId !== commentsRequestId || post.value?.id !== postId) return
     scrollToCommentHash()
   } catch { /* ignore */ }
-  commentLoading.value = false
+  if (requestId === commentsRequestId && post.value?.id === postId) {
+    commentLoading.value = false
+  }
 }
 
 function statusLabel(s: string): string {
@@ -750,6 +813,9 @@ onMounted(() => {
   loadPost()
 })
 onUnmounted(() => {
+  postRequestId++
+  commentsRequestId++
+  likeActionRequestId++
   // Record read duration on leave
   if (readStartTime.value && post.value?.id) {
     const duration = Math.round((Date.now() - readStartTime.value) / 1000)
@@ -764,6 +830,9 @@ watch(() => route.params.slug, () => {
     recordReadLog({ post_id: post.value.id, duration_seconds: duration }).catch(() => {})
   }
   cleanupObserver()
+  commentsRequestId++
+  comments.value = []
+  commentLoading.value = false
   tocItems.value = []
   activeId.value = ''
   loadPost()

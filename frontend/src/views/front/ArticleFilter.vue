@@ -88,6 +88,7 @@ import { fetchPosts, type PostsParams } from '@/api/posts'
 import { fetchArticleTypes, fetchArticleStatuses, type ArticleType, type ArticleStatus } from '@/api/admin'
 import type { Post } from '@/api/index'
 import PostCard from '@/components/shared/PostCard.vue'
+import { useDocumentTitle } from '@/composables/useDocumentTitle'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,6 +108,9 @@ const props = defineProps<{ filterType: 'type' | 'status' }>()
 
 const filterValue = computed(() => route.params.code as string || '')
 
+const typeMap = ref<Record<string, string>>({})
+const statusMap = ref<Record<string, string>>({})
+
 const listTitle = computed(() => {
   if (!filterValue.value) return ''
   const label = props.filterType === 'type'
@@ -114,9 +118,8 @@ const listTitle = computed(() => {
     : (statusMap.value[filterValue.value] || filterValue.value)
   return label
 })
-
-const typeMap = ref<Record<string, string>>({})
-const statusMap = ref<Record<string, string>>({})
+const documentPageTitle = computed(() => listTitle.value || (props.filterType === 'type' ? '文章类型' : '文章状态'))
+useDocumentTitle(documentPageTitle)
 
 interface MetaItem { code: string; display_name: string; color: string; post_count: number }
 const metaList = ref<MetaItem[]>([])

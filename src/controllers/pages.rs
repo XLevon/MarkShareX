@@ -28,7 +28,7 @@ fn display_site_title(raw_title: &str) -> String {
     let title = raw_title.replace('-', "");
     let title = title.trim();
     if title.is_empty() {
-        "Mark-Share-X_用AI学AI".to_string()
+        "MarkShareX_用AI学AI".to_string()
     } else {
         title.to_string()
     }
@@ -1442,7 +1442,7 @@ mod tests {
         assert_eq!(display_site_title("Mark-Share-X"), "MarkShareX");
         assert_eq!(display_site_title("Mark---Share--X"), "MarkShareX");
         assert_eq!(display_site_title("-Mark-Share-X-"), "MarkShareX");
-        assert_eq!(display_site_title("----"), "Mark-Share-X_用AI学AI");
+        assert_eq!(display_site_title("----"), "MarkShareX_用AI学AI");
     }
 
     #[test]

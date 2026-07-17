@@ -5,12 +5,6 @@ export interface TitlePart {
   color: string
 }
 
-/** Match the server-side browser title rule: remove all ASCII hyphens. */
-export function displaySiteTitle(title: string | null | undefined): string {
-  const displayed = (title || '').replaceAll('-', '').trim()
-  return displayed || 'MarkShareX'
-}
-
 /**
  * Split a title by "-" and assign colors to each part.
  * - Part 1: fixed blue (--color-primary)
