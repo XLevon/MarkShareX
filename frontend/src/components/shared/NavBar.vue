@@ -123,7 +123,7 @@ const dropdownStyle = computed(() => ({
 }
 @media (max-width: 639px) {
   .nav-logo-text {
-    max-width: 120px;
+    max-width: 200px;
   }
 }
 .avatar-badge {

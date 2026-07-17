@@ -297,7 +297,7 @@ function handleClick() {
   align-items: center;
   justify-content: center;
   padding: 2px 10px;
-  transform: translateX(25%) rotate(-6deg);
+  transform: rotate(-6deg);
 }
 
 /* Brush stroke SVG — sits behind text, not stretched */
