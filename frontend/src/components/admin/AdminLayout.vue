@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watchEffect } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
@@ -202,12 +202,17 @@ import NavBar from '@/components/shared/NavBar.vue'
 import ProfileView from '@/views/admin/Profile.vue'
 
 import { useDarkMode } from '@/composables/useDarkMode'
+import { displaySiteTitle } from '@/composables/useTitleParts'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const { isDark, toggleDarkMode, initDarkMode } = useDarkMode()
+
+watchEffect(() => {
+  document.title = displaySiteTitle(settingsStore.settings.site_title)
+})
 
 const adminNavStyle = computed(() => ({
   backgroundColor: isDark.value ? '#16161d' : '#ffffff',

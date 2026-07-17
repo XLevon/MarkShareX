@@ -56,6 +56,19 @@
     </n-card>
 
     <n-card>
+      <!-- 顶部分页：与前台每日简讯保持一致 -->
+      <div class="pagination-wrap pagination-top">
+        <button class="page-arrow" :disabled="pagination.page === 1" @click="goToPage(pagination.page - 1)">‹</button>
+        <template v-for="(p, index) in visiblePages" :key="`${p}-${index}`">
+          <span v-if="p === -1" class="page-ellipsis">…</span>
+          <button v-else class="page-number" :class="{ active: p === pagination.page }" @click="goToPage(p)">{{ p }}</button>
+        </template>
+        <button class="page-arrow" :disabled="pagination.page >= totalPages" @click="goToPage(pagination.page + 1)">›</button>
+        <select class="page-size-select" :value="pagination.pageSize" @change="onPageSizeChange(Number(($event.target as HTMLSelectElement).value))">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }} 条/页</option>
+        </select>
+      </div>
+
       <n-data-table
         :columns="columns"
         :data="items"
@@ -66,17 +79,18 @@
         @update:checked-row-keys="onCheckedChange"
         :pagination="false"
       />
-      <div class="pagination-wrap">
-        <n-pagination
-          v-model:page="pagination.page"
-          :page-size="pagination.pageSize"
-          :item-count="pagination.itemCount"
-          :page-sizes="[10,20,50]"
-          :page-slot="isMobile ? 3 : 9"
-          :show-size-picker="!isMobile"
-          @update:page="loadData"
-          @update:page-size="onPageSizeChange"
-        />
+
+      <!-- 底部分页 -->
+      <div class="pagination-wrap pagination-bottom">
+        <button class="page-arrow" :disabled="pagination.page === 1" @click="goToPage(pagination.page - 1)">‹</button>
+        <template v-for="(p, index) in visiblePages" :key="`${p}-${index}`">
+          <span v-if="p === -1" class="page-ellipsis">…</span>
+          <button v-else class="page-number" :class="{ active: p === pagination.page }" @click="goToPage(p)">{{ p }}</button>
+        </template>
+        <button class="page-arrow" :disabled="pagination.page >= totalPages" @click="goToPage(pagination.page + 1)">›</button>
+        <select class="page-size-select" :value="pagination.pageSize" @change="onPageSizeChange(Number(($event.target as HTMLSelectElement).value))">
+          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }} 条/页</option>
+        </select>
       </div>
     </n-card>
 
@@ -144,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, h, computed } from 'vue'
+import { ref, onMounted, h, computed } from 'vue'
 import { NButton, NSwitch, NSpace, NCheckbox, useMessage } from 'naive-ui'
 import { fetchAdminNews, fetchAdminNewsItem, createNews, updateNews, deleteNews, type NewsItem } from '@/api/news'
 import api from '@/api'
@@ -154,11 +168,6 @@ import { useAuthStore } from '@/stores/auth'
 const message = useMessage()
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
-const isMobile = ref(false)
-
-function updateMobileState() {
-  isMobile.value = window.innerWidth <= 640
-}
 
 const loading = ref(false)
 const saving = ref(false)
@@ -167,6 +176,24 @@ const pagination = ref({
   page: 1,
   pageSize: 10,
   itemCount: 0,
+})
+const pageSizeOptions = [10, 20, 30, 50]
+const totalPages = computed(() => Math.max(1, Math.ceil(pagination.value.itemCount / pagination.value.pageSize)))
+
+// 首页、末页始终显示；当前页及其相邻页始终显示。
+const visiblePages = computed(() => {
+  const total = totalPages.value
+  const current = pagination.value.page
+  if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1)
+
+  const pages: number[] = [1]
+  const start = Math.max(2, current - 1)
+  const end = Math.min(total - 1, current + 1)
+  if (start > 2) pages.push(-1)
+  for (let page = start; page <= end; page++) pages.push(page)
+  if (end < total - 1) pages.push(-1)
+  pages.push(total)
+  return pages
 })
 
 const checkedIds = ref<number[]>([])
@@ -357,7 +384,18 @@ async function loadData() {
   }
 }
 
-function onPageSizeChange(s: number) { pagination.value.pageSize = s; pagination.value.page = 1; loadData() }
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value || page === pagination.value.page) return
+  pagination.value.page = page
+  loadData()
+}
+
+function onPageSizeChange(s: number) {
+  if (pagination.value.pageSize === s) return
+  pagination.value.pageSize = s
+  pagination.value.page = 1
+  loadData()
+}
 
 function applyFilter() { saveFilters(); pagination.value.page = 1; loadData() }
 
@@ -488,12 +526,9 @@ async function batchDelete() {
 }
 
 onMounted(() => {
-  updateMobileState()
-  window.addEventListener('resize', updateMobileState)
   loadFilters()
   loadData()
 })
-onUnmounted(() => window.removeEventListener('resize', updateMobileState))
 </script>
 
 <style scoped>
@@ -552,9 +587,78 @@ onUnmounted(() => window.removeEventListener('resize', updateMobileState))
 }
 .pagination-wrap {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
   max-width: 100%;
+}
+.pagination-top {
+  margin-bottom: 12px;
+}
+.pagination-bottom {
   margin-top: 12px;
+}
+.page-arrow,
+.page-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--card-border-color, var(--color-border));
+  border-radius: 6px;
+  background: var(--card-bg, var(--color-bg-card));
+  color: var(--input-color, var(--color-text));
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background-color .15s;
+}
+.page-arrow {
+  font-size: 24px;
+  line-height: 1;
+}
+.page-number {
+  font-size: 12px;
+}
+.page-number.active {
+  color: #fff;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  cursor: default;
+}
+.page-arrow:hover:not(:disabled),
+.page-number:hover:not(.active) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.page-arrow:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}
+.page-ellipsis {
+  display: inline-flex;
+  width: 20px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.page-size-select {
+  height: 28px;
+  margin-left: 2px;
+  padding: 0 24px 0 8px;
+  border: 1px solid var(--card-border-color, var(--color-border));
+  border-radius: 6px;
+  background: var(--card-bg, var(--color-bg-card));
+  color: var(--input-color, var(--color-text));
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+.page-size-select:focus {
+  border-color: var(--color-primary);
 }
 
 @media (max-width: 640px) {
@@ -574,10 +678,20 @@ onUnmounted(() => window.removeEventListener('resize', updateMobileState))
     flex-basis: 40px;
   }
   .pagination-wrap {
-    justify-content: center;
+    justify-content: flex-end;
+    gap: 4px;
   }
-  .pagination-wrap :deep(.n-pagination) {
-    max-width: 100%;
+  .page-arrow,
+  .page-number {
+    width: 27px;
+    height: 27px;
+  }
+  .page-ellipsis {
+    width: 14px;
+  }
+  .page-size-select {
+    height: 27px;
+    padding-left: 6px;
   }
 }
 </style>

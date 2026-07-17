@@ -1,1 +1,0 @@
-import{r as t}from"./index-Ds3gzVI0.js";function r(e){return t.get("/guestbook",{params:e})}function n(e){return t.post("/guestbook",e)}function s(e,o){return t.put(`/admin/guestbook/${e}/reply`,{reply:o})}function a(e){return t.delete(`/admin/guestbook/${e}`)}export{n as c,a as d,r as f,s as r};
