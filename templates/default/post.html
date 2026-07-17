@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}{{ post.title }} - {{ site_title | default(value="MarkShareX_用AI学AI") }}{% endblock %}
+{% block title %}{{ meta_title }}{% endblock %}
 {% block head %}
     <link rel="canonical" href="{{ article_url | safe }}">
     <meta name="description" content="{{ meta_description }}">
     <meta property="og:type" content="article">
-    <meta property="og:title" content="{{ post.title }}">
+    <meta property="og:title" content="{{ meta_title }}">
     <meta property="og:description" content="{{ meta_description }}">
     <meta property="og:url" content="{{ article_url | safe }}">
     <meta property="og:image" content="{{ social_image | safe }}">
@@ -13,7 +13,7 @@
     <meta property="og:image:alt" content="{{ post.title }}">
     <meta property="og:site_name" content="{{ site_title | default(value="MarkShareX_用AI学AI") }}">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{{ post.title }}">
+    <meta name="twitter:title" content="{{ meta_title }}">
     <meta name="twitter:description" content="{{ meta_description }}">
     <meta name="twitter:image" content="{{ social_image | safe }}">
     <meta name="twitter:image:alt" content="{{ post.title }}">

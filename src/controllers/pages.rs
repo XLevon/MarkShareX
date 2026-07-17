@@ -34,6 +34,94 @@ fn display_site_title(raw_title: &str) -> String {
     }
 }
 
+const META_TITLE_MAX_WIDTH: usize = 60;
+const META_DESCRIPTION_MAX_WIDTH: usize = 160;
+
+fn seo_char_width(value: char) -> usize {
+    match value as u32 {
+        0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF => 0,
+        0x1100..=0x115F
+        | 0x2329..=0x232A
+        | 0x2E80..=0xA4CF
+        | 0xAC00..=0xD7A3
+        | 0xF900..=0xFAFF
+        | 0xFE10..=0xFE19
+        | 0xFE30..=0xFE6F
+        | 0xFF00..=0xFF60
+        | 0xFFE0..=0xFFE6
+        | 0x1F300..=0x1FAFF
+        | 0x20000..=0x3FFFD => 2,
+        _ => 1,
+    }
+}
+
+fn seo_display_width(value: &str) -> usize {
+    value.chars().map(seo_char_width).sum()
+}
+
+fn compact_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_by_display_width(value: &str, max_width: usize, prefer_natural_break: bool) -> String {
+    let compact = compact_whitespace(value);
+    if seo_display_width(&compact) <= max_width {
+        return compact;
+    }
+
+    let ellipsis_width = seo_char_width('…');
+    let content_limit = max_width.saturating_sub(ellipsis_width);
+    let mut width = 0;
+    let mut hard_end = 0;
+    let mut natural_break = None;
+
+    for (index, character) in compact.char_indices() {
+        let character_width = seo_char_width(character);
+        if width + character_width > content_limit {
+            break;
+        }
+
+        width += character_width;
+        hard_end = index + character.len_utf8();
+        if prefer_natural_break
+            && matches!(character, '。' | '！' | '？' | '；' | '，' | '、' | ',' | ';')
+            && width * 5 >= max_width * 3
+        {
+            natural_break = Some((hard_end, character));
+        }
+    }
+
+    let (end, ending) = natural_break
+        .map(|(end, character)| (end, Some(character)))
+        .unwrap_or((hard_end, None));
+    let truncated = compact[..end].trim_end();
+
+    if matches!(ending, Some('。' | '！' | '？')) {
+        truncated.to_string()
+    } else {
+        format!("{}…", truncated)
+    }
+}
+
+fn build_meta_title(post_title: &str, site_title: &str) -> String {
+    let post_title = compact_whitespace(post_title);
+    let site_title = compact_whitespace(site_title);
+
+    if post_title.is_empty() {
+        return truncate_by_display_width(&site_title, META_TITLE_MAX_WIDTH, false);
+    }
+    if site_title.is_empty() {
+        return truncate_by_display_width(&post_title, META_TITLE_MAX_WIDTH, false);
+    }
+
+    let combined = format!("{} - {}", post_title, site_title);
+    if seo_display_width(&combined) <= META_TITLE_MAX_WIDTH {
+        combined
+    } else {
+        truncate_by_display_width(&post_title, META_TITLE_MAX_WIDTH, false)
+    }
+}
+
 fn compact_site_meta_description(value: &str, fallback: &str) -> String {
     let first_paragraph = value
         .split("\n\n")
@@ -218,6 +306,7 @@ pub async fn post_detail(
     resolved_html = add_heading_ids(&resolved_html);
 
     let article_url = format!("{}/post/{}", base_url, post.slug);
+    let meta_title = build_meta_title(&post.title, &site_title);
     let meta_description = build_meta_description(
         post.summary.as_deref(),
         &resolved_html,
@@ -257,6 +346,7 @@ pub async fn post_detail(
     ctx.insert("guest_copy_enabled", &guest_copy_enabled);
     ctx.insert("base_url", &base_url);
     ctx.insert("article_url", &article_url);
+    ctx.insert("meta_title", &meta_title);
     ctx.insert("meta_description", &meta_description);
     ctx.insert("social_image", &social_image);
     ctx.insert("date_published", &date_published);
@@ -970,12 +1060,12 @@ fn build_meta_description(
     title: &str,
 ) -> String {
     if let Some(summary) = summary.map(str::trim).filter(|value| !value.is_empty()) {
-        return summary.chars().take(160).collect();
+        return truncate_by_display_width(summary, META_DESCRIPTION_MAX_WIDTH, true);
     }
 
     let extracted = extract_meta_text(content_html, title);
     if !extracted.is_empty() {
-        return extracted;
+        return truncate_by_display_width(&extracted, META_DESCRIPTION_MAX_WIDTH, true);
     }
 
     let title = title.trim();
@@ -986,10 +1076,10 @@ fn build_meta_description(
         } else {
             format!("{}：{}", title, site_description)
         };
-        return fallback.chars().take(160).collect();
+        return truncate_by_display_width(&fallback, META_DESCRIPTION_MAX_WIDTH, true);
     }
 
-    site_description.chars().take(160).collect()
+    truncate_by_display_width(&site_description, META_DESCRIPTION_MAX_WIDTH, true)
 }
 
 // ── SEO endpoints ──
@@ -1341,9 +1431,10 @@ pub async fn favicon_png() -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_meta_description, build_social_image_url, compact_site_meta_description,
-        display_site_title, inject_robots_meta, normalize_article_headings,
-        render_spa_seo_shell, spa_robots_directive, SeoPage,
+        build_meta_description, build_meta_title, build_social_image_url,
+        compact_site_meta_description, display_site_title, inject_robots_meta,
+        normalize_article_headings, render_spa_seo_shell, seo_display_width,
+        spa_robots_directive, SeoPage,
     };
 
     #[test]
@@ -1423,6 +1514,37 @@ mod tests {
     }
 
     #[test]
+    fn meta_title_keeps_site_name_when_the_combined_title_fits() {
+        assert_eq!(
+            build_meta_title("Rust 入门", "MarkShareX_用AI学AI"),
+            "Rust 入门 - MarkShareX_用AI学AI"
+        );
+    }
+
+    #[test]
+    fn meta_title_drops_site_name_before_truncating_the_article_title() {
+        assert_eq!(
+            build_meta_title(
+                "Rust 错误处理深度解构：Result 与 ? 操作符",
+                "MarkShareX_用AI学AI",
+            ),
+            "Rust 错误处理深度解构：Result 与 ? 操作符"
+        );
+    }
+
+    #[test]
+    fn meta_title_truncates_an_overlong_article_title_by_display_width() {
+        let result = build_meta_title(
+            "深入理解 Rust 所有权生命周期错误处理异步编程与生产环境最佳实践完整指南",
+            "MarkShareX_用AI学AI",
+        );
+
+        assert!(result.ends_with('…'));
+        assert!(!result.contains("MarkShareX"));
+        assert!(seo_display_width(&result) <= 60);
+    }
+
+    #[test]
     fn meta_description_prefers_trimmed_manual_summary() {
         let result = build_meta_description(
             Some("  人工编写的文章摘要  "),
@@ -1432,6 +1554,22 @@ mod tests {
         );
 
         assert_eq!(result, "人工编写的文章摘要");
+    }
+
+    #[test]
+    fn meta_description_truncates_mixed_language_text_at_a_natural_break() {
+        let result = build_meta_description(
+            Some("深入解析 Rust 错误处理体系的核心：Result 枚举类型与 ? 传播操作符。从类型系统设计出发，涵盖错误转换、自定义错误类型、thiserror/anyhow 库的配合使用，以及生产环境中的最佳实践与常见陷阱。"),
+            "",
+            "站点描述",
+            "文章标题",
+        );
+
+        assert_eq!(
+            result,
+            "深入解析 Rust 错误处理体系的核心：Result 枚举类型与 ? 传播操作符。从类型系统设计出发，涵盖错误转换、自定义错误类型、thiserror/anyhow 库的配合使用，…"
+        );
+        assert!(seo_display_width(&result) <= 160);
     }
 
     #[test]
@@ -1471,6 +1609,16 @@ mod tests {
         let shell = "<html><head></head><body></body></html>";
         assert!(inject_robots_meta(shell, "noindex, follow")
             .contains("<meta name=\"robots\" content=\"noindex, follow\">"));
+    }
+
+    #[test]
+    fn ssr_article_template_uses_runtime_meta_title_without_changing_the_h1() {
+        let template = include_str!("../../templates/default/post.html");
+
+        assert!(template.contains("{% block title %}{{ meta_title }}{% endblock %}"));
+        assert!(template.contains("<meta property=\"og:title\" content=\"{{ meta_title }}\">"));
+        assert!(template.contains("<meta name=\"twitter:title\" content=\"{{ meta_title }}\">"));
+        assert!(template.contains("<h1>{{ post.title }}</h1>"));
     }
 
     #[test]
