@@ -9,7 +9,7 @@ use sea_orm::*;
 use std::collections::HashSet;
 use std::error::Error as _;
 use crate::models::entity::{
-    article_statuses, article_types, categories, posts, tags, users,
+    article_statuses, article_types, categories, post_tags, posts, tags, users,
 };
 
 const DEFAULT_OG_IMAGE: &[u8] = include_bytes!("../../assets/default-og.png");
@@ -31,6 +31,21 @@ fn display_site_title(raw_title: &str) -> String {
         "Mark-Share-X_用AI学AI".to_string()
     } else {
         title.to_string()
+    }
+}
+
+fn compact_site_meta_description(value: &str, fallback: &str) -> String {
+    let first_paragraph = value
+        .split("\n\n")
+        .map(str::trim)
+        .find(|paragraph| !paragraph.is_empty())
+        .unwrap_or(fallback);
+    let compact = first_paragraph.split_whitespace().collect::<Vec<_>>().join(" ");
+    let compact = compact.trim();
+    if compact.is_empty() {
+        fallback.chars().take(120).collect()
+    } else {
+        compact.chars().take(120).collect()
     }
 }
 
@@ -95,6 +110,7 @@ pub async fn post_detail(
         None
     };
     let category_name = category.as_ref().map(|value| value.name.clone());
+    let category_slug = category.as_ref().map(|value| value.slug.clone());
     let tags = crate::services::posts::get_post_tags(&state.db, post.id).await?;
 
     let raw_site_title = get_setting(&state.db, "site_title")
@@ -258,13 +274,22 @@ pub async fn post_detail(
         "published_at": post.published_at.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default(),
         "created_at": post.created_at.format("%Y-%m-%d").to_string(),
         "category_name": category_name,
-        "tags": tags.iter().map(|t| t.name.clone()).collect::<Vec<_>>(),
+        "category_slug": category_slug,
+        "tags": tags.iter().map(|tag| json!({
+            "name": tag.name,
+            "slug": tag.slug,
+        })).collect::<Vec<_>>(),
     }));
     ctx.insert("adjacent_prev", &adjacent_prev.map(|(_, title, slug)| json!({"title": title, "slug": slug})));
     ctx.insert("adjacent_next", &adjacent_next.map(|(_, title, slug)| json!({"title": title, "slug": slug})));
     ctx.insert("related_posts", &related_posts.iter().map(|(title, slug)| json!({"title": title, "slug": slug})).collect::<Vec<_>>());
     let tag_names: Vec<String> = tags.iter().map(|t| t.name.clone()).collect();
     ctx.insert("tag_names", &tag_names);
+    let tag_links = tags.iter().map(|tag| json!({
+        "name": tag.name,
+        "slug": tag.slug,
+    })).collect::<Vec<_>>();
+    ctx.insert("tag_links", &tag_links);
 
     let html = state
         .tera
@@ -393,6 +418,9 @@ struct SeoPage {
     title: String,
     description: String,
     canonical_url: String,
+    site_title: String,
+    social_image: String,
+    schema_type: &'static str,
     heading: String,
     intro: String,
     content_html: String,
@@ -417,8 +445,47 @@ fn render_spa_seo_shell(shell: &str, page: &SeoPage) -> Result<String, &'static 
     let title = escape_html(&page.title);
     let description = escape_html(&page.description);
     let canonical_url = escape_html(&page.canonical_url);
+    let social_image = escape_html(&page.social_image);
     let metadata = format!(
-        "<title>{title}</title>\n    <meta name=\"description\" content=\"{description}\">\n    <link rel=\"canonical\" href=\"{canonical_url}\">\n    <meta property=\"og:type\" content=\"website\">\n    <meta property=\"og:title\" content=\"{title}\">\n    <meta property=\"og:description\" content=\"{description}\">\n    <meta property=\"og:url\" content=\"{canonical_url}\">"
+        "<title>{title}</title>\n    <meta name=\"description\" content=\"{description}\">\n    <link rel=\"canonical\" href=\"{canonical_url}\">\n    <meta property=\"og:type\" content=\"website\">\n    <meta property=\"og:title\" content=\"{title}\">\n    <meta property=\"og:description\" content=\"{description}\">\n    <meta property=\"og:url\" content=\"{canonical_url}\">\n    <meta property=\"og:image\" content=\"{social_image}\">\n    <meta name=\"twitter:card\" content=\"summary_large_image\">\n    <meta name=\"twitter:title\" content=\"{title}\">\n    <meta name=\"twitter:description\" content=\"{description}\">\n    <meta name=\"twitter:image\" content=\"{social_image}\">"
+    );
+
+    let schema = if page.schema_type == "WebSite" {
+        json!({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": page.site_title,
+            "url": page.canonical_url,
+            "description": page.description,
+            "image": page.social_image,
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": format!("{}/search?q={{search_term_string}}", page.canonical_url.trim_end_matches('/')),
+                "query-input": "required name=search_term_string"
+            }
+        })
+    } else {
+        json!({
+            "@context": "https://schema.org",
+            "@type": page.schema_type,
+            "name": page.heading,
+            "url": page.canonical_url,
+            "description": page.description,
+            "image": page.social_image,
+            "isPartOf": {
+                "@type": "WebSite",
+                "name": page.site_title,
+                "url": page.canonical_url.split('/').take(3).collect::<Vec<_>>().join("/")
+            }
+        })
+    };
+    let schema_json = serde_json::to_string(&schema)
+        .map_err(|_| "failed to serialize SEO JSON-LD")?
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026");
+    let metadata = format!(
+        "{metadata}\n    <script type=\"application/ld+json\">{schema_json}</script>"
     );
 
     let mut html = String::with_capacity(shell.len() + page.content_html.len() + 512);
@@ -558,6 +625,11 @@ pub async fn aggregate_page(
         .await
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| format!("浏览 {} 的最新技术文章与知识内容。", site_title));
+    let site_meta_description = get_setting(&state.db, "site_meta_description")
+        .await
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| compact_site_meta_description(&value, &site_title))
+        .unwrap_or_else(|| compact_site_meta_description(&site_description, &site_title));
     let base_url = derive_base_url(&headers, &state.config.server.host, state.config.server.port);
     let canonical_url = format!("{}{}", base_url, uri.path());
     let segments: Vec<&str> = uri.path().trim_matches('/').split('/').collect();
@@ -688,6 +760,11 @@ pub async fn aggregate_page(
                 render_post_list(&posts),
             )
         }
+        "/changelog" => (
+            "更新日志".to_string(),
+            format!("查看 {} 的版本更新、功能改进与问题修复记录。", site_title),
+            "<section aria-label=\"更新日志\"><p>版本更新、功能改进与问题修复记录。</p></section>".to_string(),
+        ),
         _ => match segments.as_slice() {
             ["category", slug] if !slug.is_empty() => {
                 let category = categories::Entity::find()
@@ -812,8 +889,15 @@ pub async fn aggregate_page(
     };
     let page = SeoPage {
         title: page_title,
-        description: description.clone(),
+        description: if uri.path() == "/" {
+            site_meta_description
+        } else {
+            description.clone()
+        },
         canonical_url,
+        site_title,
+        social_image: format!("{base_url}/default-og.png"),
+        schema_type: if uri.path() == "/" { "WebSite" } else { "CollectionPage" },
         heading,
         intro: description,
         content_html,
@@ -894,12 +978,18 @@ fn build_meta_description(
         return extracted;
     }
 
-    let site_description = site_description.trim();
-    if !site_description.is_empty() {
-        return site_description.chars().take(160).collect();
+    let title = title.trim();
+    let site_description = compact_site_meta_description(site_description, "");
+    if !title.is_empty() {
+        let fallback = if site_description.is_empty() {
+            title.to_string()
+        } else {
+            format!("{}：{}", title, site_description)
+        };
+        return fallback.chars().take(160).collect();
     }
 
-    title.trim().chars().take(160).collect()
+    site_description.chars().take(160).collect()
 }
 
 // ── SEO endpoints ──
@@ -955,6 +1045,24 @@ fn is_known_spa_route(path: &str) -> bool {
     )
 }
 
+fn spa_robots_directive(path: &str) -> Option<&'static str> {
+    if path == "/search" {
+        Some("noindex, follow")
+    } else if matches!(path, "/login" | "/register" | "/apply" | "/guestbook")
+        || path == "/admin"
+        || path.starts_with("/admin/")
+    {
+        Some("noindex, nofollow")
+    } else {
+        None
+    }
+}
+
+fn inject_robots_meta(shell: &str, directive: &str) -> String {
+    let meta = format!("    <meta name=\"robots\" content=\"{}\">\n", directive);
+    shell.replacen("</head>", &format!("{meta}</head>"), 1)
+}
+
 /// Fallback for routes that are not handled by the API, SEO pages, or static files.
 /// Known Vue routes return 200. Unknown routes return the same SPA shell with a real
 /// 404 status so Vue can render its NotFound view without creating soft 404s.
@@ -965,13 +1073,23 @@ pub async fn spa_fallback(uri: Uri) -> Response {
         StatusCode::NOT_FOUND
     };
 
-    match tokio::fs::read("static/frontend/index.html").await {
-        Ok(body) => (
-            status,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            body,
-        )
-            .into_response(),
+    match tokio::fs::read_to_string("static/frontend/index.html").await {
+        Ok(shell) => {
+            let directive = spa_robots_directive(uri.path());
+            let body = directive
+                .map(|value| inject_robots_meta(&shell, value))
+                .unwrap_or(shell);
+            let mut response = (
+                status,
+                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                body,
+            )
+                .into_response();
+            if let Some(value) = directive {
+                response.headers_mut().insert("X-Robots-Tag", value.parse().unwrap());
+            }
+            response
+        }
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "前端页面文件不存在",
@@ -987,7 +1105,7 @@ pub async fn robots_txt(
 ) -> Result<(HeaderMap, String), AppError> {
     let base_url = derive_base_url(&headers, &state.config.server.host, state.config.server.port);
     let content = format!(
-        "User-agent: *\nAllow: /\nSitemap: {}/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nSitemap: {}/sitemap.xml\n",
         base_url
     );
     let mut resp_headers = HeaderMap::new();
@@ -1004,10 +1122,83 @@ pub async fn sitemap_xml(
 
     let base_url = derive_base_url(&headers, &state.config.server.host, state.config.server.port);
 
-    // Query published posts
-    let posts = posts::Entity::find()
+    // Published, non-deleted posts are the source of truth for every sitemap entry.
+    let published_posts = posts::Entity::find()
         .filter(posts::Column::Status.eq("published"))
+        .filter(posts::Column::DeletedAt.is_null())
         .order_by_desc(posts::Column::PublishedAt)
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+
+    let published_post_ids = published_posts.iter().map(|post| post.id).collect::<HashSet<_>>();
+    let published_author_ids = published_posts.iter().map(|post| post.user_id).collect::<HashSet<_>>();
+    let used_article_types = published_posts
+        .iter()
+        .map(|post| post.article_type.clone())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<HashSet<_>>();
+    let used_article_statuses = published_posts
+        .iter()
+        .map(|post| post.article_status.clone())
+        .filter(|value| !value.trim().is_empty())
+        .collect::<HashSet<_>>();
+
+    let category_models = categories::Entity::find()
+        .filter(categories::Column::IsVisible.eq(true))
+        .filter(categories::Column::DeletedAt.is_null())
+        .order_by_asc(categories::Column::SortOrder)
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+    let mut published_category_ids = published_posts
+        .iter()
+        .filter_map(|post| post.category_id)
+        .collect::<HashSet<_>>();
+    // Parent category pages aggregate child posts, so include every used ancestor too.
+    loop {
+        let mut changed = false;
+        for category in &category_models {
+            if published_category_ids.contains(&category.id) {
+                if let Some(parent_id) = category.parent_id {
+                    changed |= published_category_ids.insert(parent_id);
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    let used_tag_ids = post_tags::Entity::find()
+        .all(&state.db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|link| published_post_ids.contains(&link.post_id))
+        .map(|link| link.tag_id)
+        .collect::<HashSet<_>>();
+    let tag_models = tags::Entity::find()
+        .filter(tags::Column::DeletedAt.is_null())
+        .order_by_asc(tags::Column::Name)
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+    let author_models = users::Entity::find()
+        .filter(users::Column::IsActive.eq(true))
+        .filter(users::Column::DeletedAt.is_null())
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+    let type_models = article_types::Entity::find()
+        .filter(article_types::Column::IsActive.eq(true))
+        .order_by_asc(article_types::Column::SortOrder)
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+    let status_models = article_statuses::Entity::find()
+        .filter(article_statuses::Column::IsActive.eq(true))
+        .order_by_asc(article_statuses::Column::SortOrder)
         .all(&state.db)
         .await
         .unwrap_or_default();
@@ -1018,20 +1209,56 @@ pub async fn sitemap_xml(
 "#,
     );
 
-    // Homepage
-    xml.push_str(&format!(
-        "  <url><loc>{}/</loc><priority>1.0</priority></url>\n",
-        base_url
-    ));
+    let mut push_url = |path: &str, priority: &str, lastmod: Option<String>| {
+        xml.push_str(&format!("  <url><loc>{}{}</loc>", base_url, escape_html(path)));
+        if let Some(lastmod) = lastmod {
+            xml.push_str(&format!("<lastmod>{}</lastmod>", lastmod));
+        }
+        xml.push_str(&format!("<priority>{}</priority></url>\n", priority));
+    };
 
-    // Posts
-    for post in &posts {
-        let lastmod = post.published_at.unwrap_or(post.created_at)
-            .format("%Y-%m-%d");
-        xml.push_str(&format!(
-            "  <url><loc>{}/post/{}</loc><lastmod>{}</lastmod><priority>0.8</priority></url>\n",
-            base_url, post.slug, lastmod
-        ));
+    push_url("/", "1.0", None);
+    for path in [
+        "/knowledge-base",
+        "/categories",
+        "/tags",
+        "/authors",
+        "/pinned",
+        "/types",
+        "/statuses",
+        "/changelog",
+    ] {
+        push_url(path, "0.7", None);
+    }
+
+    for post in &published_posts {
+        let lastmod = post.updated_at.format("%Y-%m-%d").to_string();
+        push_url(&format!("/post/{}", post.slug), "0.8", Some(lastmod));
+    }
+    for category in &category_models {
+        if published_category_ids.contains(&category.id) {
+            push_url(&format!("/category/{}", category.slug), "0.6", None);
+        }
+    }
+    for tag in &tag_models {
+        if used_tag_ids.contains(&tag.id) {
+            push_url(&format!("/tag/{}", tag.slug), "0.5", None);
+        }
+    }
+    for author in &author_models {
+        if published_author_ids.contains(&author.id) {
+            push_url(&format!("/author/{}", author.id), "0.6", None);
+        }
+    }
+    for article_type in &type_models {
+        if used_article_types.contains(&article_type.code) {
+            push_url(&format!("/type/{}", article_type.code), "0.5", None);
+        }
+    }
+    for article_status in &status_models {
+        if used_article_statuses.contains(&article_status.code) {
+            push_url(&format!("/status/{}", article_status.code), "0.5", None);
+        }
     }
 
     xml.push_str("</urlset>\n");
@@ -1114,8 +1341,9 @@ pub async fn favicon_png() -> Response {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_meta_description, build_social_image_url, display_site_title,
-        normalize_article_headings, render_spa_seo_shell, SeoPage,
+        build_meta_description, build_social_image_url, compact_site_meta_description,
+        display_site_title, inject_robots_meta, normalize_article_headings,
+        render_spa_seo_shell, spa_robots_directive, SeoPage,
     };
 
     #[test]
@@ -1162,6 +1390,9 @@ mod tests {
             title: "知识库 - MarkShareX".to_string(),
             description: "浏览技术文章".to_string(),
             canonical_url: "https://www.xlevon.cn/knowledge-base".to_string(),
+            site_title: "MarkShareX".to_string(),
+            social_image: "https://www.xlevon.cn/default-og.png".to_string(),
+            schema_type: "CollectionPage",
             heading: "知识库".to_string(),
             intro: "浏览技术文章".to_string(),
             content_html: "<ul><li><a href=\"/post/rust\">Rust 教程</a></li></ul>".to_string(),
@@ -1172,6 +1403,9 @@ mod tests {
         assert!(html.contains("<title>知识库 - MarkShareX</title>"));
         assert!(html.contains("<meta name=\"description\" content=\"浏览技术文章\">"));
         assert!(html.contains("<link rel=\"canonical\" href=\"https://www.xlevon.cn/knowledge-base\">"));
+        assert!(html.contains("<meta property=\"og:image\" content=\"https://www.xlevon.cn/default-og.png\">"));
+        assert!(html.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"));
+        assert!(html.contains("\"@type\":\"CollectionPage\""));
         assert!(html.contains("<h1>知识库</h1>"));
         assert!(html.contains("<a href=\"/post/rust\">Rust 教程</a>"));
         assert!(html.contains("<script src=\"/assets/app.js\"></script>"));
@@ -1210,5 +1444,41 @@ mod tests {
         );
 
         assert_eq!(result, "这是正文重点。 第二段 & 内容。");
+    }
+
+    #[test]
+    fn empty_article_content_uses_unique_title_based_description() {
+        let result = build_meta_description(None, "", "站点描述", "文章标题");
+        assert_eq!(result, "文章标题：站点描述");
+    }
+
+    #[test]
+    fn site_meta_description_uses_first_paragraph_and_excludes_later_credentials() {
+        let result = compact_site_meta_description(
+            "简洁的站点定位。\n继续说明。\n\n账号：admin@example.com/password",
+            "fallback",
+        );
+        assert_eq!(result, "简洁的站点定位。 继续说明。");
+        assert!(!result.contains("password"));
+    }
+
+    #[test]
+    fn private_spa_routes_get_matching_noindex_directives() {
+        assert_eq!(spa_robots_directive("/search"), Some("noindex, follow"));
+        assert_eq!(spa_robots_directive("/login"), Some("noindex, nofollow"));
+        assert_eq!(spa_robots_directive("/admin/news"), Some("noindex, nofollow"));
+        assert_eq!(spa_robots_directive("/guestbook"), Some("noindex, nofollow"));
+        let shell = "<html><head></head><body></body></html>";
+        assert!(inject_robots_meta(shell, "noindex, follow")
+            .contains("<meta name=\"robots\" content=\"noindex, follow\">"));
+    }
+
+    #[test]
+    fn ssr_article_taxonomy_links_use_slugs() {
+        let template = include_str!("../../templates/default/post.html");
+        assert!(template.contains("/category/{{ post.category_slug }}"));
+        assert!(template.contains("/tag/{{ tag.slug }}"));
+        assert!(!template.contains("/category/{{ post.category_name }}"));
+        assert!(!template.contains("/tag/{{ tag }}"));
     }
 }

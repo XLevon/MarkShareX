@@ -322,6 +322,7 @@ pub fn page_routes(state: AppState) -> Router<AppState> {
         .route("/statuses", get(pages::aggregate_page))
         .route("/status/:code", get(pages::aggregate_page))
         .route("/pinned", get(pages::aggregate_page))
+        .route("/changelog", get(pages::aggregate_page))
         .route("/post/:slug", get(pages::post_detail))
         .route("/robots.txt", get(pages::robots_txt))
         .route("/sitemap.xml", get(pages::sitemap_xml))

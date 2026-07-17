@@ -54,7 +54,7 @@
     <h1>{{ post.title }}</h1>
     <div class="meta">
         <time datetime="{{ post.published_at }}">{{ post.published_at | default(value=post.created_at) }}</time>
-        {% if post.category_name %}<a href="/category/{{ post.category_name }}" class="category">{{ post.category_name }}</a>{% endif %}
+        {% if post.category_name and post.category_slug %}<a href="/category/{{ post.category_slug }}" class="category">{{ post.category_name }}</a>{% endif %}
         <span>{{ post.view_count }} 次阅读</span>
     </div>
     {% if post.cover_image %}
@@ -63,10 +63,10 @@
     <div class="content" data-guest-copy-enabled="{{ guest_copy_enabled }}">
         {{ post.content_html | safe }}
     </div>
-    {% if tag_names | length > 0 %}
+    {% if tag_links | length > 0 %}
     <div class="tags">
-        {% for tag in tag_names %}
-        <a href="/tag/{{ tag }}" class="tag">{{ tag }}</a>
+        {% for tag in tag_links %}
+        <a href="/tag/{{ tag.slug }}" class="tag">{{ tag.name }}</a>
         {% endfor %}
     </div>
     {% endif %}
