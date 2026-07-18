@@ -17,10 +17,10 @@ data/
 #!data/templates/
 
 # 其他
-/docs
 /images
 /Prototype
 .drone.yml
 *.log
 .DS_Store
 *.db
+/.hermes

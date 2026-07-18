@@ -1,0 +1,1072 @@
+# MarkShareX 系统全貌
+
+> 基于 MarkShareX v0.4.1 当前源码、README 与 `docs/` 现有专题文档综合整理。
+> 本文面向使用者、开发者与运维人员，说明系统定位、总体架构、功能模块、数据流、权限边界、AI 能力、运行机制及部署方式。若本文与旧文档存在差异，以当前源码和迁移文件为准。
+
+---
+
+## 1. 系统定位
+
+MarkShareX 是一个面向个人技术创作者和小型内容团队的轻量级、自托管 Markdown 内容平台。它处在静态博客与重量级 CMS 之间：既保留 Markdown 写作、slug 固定链接和低运维成本，又提供在线管理后台、用户权限、全文搜索、评论互动、资源管理、数据分析以及 AI 自动采集和写作能力。
+
+系统的核心目标是：
+
+1. **数据自主**：文章、资讯、用户、配置和资源全部保存在自有数据库与文件目录中。
+2. **轻量部署**：Rust 后端承担 API、SSR、静态资源和后台任务；默认使用 SQLite，不依赖外部数据库或搜索服务。
+3. **完整创作链路**：从 Markdown 编辑、图片管理、分类标签到发布、搜索、评论和统计形成闭环。
+4. **搜索与 SEO 友好**：Tantivy 提供中文全文搜索，Rust/Tera 为公开页面生成可抓取 HTML 和独立 metadata。
+5. **AI 原生扩展**：将模型供应商、模型、Agent、技能、工具、任务和执行日志建模为可管理对象，使 AI 能读取站内数据、搜索网络并创建文章或资讯。
+6. **人机协作**：AI 可以完成信息采集和初稿生成，最终内容仍可在管理后台审核、编辑和发布。
+
+### 1.1 适用场景
+
+- 个人技术博客与知识库
+- 小团队内部知识沉淀
+- Markdown 在线创作与多作者协作
+- 带全文搜索和管理后台的轻量内容站
+- AI Agent 自动采集、整理和发布内容的实验平台
+- 希望使用单一应用进程和 SQLite 降低运维复杂度的自托管站点
+
+### 1.2 当前技术规模
+
+按 v0.4.1 源码快照统计，排除 `.git`、`node_modules`、`target` 和构建产物后：
+
+- Rust 源文件：76 个，约 1.2 万行代码
+- Vue 单文件组件：54 个，约 1.6 万行代码
+- TypeScript：30 余个文件
+- 后端控制器模块：21 个
+- Axum 路由注册：约 138 处；部分路由同时注册多个 HTTP 方法，因此实际 API 操作数更多
+- 业务及系统数据表：28 张，另有 `_migrations` 迁移追踪表
+
+这些数字用于描述当前规模，不作为稳定 API 承诺。
+
+---
+
+## 2. 总体架构
+
+```text
+┌────────────────────────────────────────────────────────────┐
+│                         Browser                            │
+│                                                            │
+│  公开前台 Vue SPA             管理后台 Vue SPA             │
+│  首页/知识库/文章/搜索/评论     内容/资源/用户/AI/设置        │
+└───────────────┬──────────────────────────┬─────────────────┘
+                │ HTML / assets            │ REST / JSON
+                ▼                          ▼
+┌────────────────────────────────────────────────────────────┐
+│                    Rust + Axum 0.7                         │
+│                                                            │
+│  页面层          API 控制器       中间件         后台任务    │
+│  Tera SSR        /api/v1/*        认证/IP/安全头  AI cron    │
+│                                                            │
+│  服务层：文章、认证、文件、搜索、AI、日志、执行追踪          │
+└───────────────┬──────────────┬──────────────┬──────────────┘
+                │              │              │
+                ▼              ▼              ▼
+          SeaORM / SQL     Tantivy 索引     本地文件系统
+          SQLite/PG        data/search_index data/uploads
+                │
+                ▼
+      文章、资讯、用户、配置、AI 元数据与日志
+```
+
+### 2.1 前后端协作方式
+
+MarkShareX 不是“纯 SSR”或“纯 SPA”，而是两者协作：
+
+- **Rust 页面路由**负责公开页面的初始 HTML、SEO metadata、Open Graph、Twitter Card、JSON-LD、robots 和 sitemap。
+- **Vue Router**接管浏览器中的前台和管理后台交互，实现无刷新导航、异步加载、状态管理和复杂编辑界面。
+- **Axum REST API**统一提供数据读写，前端 Axios 基础路径为 `/api/v1`。
+- **Vite 开发服务器**运行在 `5173`，将 `/api`、`/uploads`、`/scalar` 代理到 Rust 后端；生产构建输出到 `static/frontend/`，由 Rust 提供资源服务。
+
+### 2.2 后端分层
+
+```text
+controllers/  HTTP 参数、响应、权限入口、路由处理
+services/     可复用业务逻辑、Markdown、搜索、AI、日志
+models/       SeaORM Entity、数据库连接与初始化迁移
+middleware/   身份认证、IP 访问控制、压缩、安全头、缓存
+config/       config.toml 与受支持的环境变量覆盖
+utils/        统一响应、错误、AppState、客户端/IP/时间工具
+migrations/   初始化 Schema 及后续 SQL 增量迁移
+```
+
+控制器与服务并非绝对隔离：部分业务仍直接位于控制器中，但总体上遵循“路由处理—业务服务—数据模型”的组织方式。
+
+---
+
+## 3. 项目目录
+
+```text
+MarkShareX/
+├── src/
+│   ├── main.rs                 # 启动入口与全局装配
+│   ├── controllers/            # API、SSR 页面与系统路由
+│   ├── services/               # 文章、认证、搜索、文件、AI、日志
+│   ├── models/entity/          # SeaORM 数据实体
+│   ├── middleware/             # Auth、IP Guard、压缩和安全响应头
+│   ├── config/                 # 配置结构与加载逻辑
+│   ├── migrations.rs           # 编译嵌入的增量迁移执行器
+│   ├── api_doc.rs              # OpenAPI 聚合
+│   ├── crypto.rs               # AI API Key 加解密
+│   └── utils/                  # 错误、响应和通用工具
+├── frontend/
+│   ├── src/router/             # 前台、后台路由与导航守卫
+│   ├── src/views/front/        # 公开阅读页面
+│   ├── src/views/admin/        # 管理后台页面
+│   ├── src/components/         # 布局及共享组件
+│   ├── src/api/                # Axios 请求模块与类型
+│   ├── src/stores/             # Pinia 登录、站点设置状态
+│   ├── src/composables/        # 主题、标题和可见性逻辑
+│   ├── src/utils/              # 标题、校验和内容访问工具
+│   └── tests/                  # Node TypeScript 测试
+├── templates/default/          # Tera SSR 模板
+├── static/frontend/            # Vite 生产构建产物
+├── migrations/                 # SQL 初始化与增量迁移
+├── data/                       # 默认运行时数据目录
+│   ├── marksharex.db           # SQLite 数据库
+│   ├── uploads/                # 上传文件
+│   ├── search_index/           # Tantivy 索引
+│   └── templates/              # 启动时写入的内嵌模板副本
+├── docs/                       # 专题文档和本文
+├── scripts/                    # Docker/启动辅助脚本
+├── Cargo.toml                  # Rust 依赖和版本
+├── config.example.toml         # 配置示例
+├── Dockerfile                  # 三阶段容器构建
+└── docker-compose.yml          # 容器编排与数据卷
+```
+
+---
+
+## 4. 应用启动与运行时生命周期
+
+`src/main.rs` 中的启动流程如下：
+
+1. 读取 `.env`。
+2. 初始化终端标识、tracing 日志和容量为 5000 条的内存环形日志缓冲区。
+3. 从 `config.toml` 加载配置，并应用代码明确支持的环境变量覆盖。
+4. 将配置中的加密密钥注入加解密模块使用的环境变量。
+5. 创建 `data_dir` 和上传目录。
+6. 将编译时嵌入的默认 Tera 模板写入 `{data_dir}/templates/default/`。
+7. 初始化 SeaORM 数据库连接。
+8. 执行初始化 Schema 和增量 SQL 迁移。
+9. 初始化 `{data_dir}/search_index` 中的 Tantivy 索引。
+10. 比较已发布文章数与索引文档数；索引为空或数量不一致时自动重建。
+11. 迁移旧 IP 设置数据格式。
+12. 创建共享 `AppState`，其中包含数据库、配置、搜索引擎和日志缓冲区。
+13. 后台启动 AI 定时调度器；调度器每 60 秒检查一次任务。
+14. 合并 API 路由、SSR 页面路由和 SPA fallback。
+15. 依次挂载压缩、安全响应头、静态资源缓存、请求体大小限制、IP Guard、HTTP trace 和 CORS。
+16. 绑定配置的 host/port，启动 Axum HTTP 服务。
+
+### 4.1 搜索索引恢复
+
+Tantivy 索引不是数据库真相源。启动时系统会比较：
+
+- 数据库中 `status='published'` 且未软删除的文章数
+- Tantivy 当前文档数
+
+数量不一致时从数据库重建索引。文章新增、更新和删除时也会增量维护索引。
+
+### 4.2 AI 调度恢复
+
+AI Scheduler 启动时会把上次异常退出遗留的 `running` 日志标记为失败，避免任务永久卡在执行中。每个任务在进程内通过 `running` 集合防止同一任务并发重入。
+
+---
+
+## 5. 功能模块全景
+
+### 5.1 文章与知识库
+
+文章是系统的核心内容实体，支持：
+
+- Markdown 原文与净化后的 HTML 双份存储
+- 草稿与发布状态；Schema 保留 `deleted_at`，但当前单篇删除流程在清理关联数据后执行硬删除
+- 独立 slug 固定链接
+- 作者、树形分类和多标签
+- 封面、本地文件或网络资源引用
+- 置顶、排序和前后篇导航
+- 评论开关、点赞计数、评论计数和阅读统计
+- 文章类型与文章状态字典
+- 管理端搜索、状态筛选、批量删除和置顶排序
+- ZIP 导入导出及 YAML Front Matter 解析
+
+文章类型和状态并不是写死在前端的简单枚举，而是由 `article_types`、`article_statuses` 两张字典表维护；文章保存其 code，公开页面可按类型或状态聚合浏览。
+
+#### Markdown 渲染管道
+
+```text
+Markdown 原文
+  → 解析 nr:{id} 网络资源引用
+  → comrak 生成 GFM HTML
+  → ammonia 白名单净化
+  → 外链图片属性增强
+  → content_html 持久化
+  → SSR / SPA 展示
+```
+
+文章可见 H1 和 JSON-LD `headline` 保留完整标题；网页 `<title>`、OG 和 Twitter metadata 使用运行时宽度控制规则，避免中文标题在搜索结果中被不合理截断。
+
+### 5.2 分类、标签、作者与筛选
+
+- 分类支持父子层级、显示/隐藏、排序、封面和创建者归属。
+- 标签通过 `post_tags` 与文章建立多对多关系。
+- 公开页面支持分类、标签、作者、文章类型和文章状态五类聚合入口。
+- 管理员和子管理员可查看全局内容；作者的写操作按资源所有者进行约束。
+
+### 5.3 资讯模块
+
+资讯与知识文章分表管理，适用于时效性内容：
+
+- 草稿/发布状态
+- 标题、摘要、Markdown 正文与 HTML
+- 原始来源 URL
+- 题材分类：时政、财经、科技、社会、文娱、体育、国际、法治、教育
+- 搜索、筛选、排序、批量删除和发布管理
+- AI 工具可自动创建资讯
+- AI 创建前按来源 URL 和近期标题相似度进行去重
+
+公开首页可将资讯作为“每日简讯”展示，而知识文章仍进入知识库和 Tantivy 索引，两类内容职责分离。
+
+### 5.4 评论、留言、点赞与阅读日志
+
+#### 评论
+
+- 支持登录用户和匿名访客发表评论
+- `parent_id` 构成嵌套回复树
+- 状态包含 pending、approved、deleted
+- 是否进入待审由站点设置决定
+- 管理端提供列表、筛选、审核和待审数量
+
+#### 留言板
+
+留言板独立于文章评论，支持：
+
+- 访客昵称、邮箱和正文
+- 登录用户关联
+- 管理员回复与删除
+- 全站启用开关
+- 访客复制能力开关
+
+#### 点赞与阅读
+
+- `likes` 记录用户与文章的唯一点赞关系，API 提供 toggle 和状态查询。
+- `read_logs` 记录文章、用户/IP、User-Agent、设备、来源和阅读时长。
+- 文章阅读统计和管理端趋势分析主要基于阅读日志聚合。
+- 前端文章页对主文章、相邻文章、评论和点赞请求设置请求身份校验，避免快速切换路由时旧响应覆盖新文章状态。
+
+### 5.5 本地文件资源
+
+文件模块提供：
+
+- 单文件和批量上传
+- MIME 类型与大小限制
+- MD5 去重
+- 重名处理
+- 数据库记录和磁盘文件同步删除
+- 未引用文件检测
+- 网格/列表视图及批量操作
+
+引用检测会检查文章正文、封面、分类图片和站点 Logo 等位置，降低误删正在使用资源的风险。
+
+### 5.6 网络资源引用
+
+网络资源模块解决外链图片 URL 变化或散落在文章中的问题。
+
+```text
+外部 URL
+  → network_resources 注册并去重
+  → 获得资源 ID
+  → 内容中保存 nr:{id}
+  → API 批量解析或 /resolve 302
+  → 渲染时还原当前 URL
+```
+
+主要能力包括：
+
+- URL 规范化与去重
+- `nr:{id}` 活引用
+- 查询某资源被哪些文章、封面、分类或设置引用
+- 批量解析 ID 到 URL
+- URL 更新后引用自动跟随
+- 删除前检查引用关系
+
+该设计将“内容表达”与“外部地址”解耦，是 MarkShareX 区别于普通 Markdown 博客的重要特性。
+
+### 5.7 用户、作者申请与个人资料
+
+用户具有角色和状态两个维度：
+
+- 角色：`admin`、`sub_admin`、`author`、`visitor`
+- 状态：如 `active`、`muted`、`banned`
+
+系统支持：
+
+- 注册、登录和 Token 刷新
+- 个人资料、头像、简介和头衔
+- 修改密码
+- 每用户独立 API Key
+- 登录日志和阅读日志
+- visitor 提交作者申请
+- 管理员/子管理员审批并填写备注
+
+### 5.8 数据分析与运维
+
+管理后台提供：
+
+- 已发布文章、草稿、浏览、点赞和评论统计
+- 今日文章和今日点赞增量
+- 阅读趋势
+- 文章阅读排行及详细日志
+- 点赞记录
+- 评论审核统计
+- 登录日志
+- 内存环形运行日志
+- 数据库、磁盘、内存和进程 uptime 健康信息
+
+公开健康检查为：
+
+```text
+GET /api/v1/health → OK
+```
+
+管理运维接口位于 `/api/v1/admin/logs`、`/health`、`/stats`。
+
+### 5.9 站点设置与更新日志
+
+`settings` 是 key-value 表，保存站点标题、副标题、描述、Logo、友情链接、评论审核、侧栏行为、留言板开关和列表加载数量等运行时设置。
+
+更新日志模块独立维护版本号、内容、发布状态和时间，公开页面展示已发布记录，管理端支持 CRUD。
+
+---
+
+## 6. AI 子系统
+
+AI 子系统不是单一“聊天接口”，而是一套可配置的 Agent 运行环境。
+
+### 6.1 核心对象
+
+| 对象 | 作用 |
+|---|---|
+| AI Provider | 保存 OpenAI 兼容供应商类型、Base URL 和加密 API Key |
+| AI Model | 归属于 Provider 的模型名称及默认标记 |
+| Agent Config | 系统提示词、用户提示词、默认模型和默认标记 |
+| AI Tool | function name、描述、JSON Schema、启用状态和配置 |
+| AI Skill | 可复用任务模板、说明、输出格式和参数模板 |
+| AI Task | 技能、模型、Agent、cron、参数、最大轮次和启用状态 |
+| Task Log | 执行状态、工具步骤、最终回复和错误 |
+| Chat Session / Message | 后台多轮聊天会话与消息历史 |
+
+API Key 使用 AES-256-GCM 加密后存入数据库；加密密钥必须在生产环境固定保存，变更后旧密文将无法解密。
+
+### 6.2 Function Calling 循环
+
+```text
+用户消息 / 定时任务
+  → 选择 Agent、Provider 和 Model
+  → 从数据库加载启用工具
+  → 调用 OpenAI-compatible /chat/completions
+  → LLM 返回 tool_calls
+  → Rust ToolRegistry 执行工具
+  → 工具结果追加到消息上下文
+  → 继续下一轮，直到最终文本或达到轮次上限
+  → 保存 trace、最终回复和错误
+```
+
+任务级 `max_tool_rounds` 优先于全局配置；全局未设置时默认 8 轮。执行追踪记录每一轮 LLM 内容、工具名、参数和结果预览，手动任务可在前端轮询查看过程。
+
+### 6.3 内置工具
+
+当前内置能力包括：
+
+- `get_current_datetime`：获取服务器本地时间
+- `api_request`：在受控范围内调用站内 API
+- `web_search`：网络搜索
+- `web_extract`：抓取网页正文
+- `create_news`：创建资讯
+- `create_post`：创建知识文章
+
+工具是否暴露给模型由数据库中的 `ai_tools` 配置控制，工具元数据与 Rust 实际执行器通过 `function_name` 对应。
+
+### 6.4 搜索与抓取降级链
+
+网络搜索支持：
+
+```text
+主提供商（通常 Tavily）
+  → 备用提供商（通常 Firecrawl）
+  → 可选 SearXNG
+  → DuckDuckGo 兜底
+```
+
+网页抓取优先使用配置的商业提供商，最终可降级为直接 HTTP GET。工具对结果数量、抓取 URL 数量和正文长度进行限制，避免单次上下文无限增长。
+
+### 6.5 定时调度
+
+- Scheduler 每 60 秒读取启用任务。
+- cron 表达式会先标准化再匹配本地时间。
+- 同一任务在单进程内禁止并发重入。
+- 任务执行不会阻塞下一次调度 tick。
+- 成功后更新 `last_run_at` 和 `run_count`。
+- trace 持久化到 `ai_task_logs`，异常退出后的僵尸任务会在启动时清理。
+
+---
+
+## 7. 搜索与 SEO
+
+### 7.1 站内全文搜索
+
+Tantivy 索引字段包括：
+
+- `title`
+- `body`
+- `post_id`
+
+系统对中日韩字符以及 CJK 与字母的边界插入分隔，使 SimpleTokenizer 能处理中文查询。统一搜索接口还会补充标签和作者的数据库匹配结果。
+
+索引目录位于：
+
+```text
+{data_dir}/search_index/
+```
+
+数据库始终是内容真相源，索引可以重建。
+
+### 7.2 SSR 与 SPA 的 SEO 分工
+
+Rust 直接处理：
+
+- 首页和知识库
+- 分类、标签、作者、文章类型、文章状态聚合页
+- 推荐文章和更新日志入口
+- 文章详情
+- `robots.txt`
+- `sitemap.xml`
+- favicon 和默认 OG 图片
+
+SSR 输出包含：
+
+- `<title>` 和 description
+- canonical
+- robots 指令
+- Open Graph / Twitter metadata
+- WebSite、CollectionPage 或 Article JSON-LD
+- 文章或聚合页的预渲染可读内容
+
+Vue 在客户端路由切换时同步 `document.title`：
+
+- `App.vue` 管理静态路由标题
+- 动态页面组件管理文章、分类、标签、作者、类型和状态标题
+- 前后端统一使用站点标题显示规则与 fallback
+
+文章 title 使用中英文加权宽度控制：ASCII 等半角字符计 1，中文、全角字符和 Emoji 等计 2；超限时优先移除站点后缀，再对文章标题进行安全截断。description 也采用加权宽度并优先在自然标点处截断。
+
+---
+
+## 8. 前端架构与页面
+
+### 8.1 技术栈
+
+- Vue 3.5 + Composition API
+- TypeScript 5.7
+- Vue Router 4.5
+- Pinia 3
+- Axios
+- Naive UI
+- Tailwind CSS 4
+- Vditor
+- Vite 6
+- marked、JSZip、file-saver、dayjs 等工具库
+
+### 8.2 公开前台
+
+| 路径 | 页面能力 |
+|---|---|
+| `/` | Hero、每日简讯、文章列表、侧栏信息 |
+| `/knowledge-base` | 知识文章浏览 |
+| `/post/:slug` | 文章正文、目录、前后篇、点赞、评论、阅读记录 |
+| `/categories`、`/category/:slug` | 分类总览与分类文章 |
+| `/tags`、`/tag/:slug` | 标签总览与标签文章 |
+| `/authors`、`/author/:id` | 作者列表与作者文章 |
+| `/types`、`/type/:code` | 文章类型筛选 |
+| `/statuses`、`/status/:code` | 文章状态筛选 |
+| `/pinned` | 推荐/置顶文章 |
+| `/search` | 统一搜索结果 |
+| `/changelog` | 版本更新记录 |
+| `/guestbook` | 留言板 |
+| `/login`、`/register` | 登录与注册 |
+| `/apply` | 作者申请 |
+
+`FrontLayout` 负责导航、全局搜索、用户菜单、侧栏与主题体验。Vue Router 保存滚动位置，并在异步内容渲染后恢复浏览器前进/后退位置。
+
+### 8.3 管理后台
+
+| 路径 | 模块 |
+|---|---|
+| `/admin/dashboard` | 仪表盘与运行概况 |
+| `/admin/posts` | 文章列表 |
+| `/admin/posts/new`、`/:id` | Vditor 新建/编辑文章 |
+| `/admin/categories` | 分类管理 |
+| `/admin/tags` | 标签管理 |
+| `/admin/files` | 本地与网络资源库 |
+| `/admin/analytics/views` | 阅读分析 |
+| `/admin/analytics/comments` | 评论审核 |
+| `/admin/likes` | 点赞记录 |
+| `/admin/import` | 导入导出 |
+| `/admin/users` | 用户与作者申请 |
+| `/admin/settings` | 站点设置与更新日志 |
+| `/admin/guestbook` | 留言管理 |
+| `/admin/news` | 资讯管理 |
+| `/admin/ai` | Provider、Model、Agent、Skill、Tool、Task、Chat 与日志 |
+| `/admin/setup` | 首次初始化 |
+
+前端路由守卫允许 admin、sub_admin、author 进入后台框架，仅 admin 可进入 AI 管理页面。它只负责用户体验，真正的安全边界仍是后端权限检查。
+
+需要注意，`authStore.setTokens()` 当前无论 `rememberMe` 参数为何值都会写入 `localStorage`，而 Axios 与路由守卫同时兼容 `sessionStorage`。因此“记住登录”的存储策略尚未完全统一。
+
+### 8.4 状态管理
+
+当前全局 Pinia Store 保持精简：
+
+- `authStore`：Access Token、Refresh Token、用户和登录状态
+- `settingsStore`：站点设置、网络资源 URL 缓存和解析后的 Logo
+
+大部分页面状态保留在组件内部，避免将所有业务都堆入全局 Store。
+
+### 8.5 API 请求与 Token 刷新
+
+Axios 请求拦截器自动附加：
+
+```http
+Authorization: Bearer <access-token>
+```
+
+出现 401 时：
+
+1. 查找 Refresh Token。
+2. 使用全局共享 Promise 发起一次刷新，防止并发 401 重复刷新。
+3. 写回新 Token 和用户信息。
+4. 重放原请求。
+5. 刷新失败时清空两种 Storage 中的认证信息，并通知路由系统。
+
+管理页面收到 `auth:expired` 后跳转登录页；公开页面不会因过期 Token 被强制中断。
+
+---
+
+## 9. API 组织
+
+所有业务 API 使用 `/api/v1` 前缀。主要模块如下：
+
+| 模块 | 典型路径 | 说明 |
+|---|---|---|
+| 端点发现 | `/api/v1/` | 返回可供工具自举的端点元数据 |
+| 健康与版本 | `/health`、`/version` | 服务状态与版本 |
+| 认证 | `/auth/*` | 注册、登录、刷新 |
+| 文章 | `/posts/*` | CRUD、slug、相邻文章、点赞 |
+| 搜索 | `/search` | 文章、标签、作者统一搜索 |
+| 分类/标签 | `/categories/*`、`/tags/*` | 公开列表与管理操作 |
+| 类型/状态 | `/article-types`、`/article-statuses` | 字典与筛选 |
+| 评论 | `/posts/:id/comments`、`/admin/comments` | 公开评论与审核 |
+| 文件 | `/files/*` | 上传、MD5、未引用和删除 |
+| 网络资源 | `/network-resources/*` | 活引用、解析和引用检查 |
+| 用户/资料 | `/admin/users/*`、`/profile/*` | 用户管理与个人资料 |
+| 作者申请 | `/apply/*`、`/admin/applications/*` | 申请与审批 |
+| 分析 | `/analytics/*` | 趋势、总计和排行 |
+| 资讯 | `/news/*`、`/admin/news/*` | 公开读取和管理 CRUD |
+| 留言 | `/guestbook`、`/admin/guestbook/*` | 留言与回复 |
+| 更新日志 | `/changelogs/*` | 公开列表、最新版本和管理 CRUD |
+| 导入导出 | `/import/posts`、`/export/posts` | Markdown ZIP 数据交换 |
+| AI | `/ai/*`、`/admin/ai/*` | Agent、任务、聊天、工具与日志 |
+| 运维 | `/admin/logs`、`/health`、`/stats` | 运行诊断 |
+| OpenAPI | `/openapi.json`、`/scalar` | 机器可读规范与交互文档 |
+
+`/scalar` 本身由 admin 中间件保护，可接受后台设置的 `scalar_token` Cookie 或 Bearer Token。
+
+`GET /api/v1/` 的端点发现列表是手工维护的辅助清单，并不等同于路由注册表或权限真相源：部分新增模块尚未列入，个别 `auth_required` 标记也与 handler 实际签名不一致。例如点赞及点赞状态接口当前都要求登录。准确接口与权限应同时核对 OpenAPI、路由注册和具体 handler。
+
+---
+
+## 10. 身份认证与权限边界
+
+### 10.1 两种认证方式
+
+#### JWT
+
+- Access Token：短期访问
+- Refresh Token：长期续期并在数据库中可撤销
+- 密码使用 bcrypt 哈希
+- 浏览器默认通过 Bearer Token 调用 API
+
+#### X-API-Key
+
+- 每个用户可生成独立 API Key
+- 请求头为 `X-API-Key`
+- 后端查询处于 active 状态且 Key 匹配的用户
+- 用于 CLI、脚本和外部 AI Agent 集成
+- 成功和失败均可写入登录审计日志
+
+认证提取器优先检查 X-API-Key，再回退到 JWT。
+
+### 10.2 角色边界
+
+| 角色 | 典型能力 |
+|---|---|
+| admin | 全局内容、用户、设置、资源、运维、Scalar、AI 管理 |
+| sub_admin | 全局内容与审核类管理，不拥有仅 admin 的系统/AI 权限 |
+| author | 创建和维护本人内容及允许的相关资源 |
+| visitor | 公开浏览、互动和申请作者 |
+
+具体权限由每个后端控制器根据 `is_admin()`、`is_privileged()` 和资源所有者进行判断。不能仅依据前端隐藏按钮或路由守卫判断权限。
+
+### 10.3 当前权限实现边界
+
+后端目前没有给所有 `/api/v1/admin/*` 路由统一套管理员中间件，很多接口依赖各 handler 自行声明 `AuthUser` 并进一步检查角色。因此路径中出现 `admin` 并不自动表示 admin-only。源码复核发现仍有需要单独整改的权限债务：
+
+- 多个 AI Provider、Model、Skill、Tool、Task 与会话 handler 只要求已登录，没有统一的 admin 角色校验。
+- 文章更新和删除流程的所有者/角色校验不完整，不能将“作者只能修改本人文章”视为已被所有后端接口严格保证。
+- 按 ID/slug 获取文章的服务函数主要过滤删除状态，没有统一强制 `published`，公开读取边界需继续收紧。
+- AI 会话详情、删除和复用会话时的所有者检查并不完整。
+
+这些属于当前实现状态和安全技术债，不是推荐的目标权限模型。部署到非可信多用户环境前，应优先补齐后端角色与资源所有权校验；前端菜单过滤不能替代该修复。
+
+### 10.4 状态与访问控制
+
+除角色外，用户状态会参与认证和业务判断。系统还提供 IP Guard，对配置的 IP 规则进行请求级限制。
+
+---
+
+## 11. 数据库全貌
+
+默认数据库为 SQLite，SeaORM 同时编译了 PostgreSQL 驱动。当前产品体验、迁移 SQL 和 Docker 默认配置以 SQLite 为主。
+
+### 11.1 表分组
+
+#### 内容与互动
+
+- `posts`
+- `categories`
+- `tags`
+- `post_tags`
+- `article_types`
+- `article_statuses`
+- `comments`
+- `likes`
+- `guestbook`
+- `news`
+- `changelog`
+
+#### 用户与审计
+
+- `users`
+- `refresh_tokens`
+- `author_applications`
+- `login_logs`
+- `read_logs`
+
+#### 资源与配置
+
+- `files`
+- `network_resources`
+- `settings`
+
+#### AI
+
+- `ai_providers`
+- `ai_models`
+- `ai_tools`
+- `ai_agent_config`
+- `ai_skills`
+- `ai_tasks`
+- `ai_task_logs`
+- `ai_chat_sessions`
+- `ai_chat_messages`
+
+#### 迁移内部表
+
+- `_migrations`
+
+共 28 张业务及系统表，外加 1 张迁移追踪表。`likes` 目前通过 SQL 使用，没有对应 SeaORM Entity；其余主要业务表均有 Entity。
+
+### 11.2 关系摘要
+
+```text
+users 1 ── N posts
+users 1 ── N files
+users 1 ── N read_logs / login_logs
+posts N ── 1 categories
+posts N ── N tags              (post_tags)
+posts 1 ── N comments
+posts 1 ── N likes
+comments 1 ── N comments       (parent_id)
+
+ai_providers 1 ── N ai_models
+ai_models 1 ── N ai_agent_config
+ai_skills 1 ── N ai_tasks
+ai_tasks 1 ── N ai_task_logs
+users 1 ── N ai_chat_sessions
+ai_chat_sessions 1 ── N ai_chat_messages
+```
+
+### 11.3 迁移机制
+
+系统有两层迁移：
+
+1. `0000000000_init_schema.sql` 由模型初始化逻辑执行，DDL 采用 `IF NOT EXISTS`，兼顾全新安装与幂等启动。
+2. 后续 SQL 文件由 `build.rs` 在编译期嵌入二进制，运行时按文件名顺序执行，并记录到 `_migrations`。
+
+因此发布新二进制时不需要额外携带迁移工具，但部署前仍应备份数据库。
+
+### 11.4 软删除与统计
+
+文章、用户、分类、标签、文件和评论等核心实体普遍保留 `deleted_at`，但删除策略并不完全统一：部分查询使用软删除过滤，文章单篇删除服务则会清理标签、点赞、评论和阅读日志后硬删除文章。阅读量主要从 `read_logs` 聚合，`posts.view_count` 作为历史兼容字段保留。
+
+---
+
+## 12. 配置系统
+
+主配置文件为 `config.toml`，参考模板是 `config.example.toml`。
+
+### 12.1 配置分区
+
+```toml
+data_dir = "./data"
+
+[server]
+host = "0.0.0.0"
+port = 5023
+
+[database]
+url = "sqlite://./data/marksharex.db?mode=rwc"
+max_connections = 10
+min_connections = 1
+
+[auth]
+jwt_secret = "..."
+jwt_expire_seconds = 3600
+refresh_expire_seconds = 604800
+encrypt_key = "..."
+
+[storage]
+upload_dir = "./data/uploads"
+max_file_size = 20971520
+allowed_types = ["..."]
+
+[ai]
+max_tool_rounds = 8
+
+[ai.search]
+provider = "tavily"
+fallback_provider = "firecrawl"
+searxng_url = ""
+duckduckgo_url = ""
+```
+
+### 12.2 当前源码明确支持的环境变量覆盖
+
+- `MARKSHAREX_DATA_DIR`
+- `MARKSHAREX_STORAGE_UPLOAD_DIR`
+- `MARKSHAREX_SERVER_HOST`
+- `MARKSHAREX_SERVER_PORT`
+- `MARKSHAREX_DATABASE_URL`
+- `MARKSHAREX_DATABASE_MAX_CONNECTIONS`
+- `MARKSHAREX_DATABASE_MIN_CONNECTIONS`
+- `MARKSHAREX_AI_MAX_TOOL_ROUNDS`
+- `MARKSHAREX_ENCRYPT_KEY` 由加解密模块读取；配置中的 `auth.encrypt_key` 也会在启动时注入
+
+旧 `docs/CONFIG.md` 声称任意配置项都可按通用命名规则覆盖，但当前 `AppConfig::load()` 实际采用显式覆盖列表。新增环境变量时应同步修改加载代码，而不能只修改文档。
+
+`config.example.toml` 中仍存在 `[server].base_url`，但当前 `ServerConfig` 只反序列化 `host` 和 `port`；页面绝对 URL 主要从请求 Host 推导。该字段目前不应作为已生效配置宣传。
+
+### 12.3 生产安全要求
+
+- 必须更换开发用 JWT secret。
+- 必须设置并长期保存固定的加密密钥。
+- 不要将真实 API Key、数据库凭据或 Token 提交到仓库。
+- SQLite 数据库、上传目录和搜索索引都应置于持久卷或可靠数据目录。
+- 搜索索引可以重建；数据库和上传文件必须纳入备份。
+
+---
+
+## 13. 构建、部署与运维
+
+### 13.1 本地开发
+
+```bash
+# 后端
+cargo run
+
+# 前端（另一个终端）
+cd frontend
+npm install
+npm run dev
+```
+
+默认：
+
+- Rust 后端：`http://localhost:5023`
+- Vite：`http://localhost:5173`
+
+### 13.2 单机二进制部署
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+
+cargo build --release --locked
+./target/release/marksharex
+```
+
+生产环境通常配合 systemd 管理进程，并可在前面增加 Nginx/Caddy 处理 TLS、域名、访问日志和额外缓存策略。
+
+严格来说，运行时除二进制外还需要：
+
+- `config.toml`
+- `static/frontend/` 前端构建产物
+- 可写的数据和上传目录
+
+Tera 模板与 SQL 迁移会编译进二进制；启动时模板会写入数据目录。前端静态文件在当前构建方式下作为独立目录复制和服务，并非全部嵌入 Rust 可执行文件。
+
+### 13.3 Docker
+
+Dockerfile 使用三阶段构建：
+
+1. Node 20 Alpine 构建 Vue 前端。
+2. Rust 1.95 构建 release 二进制。
+3. Ubuntu 24.04 运行镜像，以非特权 `marksharex` 用户启动。
+
+Compose 默认：
+
+- 暴露 `5023:5023`
+- 挂载命名卷 `marksharex_data:/data`
+- 将数据库、上传文件、索引和运行时模板持久化到 `/data`
+- 设置数据库与目录的容器内路径
+
+健康检查访问 `/api/v1/health`。
+
+当前 Dockerfile 更偏向已经预构建本地 base 镜像的工作流：官方 Rust/Ubuntu 基础镜像的系统依赖安装步骤被注释，但构建涉及 `magic/libmagic`，运行时健康检查又调用 `curl`。因此直接使用官方 base 执行 `docker compose up -d` 前，应实际验证依赖是否齐全；不能仅根据旧文档承诺所有环境下一定可直接构建。
+
+### 13.4 备份与恢复
+
+最小备份集：
+
+```text
+config.toml
+{data_dir}/marksharex.db
+{data_dir}/uploads/
+```
+
+可选备份：
+
+```text
+{data_dir}/search_index/
+{data_dir}/templates/
+```
+
+后两者可以由程序重建。恢复后首次启动会自动执行尚未运行的迁移，并在需要时重建搜索索引。
+
+### 13.5 可观测性
+
+- tracing 输出终端日志
+- 内存保留最近 5000 条日志供管理 API 查询
+- `TraceLayer` 记录 HTTP 请求
+- 管理健康接口查询数据库、资源和 uptime
+- systemd/Docker 负责进程退出后的拉起
+
+---
+
+## 14. 安全机制与边界
+
+当前实现包含：
+
+- bcrypt 密码哈希
+- JWT Access + Refresh Token
+- X-API-Key 认证
+- AES-256-GCM 加密 AI API Key
+- ammonia 净化文章 Markdown HTML
+- 文件 MIME/大小限制与 MD5 处理
+- IP Guard
+- 请求体大小限制
+- gzip/Brotli 压缩
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `X-Frame-Options: SAMEORIGIN`
+- HTTPS 代理场景下成功响应的 HSTS
+- 哈希静态资源一年 immutable 缓存
+- Scalar admin 保护
+
+需要理解的边界：
+
+- 当前 CORS 配置允许任意来源、方法和请求头；公网部署时应结合实际集成需求评估是否收紧。
+- 前端路由守卫不是安全控制，后端权限判断才是最终边界。
+- CSP 尚未在应用中设置。
+- 自定义 Markdown/HTML 展示点都应经过明确净化，不能因为内容来自管理后台就默认可信。
+- 当前上传校验仍会按声明 MIME/扩展名走兼容分支，虽然依赖中声明了 `magic`，并不能据此认为所有文件都已经过 magic bytes 强校验；自定义重命名也需要额外防止路径分隔符和 `..`。
+- AI `web_extract` 的直接抓取和可配置 Provider Base URL 由服务端主动请求，目前应增加私网、环回和重定向目标限制以降低 SSRF 风险。
+- AI 聊天和更新日志等前端展示点使用 `v-html`/Markdown 渲染时，应在展示前建立明确的 HTML 净化边界。
+- 反向代理必须正确传递 `X-Forwarded-Proto` 和可信客户端 IP 头，HSTS 与 IP 审计才能按预期工作。
+
+---
+
+## 15. 关键业务数据流
+
+### 15.1 发布文章
+
+```text
+作者在 Vditor 编辑 Markdown
+  → 选择分类、标签、封面、类型和状态
+  → POST/PUT /api/v1/posts
+  → 后端解析 AuthUser 并执行当前 handler 的权限校验
+  → 解析 nr:{id}
+  → comrak 渲染 + ammonia 净化
+  → SeaORM 保存 Markdown 与 HTML
+  → 维护标签关联
+  → 更新 Tantivy 索引
+  → SSR 与 SPA 可立即读取
+```
+
+### 15.2 公开阅读
+
+```text
+浏览器请求 /post/:slug
+  → Rust 查询已发布文章及关联信息
+  → Tera 输出完整 SSR、metadata 和 JSON-LD
+  → 浏览器直接可读、爬虫可索引
+  → 若从 Vue SPA 内导航，PostDetail 通过 API 异步加载
+  → 记录阅读日志/时长
+  → 用户可点赞、评论或跳转前后篇
+```
+
+### 15.3 AI 定时采集资讯
+
+```text
+Scheduler 匹配 cron
+  → 加载 Task + Skill + Agent + Model
+  → 创建 ToolRegistry
+  → LLM 调用 web_search
+  → 必要时调用 web_extract
+  → LLM 整理结果
+  → create_news 检查 URL 和标题重复
+  → 保存草稿或已发布资讯
+  → 保存逐轮 trace 和最终结果
+  → 更新任务运行次数
+```
+
+### 15.4 Token 自动续期
+
+```text
+API 返回 401
+  → Axios 检查 Refresh Token
+  → 并发请求共享一个 refresh Promise
+  → 获取新 Access/Refresh Token
+  → 更新 Storage 与 Pinia
+  → 重放原请求
+  → 失败则清理认证并通知路由
+```
+
+---
+
+## 16. 测试与质量保障
+
+### 后端
+
+```bash
+cargo test --no-fail-fast
+cargo fmt --check
+cargo build
+```
+
+使用 `axum-test`、Tokio 测试及模块内单元测试，当前覆盖了部分 SSR、路由、标题/描述算法和响应行为。
+
+### 前端
+
+```bash
+cd frontend
+npm test
+npm run build
+npm run type-check
+npm run lint
+```
+
+当前 `npm test` 使用 Node 的 TypeScript strip-types 测试纯函数和关键源码约束。对于路由竞态、组件卸载和异步响应顺序，后续仍适合补充 Vue 挂载级行为测试。
+
+当前 `npm run build` 可以成功生成生产包，但构建脚本不会先运行 `vue-tsc`；独立执行 `npm run type-check` 仍有较多既有类型错误。因此“Vite 能构建”不等于“TypeScript 类型健康”，发布门禁应逐步把类型检查纳入并先偿还现有类型债。
+
+### 发布前建议
+
+1. 前端测试和生产构建通过。
+2. Rust 测试、格式和 release 构建通过。
+3. `git diff --check` 通过。
+4. 使用真实浏览器验证首页、文章、搜索、登录和后台核心流程。
+5. 备份数据库和上传文件。
+6. 部署后检查 systemd/Docker 状态、端口、健康接口和首页 HTTP 状态。
+
+---
+
+## 17. 现有文档的定位
+
+本文综合了 `docs/` 中的专题资料，但不替代所有细节文档：
+
+| 文档 | 主要用途 |
+|---|---|
+| `INTRODUCTION.md` | 产品理念和早期功能介绍 |
+| `SYSTEM.md` | v0.2/v0.3 阶段系统模块说明 |
+| `REQUIREMENTS.md` | 原始需求、规格和设计记录 |
+| `DATABASE.md` | 字段级数据库说明；部分统计已落后于 v0.4.1 |
+| `NETWORK_RESOURCES.md` | `nr:{id}` 网络资源机制专题 |
+| `CONFIG.md` | 配置入门；环境变量列表需以当前源码为准 |
+| `DOCKER.md` | Docker 详细部署 |
+| `DOCKER_QUICKREF.md` | Docker 常用命令速查 |
+| `AI_API.md` | AI 模块接口和数据结构 |
+| `AI_HELP.md` | AI 后台使用帮助 |
+| `告别臃肿与残缺！MarkShareX.md` | 产品叙事和项目介绍文章 |
+
+旧文档中常见的过时信息包括：
+
+- 版本仍写作 v0.2.x 或 v0.3.x；当前 Cargo 与前端版本为 v0.4.1。
+- 数据表统计仍为 14 或 25 张；当前初始化 Schema 为 28 张业务及系统表，另有迁移追踪表。
+- 控制器、服务和前端页面数量低于当前实际值。
+- “所有环境变量自动映射配置”的描述超出当前显式实现。
+- “单二进制包含所有前端静态资源”的表述不完全准确；当前生产运行还需要 `static/frontend/`。
+- 部分旧路由仍写作 `/post/:id`；当前公开文章路由以 `/post/:slug` 为准。
+- `AI_API.md` 中的独立 Python MCP Server 仍是待实现方案，不能与仓库中已经落地的内置 AI Agent 子系统混为一谈。
+- `NETWORK_RESOURCES.md` 早期使用 `/nr/:id`，当前正文与封面主要使用 `nr:{id}`/`nr:ID` 语义。
+- Cargo 虽启用了 PostgreSQL 驱动，但迁移包含 PRAGMA、`INSERT OR IGNORE` 和 SQLite 时间函数；当前不能承诺无缝切换 PostgreSQL。
+
+本文对这些差异进行了统一，但字段级细节仍应同时查阅 migration、Entity 和 OpenAPI。
+
+---
+
+## 18. 系统特点总结
+
+MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把以下能力整合在一个轻量自托管系统中：
+
+1. **内容平台**：文章、资讯、分类、标签、作者和更新日志。
+2. **创作工作台**：在线 Markdown 编辑、本地及网络资源、导入导出。
+3. **阅读站点**：SSR、SPA、全文搜索、评论、点赞、留言和阅读统计。
+4. **协作后台**：四角色权限、作者申请、审核、用户与系统设置。
+5. **AI 运行环境**：模型供应商、Agent、技能、工具、任务、聊天和执行追踪。
+6. **轻量基础设施**：Rust/Axum、SQLite、Tantivy、本地文件和可选 Docker/systemd。
+
+从系统边界看，SQLite 是结构化数据真相源，上传目录是二进制资源真相源，Tantivy 是可重建派生索引，Vue 是交互层，Rust 同时承担 API、SSR、安全边界和后台任务。理解这几个边界，就能快速定位绝大多数开发、排障和部署问题。
+
+---
+
+## 19. 快速导航
+
+- 启动配置：`config.example.toml`
+- API 在线文档：运行后访问 `/scalar`
+- OpenAPI JSON：`/api/v1/openapi.json`
+- 健康检查：`/api/v1/health`
+- 数据库定义：`migrations/0000000000_init_schema.sql`
+- 后端路由：`src/controllers/mod.rs`
+- 启动装配：`src/main.rs`
+- 前端路由：`frontend/src/router/index.ts`
+- 网络资源说明：`docs/NETWORK_RESOURCES.md`
+- AI API：`docs/AI_API.md`
+- Docker 部署：`docs/DOCKER.md`
+
+---
+
+*本文档按 MarkShareX v0.4.1 当前源码整理。系统继续演进时，应优先同步版本、路由、数据表、配置覆盖、AI 工具和部署边界。*
