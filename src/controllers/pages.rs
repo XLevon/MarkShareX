@@ -180,6 +180,7 @@ pub async fn post_detail(
     } else {
         crate::services::posts::get_post_by_slug(&state.db, &param).await?
     };
+    super::posts::authorize_post_read(None, &post)?;
 
     let post_id = post.id;
     // Real view count from read_logs

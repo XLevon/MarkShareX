@@ -100,6 +100,12 @@ pub async fn list_post_comments(
     let is_admin_view = query.admin.as_deref() == Some("1")
         && auth.as_ref().map_or(false, |a| matches!(a.role.as_str(), "admin" | "sub_admin"));
 
+    if is_admin_view {
+        crate::services::posts::get_post(&state.db, post_id).await?;
+    } else {
+        super::posts::require_published_post(&state.db, post_id).await?;
+    }
+
     let mut select = comments::Entity::find()
         .filter(comments::Column::PostId.eq(post_id))
         .filter(comments::Column::DeletedAt.is_null());
@@ -145,6 +151,7 @@ pub async fn create_comment(
     auth: Option<AuthUser>,
     Json(req): Json<CreateCommentRequest>,
 ) -> Result<Json<ApiResponse<CommentResponse>>, AppError> {
+    super::posts::require_published_post(&state.db, post_id).await?;
     let content = req.content.trim().to_string();
     if content.is_empty() {
         return Err(AppError::Validation("评论内容不能为空".to_string()));

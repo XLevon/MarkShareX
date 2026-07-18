@@ -3,9 +3,90 @@ use std::net::SocketAddr;
 use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use crate::utils::{AppState, AppError, ApiResponse};
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AuthUser, OptionalAuthUser, PrivilegedUser};
 use crate::models::entity::{posts, users, article_types, article_statuses};
 use sea_orm::*;
+
+fn authorize_post_create(auth: &AuthUser) -> Result<(), AppError> {
+    if auth.is_privileged() || auth.role == "author" {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden)
+    }
+}
+
+fn authorize_post_update(
+    auth: &AuthUser,
+    post: &posts::Model,
+    requested_author_id: Option<i32>,
+) -> Result<(), AppError> {
+    if auth.is_privileged() {
+        return Ok(());
+    }
+    if auth.role != "author" || post.user_id != auth.user_id {
+        return Err(AppError::Forbidden);
+    }
+    if requested_author_id.is_some_and(|author_id| author_id != auth.user_id) {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+fn authorize_post_pin_change(auth: &AuthUser, requested: Option<bool>) -> Result<(), AppError> {
+    if requested.is_some() && !auth.is_privileged() {
+        Err(AppError::Forbidden)
+    } else {
+        Ok(())
+    }
+}
+
+fn authorize_post_delete(auth: &AuthUser, post: &posts::Model) -> Result<(), AppError> {
+    if auth.is_privileged() {
+        return Ok(());
+    }
+    if auth.role == "author" && post.user_id == auth.user_id && post.status != "published" {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden)
+    }
+}
+
+pub(crate) fn authorize_post_read(
+    auth: Option<&AuthUser>,
+    post: &posts::Model,
+) -> Result<(), AppError> {
+    if post.status == "published" {
+        return Ok(());
+    }
+    if auth.is_some_and(|user| {
+        user.is_privileged() || (user.role == "author" && user.user_id == post.user_id)
+    }) {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("文章不存在".to_string()))
+    }
+}
+
+pub(crate) async fn require_published_post(
+    db: &DatabaseConnection,
+    post_id: i32,
+) -> Result<posts::Model, AppError> {
+    let post = crate::services::posts::get_post(db, post_id).await?;
+    authorize_post_read(None, &post)?;
+    Ok(post)
+}
+
+fn public_post_status(_requested: Option<&str>) -> &'static str {
+    "published"
+}
+
+fn scoped_admin_author_id(auth: &AuthUser, requested: Option<i32>) -> Option<i32> {
+    if auth.is_privileged() {
+        requested
+    } else {
+        Some(auth.user_id)
+    }
+}
 
 /// Strip any http(s)://host/uploads/ prefix to ./uploads/ for storage normalization.
 /// Example: "https://www.xlevon.cn/uploads/a.png" → "./uploads/a.png"
@@ -262,7 +343,7 @@ pub async fn list_posts(
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
 
-    let effective_status = Some(query.status.as_deref().unwrap_or("published"));
+    let effective_status = Some(public_post_status(query.status.as_deref()));
     // 排除隐藏分类下的文章
     let hidden_ids = super::categories::get_hidden_category_ids(&state.db).await?;
     let exclude_ids = if hidden_ids.is_empty() { None } else { Some(hidden_ids.as_slice()) };
@@ -432,11 +513,7 @@ pub async fn list_admin_posts(
     let page_size = query.page_size.unwrap_or(20).min(100);
 
     // Non-privileged users (authors) can only see their own posts
-    let effective_author_id = if !auth.is_privileged() && query.author_id.is_none() {
-        Some(auth.user_id)
-    } else {
-        query.author_id
-    };
+    let effective_author_id = scoped_admin_author_id(&auth, query.author_id);
 
     let (posts_list, pagination) = crate::services::posts::list_posts(
         &state.db,
@@ -585,9 +662,11 @@ pub async fn list_admin_posts(
 )]
 pub async fn get_post(
     State(state): State<AppState>,
+    OptionalAuthUser(auth): OptionalAuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = crate::services::posts::get_post(&state.db, id).await?;
+    authorize_post_read(auth.as_ref(), &post)?;
     let category_name = crate::services::posts::get_category_name(&state.db, post.category_id).await;
     let tags = crate::services::posts::get_post_tags(&state.db, post.id).await?;
 
@@ -725,6 +804,8 @@ pub async fn create_post(
     auth: AuthUser,
     Json(req): Json<CreatePostRequest>,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
+    authorize_post_create(&auth)?;
+    authorize_post_pin_change(&auth, req.is_pinned)?;
     let base_slug = req.slug.unwrap_or_else(|| crate::services::posts::generate_slug(&req.title));
     
     // Ensure slug uniqueness (including deleted posts since slug is unique in database)
@@ -849,11 +930,13 @@ pub async fn create_post(
 )]
 pub async fn update_post(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdatePostRequest>,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = crate::services::posts::get_post(&state.db, id).await?;
+    authorize_post_update(&auth, &post, req.author_id)?;
+    authorize_post_pin_change(&auth, req.is_pinned)?;
     let already_published = post.published_at.is_some();
     let mut post_active: posts::ActiveModel = post.into();
 
@@ -987,16 +1070,8 @@ pub async fn delete_post(
     auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    // 作者不能删除已发布的文章
-    if !auth.is_privileged() {
-        let post = posts::Entity::find_by_id(id)
-            .one(&state.db)
-            .await?
-            .ok_or(AppError::NotFound("文章不存在".into()))?;
-        if post.status == "published" && post.user_id == auth.user_id {
-            return Err(AppError::Forbidden);
-        }
-    }
+    let post = crate::services::posts::get_post(&state.db, id).await?;
+    authorize_post_delete(&auth, &post)?;
 
     crate::services::posts::delete_post(&state.db, id).await?;
 
@@ -1014,12 +1089,9 @@ pub struct BatchDeletePostsRequest {
 
 pub async fn batch_delete_posts(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _privileged: PrivilegedUser,
     Json(req): Json<BatchDeletePostsRequest>,
 ) -> Result<Json<ApiResponse<i32>>, AppError> {
-    if auth.role != "admin" {
-        return Err(AppError::Forbidden);
-    }
     let mut count = 0;
     for id in &req.ids {
         crate::services::posts::delete_post(&state.db, *id).await?;
@@ -1039,10 +1111,12 @@ pub async fn batch_delete_posts(
 )]
 pub async fn get_post_by_slug(
     State(state): State<AppState>,
+    OptionalAuthUser(auth): OptionalAuthUser,
     Path(slug): Path<String>,
     _headers: axum::http::HeaderMap,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = crate::services::posts::get_post_by_slug(&state.db, &slug).await?;
+    authorize_post_read(auth.as_ref(), &post)?;
     let category_name = crate::services::posts::get_category_name(&state.db, post.category_id).await;
     let tags = crate::services::posts::get_post_tags(&state.db, post.id).await?;
 
@@ -1179,6 +1253,7 @@ pub async fn get_adjacent_posts(
     State(state): State<AppState>,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<AdjacentPostsResponse>>, AppError> {
+    require_published_post(&state.db, id).await?;
     let (prev, next) = crate::services::posts::get_adjacent_posts(&state.db, id).await?;
     Ok(Json(ApiResponse::new(AdjacentPostsResponse {
         prev: prev.map(|(id, title, slug)| AdjacentPost { id, title, slug }),
@@ -1206,6 +1281,7 @@ pub async fn toggle_like(
     auth: AuthUser,
     Path(post_id): Path<i32>,
 ) -> Result<Json<ApiResponse<LikeStatusResponse>>, AppError> {
+    require_published_post(&state.db, post_id).await?;
     let db = &state.db;
     let user_id = auth.user_id;
 
@@ -1269,6 +1345,7 @@ pub async fn get_like_status(
     auth: AuthUser,
     Path(post_id): Path<i32>,
 ) -> Result<Json<ApiResponse<LikeStatusResponse>>, AppError> {
+    require_published_post(&state.db, post_id).await?;
     let db = &state.db;
 
     let row = db.query_one(
@@ -1335,6 +1412,7 @@ pub async fn record_read_log(
     use crate::utils::client_info;
     use crate::models::entity::read_logs;
 
+    require_published_post(&state.db, req.post_id).await?;
     let ip = client_info::extract_client_ip(&headers, Some(socket_addr));
 
     // 检查是否在白名单中 — 白名单 IP 不记录阅读日志
@@ -1579,7 +1657,7 @@ pub struct UpdatePinOrderRequest {
 pub async fn pin_post(
     State(state): State<AppState>,
     Path(id): Path<i32>,
-    _auth: AuthUser,
+    _privileged: PrivilegedUser,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = posts::Entity::find_by_id(id)
         .one(&state.db)
@@ -1606,7 +1684,7 @@ pub async fn pin_post(
 pub async fn unpin_post(
     State(state): State<AppState>,
     Path(id): Path<i32>,
-    _auth: AuthUser,
+    _privileged: PrivilegedUser,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = posts::Entity::find_by_id(id)
         .one(&state.db)
@@ -1624,7 +1702,7 @@ pub async fn unpin_post(
 /// PUT /api/v1/admin/posts/pin-order — 更新置顶排序
 pub async fn update_pin_order(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _privileged: PrivilegedUser,
     Json(req): Json<UpdatePinOrderRequest>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     for (idx, post_id) in req.post_ids.iter().enumerate() {
@@ -1715,4 +1793,91 @@ pub async fn list_pinned_posts(
 
     fill_kb_names(&state.db, &mut data).await;
     Ok(Json(ApiResponse::new(data)))
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+
+    fn auth_user(id: i32, role: &str) -> AuthUser {
+        AuthUser {
+            user_id: id,
+            username: format!("user-{id}"),
+            role: role.to_string(),
+            status: "active".to_string(),
+            auth_source: "test".to_string(),
+            display_name: None,
+        }
+    }
+
+    fn post(owner_id: i32, status: &str) -> posts::Model {
+        posts::Model {
+            id: 7,
+            user_id: owner_id,
+            status: status.to_string(),
+            title: "test".to_string(),
+            slug: "test".to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn only_authors_and_privileged_users_can_create_posts() {
+        assert!(authorize_post_create(&auth_user(1, "author")).is_ok());
+        assert!(authorize_post_create(&auth_user(1, "sub_admin")).is_ok());
+        assert!(authorize_post_create(&auth_user(1, "admin")).is_ok());
+        assert!(matches!(authorize_post_create(&auth_user(1, "visitor")), Err(AppError::Forbidden)));
+        assert!(matches!(
+            authorize_post_pin_change(&auth_user(1, "author"), Some(true)),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn non_privileged_admin_lists_are_always_scoped_to_the_current_user() {
+        let author = auth_user(1, "author");
+        assert_eq!(scoped_admin_author_id(&author, None), Some(1));
+        assert_eq!(scoped_admin_author_id(&author, Some(2)), Some(1));
+        assert_eq!(scoped_admin_author_id(&auth_user(9, "sub_admin"), Some(2)), Some(2));
+    }
+
+    #[test]
+    fn authors_can_update_only_their_own_posts_and_cannot_reassign_them() {
+        let owner = auth_user(1, "author");
+        assert!(authorize_post_update(&owner, &post(1, "draft"), None).is_ok());
+        assert!(matches!(authorize_post_update(&owner, &post(2, "draft"), None), Err(AppError::Forbidden)));
+        assert!(matches!(authorize_post_update(&owner, &post(1, "draft"), Some(2)), Err(AppError::Forbidden)));
+        assert!(authorize_post_update(&auth_user(9, "sub_admin"), &post(2, "draft"), Some(3)).is_ok());
+        assert!(matches!(
+            authorize_post_pin_change(&owner, Some(true)),
+            Err(AppError::Forbidden)
+        ));
+        assert!(authorize_post_pin_change(&auth_user(9, "sub_admin"), Some(true)).is_ok());
+    }
+
+    #[test]
+    fn authors_can_delete_only_their_own_drafts() {
+        let owner = auth_user(1, "author");
+        assert!(authorize_post_delete(&owner, &post(1, "draft")).is_ok());
+        assert!(matches!(authorize_post_delete(&owner, &post(1, "published")), Err(AppError::Forbidden)));
+        assert!(matches!(authorize_post_delete(&owner, &post(2, "draft")), Err(AppError::Forbidden)));
+        assert!(authorize_post_delete(&auth_user(9, "admin"), &post(2, "published")).is_ok());
+    }
+
+    #[test]
+    fn unpublished_posts_are_visible_only_to_owner_or_privileged_users() {
+        let draft = post(1, "draft");
+        assert!(authorize_post_read(None, &draft).is_err());
+        assert!(authorize_post_read(Some(&auth_user(2, "author")), &draft).is_err());
+        assert!(authorize_post_read(Some(&auth_user(1, "author")), &draft).is_ok());
+        assert!(authorize_post_read(Some(&auth_user(9, "sub_admin")), &draft).is_ok());
+        assert!(authorize_post_read(None, &post(1, "published")).is_ok());
+    }
+
+    #[test]
+    fn public_post_list_always_uses_published_status() {
+        assert_eq!(public_post_status(None), "published");
+        assert_eq!(public_post_status(Some("draft")), "published");
+        assert_eq!(public_post_status(Some("deleted")), "published");
+    }
 }

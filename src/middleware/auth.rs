@@ -6,7 +6,18 @@ use std::net::SocketAddr;
 use crate::utils::AppState;
 use crate::utils::AppError;
 use crate::services::auth;
-use sea_orm::EntityTrait;
+use crate::models::entity::users;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+async fn current_active_role(state: &AppState, user_id: i32) -> Result<String, AppError> {
+    users::Entity::find_by_id(user_id)
+        .filter(users::Column::Status.eq("active"))
+        .filter(users::Column::DeletedAt.is_null())
+        .one(&state.db)
+        .await?
+        .map(|user| user.role)
+        .ok_or(AppError::Forbidden)
+}
 
 #[derive(Debug, Clone)]
 pub struct AuthUser {
@@ -20,6 +31,93 @@ pub struct AuthUser {
     /// 用户显示名（jwt 携带，无需额外查表）
     #[allow(dead_code)]
     pub display_name: Option<String>,
+}
+
+/// Authenticated administrator. Using this extractor makes admin-only handlers
+/// fail closed for JWT and API-key authentication alike.
+#[derive(Debug, Clone, Copy)]
+pub struct AdminUser;
+
+impl TryFrom<AuthUser> for AdminUser {
+    type Error = AppError;
+
+    fn try_from(user: AuthUser) -> Result<Self, Self::Error> {
+        if user.is_admin() {
+            Ok(Self)
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+}
+
+#[axum::async_trait]
+impl FromRequestParts<AppState> for AdminUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let user = AuthUser::from_request_parts(parts, state).await?;
+        if current_active_role(state, user.user_id).await? == "admin" {
+            Ok(Self)
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+}
+
+/// Authenticated administrator or sub-administrator for global content actions.
+#[derive(Debug, Clone, Copy)]
+pub struct PrivilegedUser;
+
+impl TryFrom<AuthUser> for PrivilegedUser {
+    type Error = AppError;
+
+    fn try_from(user: AuthUser) -> Result<Self, Self::Error> {
+        if user.is_privileged() {
+            Ok(Self)
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+}
+
+#[axum::async_trait]
+impl FromRequestParts<AppState> for PrivilegedUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let user = AuthUser::from_request_parts(parts, state).await?;
+        match current_active_role(state, user.user_id).await?.as_str() {
+            "admin" | "sub_admin" => Ok(Self),
+            _ => Err(AppError::Forbidden),
+        }
+    }
+}
+
+/// Optional authentication for public endpoints that expose additional data to
+/// an authenticated owner or privileged user. Invalid supplied credentials are
+/// rejected; only a completely absent credential is treated as anonymous.
+#[derive(Debug, Clone)]
+pub struct OptionalAuthUser(pub Option<AuthUser>);
+
+#[axum::async_trait]
+impl FromRequestParts<AppState> for OptionalAuthUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let has_api_key = parts.headers
+            .get("X-API-Key")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| !value.is_empty());
+        let has_bearer = parts.headers.contains_key("Authorization");
+
+        if !has_api_key && !has_bearer {
+            return Ok(Self(None));
+        }
+
+        AuthUser::from_request_parts(parts, state)
+            .await
+            .map(|user| Self(Some(user)))
+    }
 }
 
 #[axum::async_trait]
@@ -179,4 +277,51 @@ pub async fn require_admin_middleware(
     }
     
     Ok(next.run(request).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn auth_user(role: &str) -> AuthUser {
+        AuthUser {
+            user_id: 1,
+            username: "tester".to_string(),
+            role: role.to_string(),
+            status: "active".to_string(),
+            auth_source: "test".to_string(),
+            display_name: None,
+        }
+    }
+
+    #[test]
+    fn admin_extractor_accepts_only_admin_role() {
+        assert!(AdminUser::try_from(auth_user("admin")).is_ok());
+        assert!(matches!(
+            AdminUser::try_from(auth_user("sub_admin")),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            AdminUser::try_from(auth_user("author")),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            AdminUser::try_from(auth_user("visitor")),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn privileged_extractor_accepts_admin_and_sub_admin_only() {
+        assert!(PrivilegedUser::try_from(auth_user("admin")).is_ok());
+        assert!(PrivilegedUser::try_from(auth_user("sub_admin")).is_ok());
+        assert!(matches!(
+            PrivilegedUser::try_from(auth_user("author")),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            PrivilegedUser::try_from(auth_user("visitor")),
+            Err(AppError::Forbidden)
+        ));
+    }
 }

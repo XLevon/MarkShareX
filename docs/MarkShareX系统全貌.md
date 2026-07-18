@@ -191,6 +191,10 @@ AI Scheduler 启动时会把上次异常退出遗留的 `running` 日志标记�
 - 管理端搜索、状态筛选、批量删除和置顶排序
 - ZIP 导入导出及 YAML Front Matter 解析
 
+文章写权限按角色和资源所有者共同约束：author 可创建文章、更新本人文章和删除本人草稿，但不能转移作者、设置置顶或删除已发布文章；admin、sub_admin 可全局管理文章、作者归属、置顶和批量删除。非特权用户的后台文章列表始终按当前用户 ID 过滤，调用方传入的 `author_id` 不能越权查询他人草稿。
+
+公开读取只暴露 `published` 文章。按 ID、slug、SSR 详情、相邻文章、评论、点赞状态和阅读日志等关联入口复用同一发布状态边界；未发布文章对匿名访客和非所有者统一表现为 404。文章所有者可在认证后的详情 API 中读取本人草稿，admin、sub_admin 可读取全局草稿。
+
 文章类型和状态并不是写死在前端的简单枚举，而是由 `article_types`、`article_statuses` 两张字典表维护；文章保存其 code，公开页面可按类型或状态聚合浏览。
 
 #### Markdown 渲染管道
@@ -237,6 +241,7 @@ Markdown 原文
 - 状态包含 pending、approved、deleted
 - 是否进入待审由站点设置决定
 - 管理端提供列表、筛选、审核和待审数量
+- 公共评论列表和评论创建只接受已发布文章；admin、sub_admin 使用明确的管理视图时仍可检查草稿下的历史评论
 
 #### 留言板
 
@@ -253,6 +258,7 @@ Markdown 原文
 - `likes` 记录用户与文章的唯一点赞关系，API 提供 toggle 和状态查询。
 - `read_logs` 记录文章、用户/IP、User-Agent、设备、来源和阅读时长。
 - 文章阅读统计和管理端趋势分析主要基于阅读日志聚合。
+- 点赞、点赞状态、相邻文章和阅读日志接口都会先确认目标文章已发布，拒绝对草稿泄露元数据或产生互动写入。
 - 前端文章页对主文章、相邻文章、评论和点赞请求设置请求身份校验，避免快速切换路由时旧响应覆盖新文章状态。
 
 ### 5.5 本地文件资源
@@ -410,6 +416,13 @@ API Key 使用 AES-256-GCM 加密后存入数据库；加密密钥必须在生�
 - 成功后更新 `last_run_at` 和 `run_count`。
 - trace 持久化到 `ai_task_logs`，异常退出后的僵尸任务会在启动时清理。
 
+### 6.6 AI 权限边界
+
+- Provider、Model、Agent Config、Skill、Tool、Task、Task Log、供应商测试和任务执行等 AI 管理 handler 统一使用 `AdminUser`，仅当前数据库角色为 active admin 的用户可调用。
+- `AdminUser` 不只信任 JWT 中的历史角色声明；敏感操作前会回查用户当前角色、状态和删除标记，因此降权、禁用或删除会立即影响管理权限。
+- Chat Session 和 Message 属于用户私有资源。会话列表固定按当前 `user_id` 过滤，详情、删除、普通聊天和 slash command 都要求会话所有者匹配。
+- AI 会话没有管理员跨用户例外；包括 admin、sub_admin 在内的所有角色都只能访问自己的会话，跨用户访问统一返回 404 以减少资源枚举。
+
 ---
 
 ## 7. 搜索与 SEO
@@ -566,7 +579,7 @@ Authorization: Bearer <access-token>
 | 搜索 | `/search` | 文章、标签、作者统一搜索 |
 | 分类/标签 | `/categories/*`、`/tags/*` | 公开列表与管理操作 |
 | 类型/状态 | `/article-types`、`/article-statuses` | 字典与筛选 |
-| 评论 | `/posts/:id/comments`、`/admin/comments` | 公开评论与审核 |
+| 评论 | `/posts/:id/comments`、`/admin/comments` | 已发布文章的公开评论与后台审核 |
 | 文件 | `/files/*` | 上传、MD5、未引用和删除 |
 | 网络资源 | `/network-resources/*` | 活引用、解析和引用检查 |
 | 用户/资料 | `/admin/users/*`、`/profile/*` | 用户管理与个人资料 |
@@ -576,7 +589,7 @@ Authorization: Bearer <access-token>
 | 留言 | `/guestbook`、`/admin/guestbook/*` | 留言与回复 |
 | 更新日志 | `/changelogs/*` | 公开列表、最新版本和管理 CRUD |
 | 导入导出 | `/import/posts`、`/export/posts` | Markdown ZIP 数据交换 |
-| AI | `/ai/*`、`/admin/ai/*` | Agent、任务、聊天、工具与日志 |
+| AI | `/ai/*`、`/admin/ai/*` | admin-only 管理资源与 owner-only 私有会话 |
 | 运维 | `/admin/logs`、`/health`、`/stats` | 运行诊断 |
 | OpenAPI | `/openapi.json`、`/scalar` | 机器可读规范与交互文档 |
 
@@ -605,7 +618,7 @@ Authorization: Bearer <access-token>
 - 用于 CLI、脚本和外部 AI Agent 集成
 - 成功和失败均可写入登录审计日志
 
-认证提取器优先检查 X-API-Key，再回退到 JWT。
+认证提取器优先检查 X-API-Key，再回退到 JWT。公开但可向所有者展示额外数据的接口使用 `OptionalAuthUser`：完全没有凭据时按匿名处理，调用方一旦提交无效 Bearer Token 或 API Key 则返回认证错误，不会静默降级为匿名身份。
 
 ### 10.2 角色边界
 
@@ -616,22 +629,51 @@ Authorization: Bearer <access-token>
 | author | 创建和维护本人内容及允许的相关资源 |
 | visitor | 公开浏览、互动和申请作者 |
 
-具体权限由每个后端控制器根据 `is_admin()`、`is_privileged()` 和资源所有者进行判断。不能仅依据前端隐藏按钮或路由守卫判断权限。
+具体权限由后端 extractor、控制器策略函数、当前角色和资源所有者共同决定。前端隐藏按钮和路由守卫只改善交互体验，不能作为安全边界。
 
-### 10.3 当前权限实现边界
+### 10.3 统一权限提取器
 
-后端目前没有给所有 `/api/v1/admin/*` 路由统一套管理员中间件，很多接口依赖各 handler 自行声明 `AuthUser` 并进一步检查角色。因此路径中出现 `admin` 并不自动表示 admin-only。源码复核发现仍有需要单独整改的权限债务：
+本批权限封口引入并统一使用以下后端 extractor：
 
-- 多个 AI Provider、Model、Skill、Tool、Task 与会话 handler 只要求已登录，没有统一的 admin 角色校验。
-- 文章更新和删除流程的所有者/角色校验不完整，不能将“作者只能修改本人文章”视为已被所有后端接口严格保证。
-- 按 ID/slug 获取文章的服务函数主要过滤删除状态，没有统一强制 `published`，公开读取边界需继续收紧。
-- AI 会话详情、删除和复用会话时的所有者检查并不完整。
+| Extractor | 允许范围 | 关键行为 |
+|---|---|---|
+| `AuthUser` | 任意已认证用户 | 解析 JWT 或 X-API-Key 身份 |
+| `OptionalAuthUser` | 匿名或合法认证用户 | 无凭据时匿名；无效凭据不会静默放行 |
+| `AdminUser` | active admin | 敏感操作前回查数据库当前角色、状态和删除标记 |
+| `PrivilegedUser` | active admin、sub_admin | 用于全局内容、置顶和批量管理操作，并实时回查数据库 |
 
-这些属于当前实现状态和安全技术债，不是推荐的目标权限模型。部署到非可信多用户环境前，应优先补齐后端角色与资源所有权校验；前端菜单过滤不能替代该修复。
+后端仍未给所有 `/api/v1/admin/*` 路由机械地套同一层全局中间件；权限由具体 handler 按资源类型选择 extractor。因此 URL 中出现 `admin` 不能单独作为权限事实来源，仍应以路由注册和 handler 签名为准。AI 管理的 30 个管理 handler 已统一为 `AdminUser`，未再依赖调用方自行判断角色。
 
-### 10.4 状态与访问控制
+### 10.4 文章权限矩阵
 
-除角色外，用户状态会参与认证和业务判断。系统还提供 IP Guard，对配置的 IP 规则进行请求级限制。
+| 操作 | visitor | author | admin/sub_admin |
+|---|---|---|---|
+| 创建文章 | 拒绝 | 允许 | 允许 |
+| 更新文章 | 拒绝 | 仅本人 | 全局 |
+| 删除草稿 | 拒绝 | 仅本人 | 全局 |
+| 删除已发布文章 | 拒绝 | 拒绝 | 全局 |
+| 修改作者归属 | 拒绝 | 拒绝 | 允许 |
+| 设置置顶或调整顺序 | 拒绝 | 拒绝 | 允许 |
+| 批量删除 | 拒绝 | 拒绝 | 允许 |
+| 读取本人草稿 | 拒绝 | 允许 | 允许 |
+| 读取他人草稿 | 拒绝 | 拒绝 | 允许 |
+
+公开文章列表无论调用方传入何种 `status` 都固定查询 `published`。按 ID、slug 和 SSR 路径读取未发布文章时，匿名用户和非所有者得到 404；后台文章列表对非特权用户无条件覆盖 `author_id` 为当前用户，避免通过查询参数读取他人草稿元数据。作者在创建和更新路径都不能绕过置顶限制，也不能转移文章所有权。
+
+文章关联公共操作同样执行发布状态检查：草稿的相邻文章、点赞、点赞状态、阅读日志、评论列表和评论创建均返回 404，且拒绝请求不会产生互动数据。admin、sub_admin 仍可通过明确的评论管理视图检查草稿下已有评论。
+
+### 10.5 AI 管理与会话所有权
+
+AI 管理资源与用户会话采用两条独立边界：
+
+- Provider、Model、Agent Config、Skill、Tool、Task、Task Log、供应商测试和任务执行仅允许当前数据库角色为 active admin 的用户。
+- `AdminUser` 和 `PrivilegedUser` 会回查数据库，因此 JWT 中过期的高权限角色声明不能继续授权；用户被降权、禁用或删除后，敏感接口立即拒绝。
+- AI 会话是严格的 owner-only 资源：列表固定过滤 `auth.user_id`，详情、删除、聊天和 slash command 都校验所有者。
+- admin、sub_admin 没有跨用户会话查看例外；跨用户访问统一返回 404，避免确认会话是否存在。
+
+### 10.6 状态与访问控制
+
+除角色外，用户状态会参与认证和业务判断。敏感角色 extractor 只接受当前数据库中 active 且未删除的用户。系统还提供 IP Guard，对配置的 IP 规则进行请求级限制。
 
 ---
 
@@ -917,25 +959,25 @@ config.toml
 作者在 Vditor 编辑 Markdown
   → 选择分类、标签、封面、类型和状态
   → POST/PUT /api/v1/posts
-  → 后端解析 AuthUser 并执行当前 handler 的权限校验
+  → 后端解析 AuthUser，并按角色、所有者、作者转移和置顶策略授权
   → 解析 nr:{id}
   → comrak 渲染 + ammonia 净化
   → SeaORM 保存 Markdown 与 HTML
   → 维护标签关联
   → 更新 Tantivy 索引
-  → SSR 与 SPA 可立即读取
+  → published 可由 SSR/SPA 公开读取；draft 仅所有者或特权用户可读取
 ```
 
 ### 15.2 公开阅读
 
 ```text
 浏览器请求 /post/:slug
-  → Rust 查询已发布文章及关联信息
+  → Rust 强制查询已发布文章；草稿及其公共关联接口统一返回 404
   → Tera 输出完整 SSR、metadata 和 JSON-LD
   → 浏览器直接可读、爬虫可索引
   → 若从 Vue SPA 内导航，PostDetail 通过 API 异步加载
-  → 记录阅读日志/时长
-  → 用户可点赞、评论或跳转前后篇
+  → 仅对已发布文章记录阅读日志/时长
+  → 用户可对已发布文章点赞、评论或跳转前后篇
 ```
 
 ### 15.3 AI 定时采集资讯
@@ -977,7 +1019,16 @@ cargo fmt --check
 cargo build
 ```
 
-使用 `axum-test`、Tokio 测试及模块内单元测试，当前覆盖了部分 SSR、路由、标题/描述算法和响应行为。
+使用 `axum-test`、Tokio 测试及模块内单元测试，当前覆盖了部分 SSR、路由、标题/描述算法、响应行为和权限策略。
+
+截至本次权限封口工作树快照，`cargo test --no-fail-fast` 为 30/30 通过。新增回归范围包括：
+
+- admin 与 admin/sub_admin extractor 的角色矩阵
+- author 只能更新本人文章且不能转移作者
+- author 只能删除本人草稿
+- 非特权后台文章列表不能通过 `author_id` 越权
+- 公开列表固定为 `published`，草稿只对所有者或特权用户可见
+- AI 会话对所有角色均严格限制为当前所有者
 
 ### 前端
 
@@ -990,6 +1041,8 @@ npm run lint
 ```
 
 当前 `npm test` 使用 Node 的 TypeScript strip-types 测试纯函数和关键源码约束。对于路由竞态、组件卸载和异步响应顺序，后续仍适合补充 Vue 挂载级行为测试。
+
+截至同一工作树快照，前端 `npm test` 为 9/9 通过，`npm run build` 成功；本批权限封口没有修改前端源码。
 
 当前 `npm run build` 可以成功生成生产包，但构建脚本不会先运行 `vue-tsc`；独立执行 `npm run type-check` 仍有较多既有类型错误。因此“Vite 能构建”不等于“TypeScript 类型健康”，发布门禁应逐步把类型检查纳入并先偿还现有类型债。
 
@@ -1069,4 +1122,4 @@ MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把
 
 ---
 
-*本文档按 MarkShareX v0.4.1 当前源码整理。系统继续演进时，应优先同步版本、路由、数据表、配置覆盖、AI 工具和部署边界。*
+*本文档按 MarkShareX v0.4.1 当前源码整理。系统继续演进时，应优先同步版本、路由、权限边界、数据表、配置覆盖、AI 工具和部署边界。*

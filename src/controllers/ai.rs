@@ -8,7 +8,7 @@ use utoipa::ToSchema;
 use sea_orm::*;
 use sea_orm::sea_query::Expr;
 use crate::utils::{AppState, AppError, ApiResponse};
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AdminUser, AuthUser};
 use crate::models::entity::{ai_provider, ai_skill, ai_task, ai_task_log, ai_agent_config, ai_tool, ai_model, ai_chat_session, ai_chat_message};
 use crate::crypto;
 
@@ -248,7 +248,7 @@ pub async fn get_default_agent(
 #[utoipa::path(get, path = "/api/v1/admin/ai/providers", responses((status = 200)), tag = "AI")]
 pub async fn list_providers(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<Vec<AiProviderResponse>>>, AppError> {
     let items: Vec<AiProviderResponse> = ai_provider::Entity::find()
         .order_by_asc(ai_provider::Column::Id)
@@ -261,7 +261,7 @@ pub async fn list_providers(
 #[utoipa::path(post, path = "/api/v1/admin/ai/providers", responses((status = 200)), tag = "AI")]
 pub async fn create_provider(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<Json<ApiResponse<AiProviderResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -281,7 +281,7 @@ pub async fn create_provider(
 #[utoipa::path(put, path = "/api/v1/admin/ai/providers/{id}", responses((status = 200)), tag = "AI")]
 pub async fn update_provider(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<Json<ApiResponse<AiProviderResponse>>, AppError> {
@@ -302,7 +302,7 @@ pub async fn update_provider(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/providers/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_provider(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     // 检查模型引用
@@ -335,7 +335,7 @@ pub struct ProviderTestResponse {
 #[utoipa::path(post, path = "/api/v1/admin/ai/providers/{id}/test", responses((status = 200)), tag = "AI")]
 pub async fn test_provider(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
     let provider = ai_provider::Entity::find_by_id(id).one(&state.db).await?
@@ -529,7 +529,7 @@ async fn test_ollama(
 #[utoipa::path(get, path = "/api/v1/admin/ai/skills", responses((status = 200)), tag = "AI")]
 pub async fn list_skills(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<Vec<AiSkillResponse>>>, AppError> {
     let items: Vec<AiSkillResponse> = ai_skill::Entity::find()
         .order_by_asc(ai_skill::Column::Id)
@@ -542,7 +542,7 @@ pub async fn list_skills(
 #[utoipa::path(post, path = "/api/v1/admin/ai/skills", responses((status = 200)), tag = "AI")]
 pub async fn create_skill(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<Json<ApiResponse<AiSkillResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -568,7 +568,7 @@ pub async fn create_skill(
 #[utoipa::path(put, path = "/api/v1/admin/ai/skills/{id}", responses((status = 200)), tag = "AI")]
 pub async fn update_skill(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateSkillRequest>,
 ) -> Result<Json<ApiResponse<AiSkillResponse>>, AppError> {
@@ -589,7 +589,7 @@ pub async fn update_skill(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/skills/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_skill(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let task_count = ai_task::Entity::find()
@@ -610,7 +610,7 @@ pub async fn delete_skill(
 #[utoipa::path(get, path = "/api/v1/admin/ai/tasks", responses((status = 200)), tag = "AI")]
 pub async fn list_tasks(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<Vec<AiTaskResponse>>>, AppError> {
     let items: Vec<AiTaskResponse> = ai_task::Entity::find()
         .order_by_asc(ai_task::Column::Id)
@@ -623,7 +623,7 @@ pub async fn list_tasks(
 #[utoipa::path(post, path = "/api/v1/admin/ai/tasks", responses((status = 200)), tag = "AI")]
 pub async fn create_task(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Json(req): Json<CreateTaskRequest>,
 ) -> Result<Json<ApiResponse<AiTaskResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -646,7 +646,7 @@ pub async fn create_task(
 #[utoipa::path(put, path = "/api/v1/admin/ai/tasks/{id}", responses((status = 200)), tag = "AI")]
 pub async fn update_task(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Result<Json<ApiResponse<AiTaskResponse>>, AppError> {
@@ -671,7 +671,7 @@ pub async fn update_task(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/tasks/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_task(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     ai_task::Entity::delete_by_id(id).exec(&state.db).await?;
@@ -681,7 +681,7 @@ pub async fn delete_task(
 /// POST /api/v1/admin/ai/tasks/{id}/run — 手动执行一次任务（异步启动+轮询追踪）
 pub async fn run_task(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     use crate::services::ai_scheduler::AiScheduler;
@@ -717,7 +717,7 @@ pub async fn run_task(
 /// GET /api/v1/admin/ai/tasks/{id}/trace — 轮询任务执行追踪
 pub async fn get_task_trace(
     State(_state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, AppError> {
     use crate::services::ai_trace;
@@ -762,7 +762,7 @@ pub struct TaskLogDetail {
 /// GET /api/v1/admin/ai/tasks/{id}/logs — 任务执行日志列表
 pub async fn list_task_logs(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(task_id): Path<i32>,
 ) -> Result<Json<ApiResponse<Vec<TaskLogListItem>>>, AppError> {
     let items = ai_task_log::Entity::find()
@@ -796,7 +796,7 @@ pub async fn list_task_logs(
 /// GET /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 单条日志详情
 pub async fn get_task_log(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path((_task_id, log_id)): Path<(i32, i32)>,
 ) -> Result<Json<ApiResponse<TaskLogDetail>>, AppError> {
     let m = ai_task_log::Entity::find_by_id(log_id)
@@ -823,7 +823,7 @@ pub async fn get_task_log(
 /// DELETE /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 删除单条日志
 pub async fn delete_task_log(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path((_task_id, log_id)): Path<(i32, i32)>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let result = ai_task_log::Entity::delete_by_id(log_id)
@@ -882,7 +882,7 @@ pub struct UpdateAgentConfigRequest {
 #[utoipa::path(get, path = "/api/v1/admin/ai/agent-configs", responses((status = 200)), tag = "AI")]
 pub async fn list_agent_configs(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<Vec<AgentConfigResponse>>>, AppError> {
     let items: Vec<AgentConfigResponse> = ai_agent_config::Entity::find()
         .order_by_asc(ai_agent_config::Column::Id)
@@ -895,7 +895,7 @@ pub async fn list_agent_configs(
 #[utoipa::path(post, path = "/api/v1/admin/ai/agent-configs", responses((status = 200)), tag = "AI")]
 pub async fn create_agent_config(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Json(req): Json<CreateAgentConfigRequest>,
 ) -> Result<Json<ApiResponse<AgentConfigResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -915,7 +915,7 @@ pub async fn create_agent_config(
 #[utoipa::path(put, path = "/api/v1/admin/ai/agent-configs/{id}", responses((status = 200)), tag = "AI")]
 pub async fn update_agent_config(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateAgentConfigRequest>,
 ) -> Result<Json<ApiResponse<AgentConfigResponse>>, AppError> {
@@ -946,7 +946,7 @@ pub async fn update_agent_config(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/agent-configs/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_agent_config(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     // 检查任务引用
@@ -1008,7 +1008,7 @@ pub struct UpdateModelRequest {
 #[utoipa::path(get, path = "/api/v1/admin/ai/models", responses((status = 200)), tag = "AI")]
 pub async fn list_models(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<ApiResponse<Vec<AiModelResponse>>>, AppError> {
     let mut q = ai_model::Entity::find();
@@ -1025,7 +1025,7 @@ pub async fn list_models(
 #[utoipa::path(post, path = "/api/v1/admin/ai/models", responses((status = 200)), tag = "AI")]
 pub async fn create_model(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Json(req): Json<CreateModelRequest>,
 ) -> Result<Json<ApiResponse<AiModelResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -1043,7 +1043,7 @@ pub async fn create_model(
 #[utoipa::path(put, path = "/api/v1/admin/ai/models/{id}", responses((status = 200)), tag = "AI")]
 pub async fn update_model(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateModelRequest>,
 ) -> Result<Json<ApiResponse<AiModelResponse>>, AppError> {
@@ -1070,7 +1070,7 @@ pub async fn update_model(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/models/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_model(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     // 检查任务引用
@@ -1127,45 +1127,32 @@ pub struct ChatMessageResponse {
     pub created_at: chrono::NaiveDateTime,
 }
 
+fn authorize_session_access(auth: &AuthUser, owner_id: i32) -> Result<(), AppError> {
+    if auth.user_id == owner_id {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("会话不存在".into()))
+    }
+}
+
 /// GET /api/v1/admin/ai/sessions
 #[utoipa::path(get, path = "/api/v1/admin/ai/sessions", responses((status = 200)), tag = "AI")]
 pub async fn list_sessions(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<ApiResponse<Vec<ChatSessionResponse>>>, AppError> {
-    // Admin 可看所有，普通用户只看自己的
-    let mut q = ai_chat_session::Entity::find();
-    if auth.role != "admin" {
-        q = q.filter(ai_chat_session::Column::UserId.eq(auth.user_id));
-    }
-
-    let sessions = q.order_by_desc(ai_chat_session::Column::UpdatedAt)
+    let sessions = ai_chat_session::Entity::find()
+        .filter(ai_chat_session::Column::UserId.eq(auth.user_id))
+        .order_by_desc(ai_chat_session::Column::UpdatedAt)
         .all(&state.db).await?;
-
-    // 收集所有 user_id 查 display_name
-    let user_ids: Vec<i32> = sessions.iter().map(|s| s.user_id).collect();
-    let users = crate::models::entity::users::Entity::find()
-        .filter(crate::models::entity::users::Column::Id.is_in(user_ids))
-        .all(&state.db).await?;
-    use std::collections::HashMap;
-    let name_map: HashMap<i32, String> = users.iter().map(|u| {
-        (u.id, u.display_name.clone().unwrap_or_else(|| u.username.clone()))
-    }).collect();
 
     let mut result = Vec::new();
     for s in sessions {
         let count = ai_chat_message::Entity::find()
             .filter(ai_chat_message::Column::SessionId.eq(s.id))
             .count(&state.db).await?;
-        let user_label = name_map.get(&s.user_id).cloned().unwrap_or_default();
-        // Admin 看到：前缀 [显示名]，非 admin 只看到自己的标题不加前缀
-        let title = if auth.role == "admin" {
-            format!("[{}] {}", user_label, s.title)
-        } else {
-            s.title.clone()
-        };
         result.push(ChatSessionResponse {
-            id: s.id, title, user_id: s.user_id,
+            id: s.id, title: s.title, user_id: s.user_id,
             agent_config_id: s.agent_config_id,
             msg_count: count as usize,
             created_at: s.created_at, updated_at: s.updated_at,
@@ -1207,11 +1194,12 @@ pub async fn create_session(
 #[utoipa::path(get, path = "/api/v1/admin/ai/sessions/{id}", responses((status = 200)), tag = "AI")]
 pub async fn get_session(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<ChatSessionDetail>>, AppError> {
     let session = ai_chat_session::Entity::find_by_id(id).one(&state.db).await?
         .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
+    authorize_session_access(&auth, session.user_id)?;
 
     let messages: Vec<ChatMessageResponse> = ai_chat_message::Entity::find()
         .filter(ai_chat_message::Column::SessionId.eq(id))
@@ -1238,9 +1226,12 @@ pub async fn get_session(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/sessions/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_session(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
+    let session = ai_chat_session::Entity::find_by_id(id).one(&state.db).await?
+        .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
+    authorize_session_access(&auth, session.user_id)?;
     ai_chat_session::Entity::delete_by_id(id).exec(&state.db).await?;
     Ok(Json(ApiResponse { data: (), pagination: None }))
 }
@@ -1299,11 +1290,9 @@ pub async fn chat(
 
     // ── 1. 获取或创建 Session ──
     let session_id = if let Some(sid) = req.session_id {
-        // 验证会话存在
-        let s = ai_chat_session::Entity::find_by_id(sid).one(&state.db).await?;
-        if s.is_none() {
-            return Err(AppError::NotFound("会话不存在".into()));
-        }
+        let session = ai_chat_session::Entity::find_by_id(sid).one(&state.db).await?
+            .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
+        authorize_session_access(&auth, session.user_id)?;
         sid
     } else {
         // 自动创建新会话
@@ -1421,6 +1410,12 @@ async fn handle_slash_command(
     let now = crate::utils::now_local();
     let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
     let command = parts[0].to_lowercase();
+
+    if let Some(session_id) = req.session_id {
+        let session = ai_chat_session::Entity::find_by_id(session_id).one(&state.db).await?
+            .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
+        authorize_session_access(auth, session.user_id)?;
+    }
 
     let reply = match command.as_str() {
         "/new" => {
@@ -1546,7 +1541,7 @@ pub struct UpdateToolRequest {
 #[utoipa::path(get, path = "/api/v1/admin/ai/tools", responses((status = 200)), tag = "AI")]
 pub async fn list_tools(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<Vec<AiToolResponse>>>, AppError> {
     let items: Vec<AiToolResponse> = ai_tool::Entity::find()
         .order_by_asc(ai_tool::Column::Id)
@@ -1559,7 +1554,7 @@ pub async fn list_tools(
 #[utoipa::path(post, path = "/api/v1/admin/ai/tools", responses((status = 200)), tag = "AI")]
 pub async fn create_tool(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Json(req): Json<CreateToolRequest>,
 ) -> Result<Json<ApiResponse<AiToolResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -1578,7 +1573,7 @@ pub async fn create_tool(
 #[utoipa::path(put, path = "/api/v1/admin/ai/tools/{id}", responses((status = 200)), tag = "AI")]
 pub async fn update_tool(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateToolRequest>,
 ) -> Result<Json<ApiResponse<AiToolResponse>>, AppError> {
@@ -1599,9 +1594,33 @@ pub async fn update_tool(
 #[utoipa::path(delete, path = "/api/v1/admin/ai/tools/{id}", responses((status = 200)), tag = "AI")]
 pub async fn delete_tool(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     ai_tool::Entity::delete_by_id(id).exec(&state.db).await?;
     Ok(Json(ApiResponse { data: (), pagination: None }))
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+
+    fn auth_user(id: i32, role: &str) -> AuthUser {
+        AuthUser {
+            user_id: id,
+            username: format!("user-{id}"),
+            role: role.to_string(),
+            status: "active".to_string(),
+            auth_source: "test".to_string(),
+            display_name: None,
+        }
+    }
+
+    #[test]
+    fn ai_sessions_are_limited_to_the_owner_for_every_role() {
+        assert!(authorize_session_access(&auth_user(1, "author"), 1).is_ok());
+        assert!(matches!(authorize_session_access(&auth_user(1, "author"), 2), Err(AppError::NotFound(_))));
+        assert!(matches!(authorize_session_access(&auth_user(9, "admin"), 2), Err(AppError::NotFound(_))));
+        assert!(matches!(authorize_session_access(&auth_user(9, "sub_admin"), 2), Err(AppError::NotFound(_))));
+    }
 }
