@@ -32,11 +32,23 @@ fn authorize_post_update(
     Ok(())
 }
 
-fn authorize_post_pin_change(auth: &AuthUser, requested: Option<bool>) -> Result<(), AppError> {
-    if requested.is_some() && !auth.is_privileged() {
+fn authorize_post_pin_change(
+    auth: &AuthUser,
+    current: bool,
+    requested: Option<bool>,
+) -> Result<(), AppError> {
+    if requested.is_some_and(|requested| requested != current) && !auth.is_privileged() {
         Err(AppError::Forbidden)
     } else {
         Ok(())
+    }
+}
+
+fn writable_post_pin_value(auth: &AuthUser, requested: Option<bool>) -> Option<bool> {
+    if auth.is_privileged() {
+        requested
+    } else {
+        None
     }
 }
 
@@ -805,7 +817,7 @@ pub async fn create_post(
     Json(req): Json<CreatePostRequest>,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     authorize_post_create(&auth)?;
-    authorize_post_pin_change(&auth, req.is_pinned)?;
+    authorize_post_pin_change(&auth, false, req.is_pinned)?;
     let base_slug = req.slug.unwrap_or_else(|| crate::services::posts::generate_slug(&req.title));
     
     // Ensure slug uniqueness (including deleted posts since slug is unique in database)
@@ -936,7 +948,7 @@ pub async fn update_post(
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = crate::services::posts::get_post(&state.db, id).await?;
     authorize_post_update(&auth, &post, req.author_id)?;
-    authorize_post_pin_change(&auth, req.is_pinned)?;
+    authorize_post_pin_change(&auth, post.is_pinned, req.is_pinned)?;
     let already_published = post.published_at.is_some();
     let mut post_active: posts::ActiveModel = post.into();
 
@@ -1020,7 +1032,7 @@ pub async fn update_post(
         post_active.cover_image_filename = Set(cover_filename);  // 🆕 本地文件名
         post_active.cover_network_id = Set(nr_id);
     }
-    if let Some(is_pinned) = req.is_pinned {
+    if let Some(is_pinned) = writable_post_pin_value(&auth, req.is_pinned) {
         post_active.is_pinned = Set(is_pinned);
     }
     if let Some(allow_comment) = req.allow_comment {
@@ -1828,7 +1840,7 @@ mod authorization_tests {
         assert!(authorize_post_create(&auth_user(1, "admin")).is_ok());
         assert!(matches!(authorize_post_create(&auth_user(1, "visitor")), Err(AppError::Forbidden)));
         assert!(matches!(
-            authorize_post_pin_change(&auth_user(1, "author"), Some(true)),
+            authorize_post_pin_change(&auth_user(1, "author"), false, Some(true)),
             Err(AppError::Forbidden)
         ));
     }
@@ -1849,10 +1861,41 @@ mod authorization_tests {
         assert!(matches!(authorize_post_update(&owner, &post(1, "draft"), Some(2)), Err(AppError::Forbidden)));
         assert!(authorize_post_update(&auth_user(9, "sub_admin"), &post(2, "draft"), Some(3)).is_ok());
         assert!(matches!(
-            authorize_post_pin_change(&owner, Some(true)),
+            authorize_post_pin_change(&owner, false, Some(true)),
             Err(AppError::Forbidden)
         ));
-        assert!(authorize_post_pin_change(&auth_user(9, "sub_admin"), Some(true)).is_ok());
+        assert!(authorize_post_pin_change(&auth_user(9, "sub_admin"), false, Some(true)).is_ok());
+    }
+
+    #[test]
+    fn authors_can_repeat_but_cannot_change_pin_state() {
+        let author = auth_user(1, "author");
+        assert!(authorize_post_pin_change(&author, false, None).is_ok());
+        assert!(authorize_post_pin_change(&author, false, Some(false)).is_ok());
+        assert!(authorize_post_pin_change(&author, true, Some(true)).is_ok());
+        assert!(matches!(
+            authorize_post_pin_change(&author, false, Some(true)),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_post_pin_change(&author, true, Some(false)),
+            Err(AppError::Forbidden)
+        ));
+    }
+
+    #[test]
+    fn only_privileged_users_write_requested_pin_state() {
+        let author = auth_user(1, "author");
+        assert_eq!(writable_post_pin_value(&author, Some(false)), None);
+        assert_eq!(writable_post_pin_value(&author, Some(true)), None);
+        assert_eq!(
+            writable_post_pin_value(&auth_user(9, "sub_admin"), Some(false)),
+            Some(false)
+        );
+        assert_eq!(
+            writable_post_pin_value(&auth_user(9, "admin"), Some(true)),
+            Some(true)
+        );
     }
 
     #[test]
