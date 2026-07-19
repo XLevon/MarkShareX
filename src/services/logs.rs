@@ -9,6 +9,11 @@ use tracing_subscriber::Layer;
 
 pub(crate) static START_TIME: OnceLock<Instant> = OnceLock::new();
 
+/// Record process startup time without exposing the global cell to callers.
+pub fn mark_started() {
+    let _ = START_TIME.set(Instant::now());
+}
+
 /// 返回进程启动后的秒数
 pub fn uptime_seconds() -> u64 {
     START_TIME

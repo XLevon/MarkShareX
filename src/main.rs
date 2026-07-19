@@ -1,21 +1,8 @@
-use axum::Router;
-use axum::extract::DefaultBodyLimit;
+use sea_orm::ConnectionTrait;
 use std::net::SocketAddr;
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::prelude::*;
 
-mod config;
-mod controllers;
-mod crypto;
-mod middleware;
-mod migrations;
-mod models;
-mod services;
-mod api_doc;
-mod utils;
-
-use config::AppConfig;
-use sea_orm::ConnectionTrait;
+use marksharex::{build_router, config::AppConfig, migrations, models, services, utils};
 
 /// 编译时嵌入的默认 Tera 模板
 const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
@@ -64,11 +51,11 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| default_filter.into());
 
     // ── 初始化日志环形缓冲区（必须在 tracing init 前创建）──
-    let log_buffer = crate::services::logs::LogBuffer::new(5000);
-    let capture_layer = crate::services::logs::LogCaptureLayer::new(log_buffer.clone());
+    let log_buffer = services::logs::LogBuffer::new(5000);
+    let capture_layer = services::logs::LogCaptureLayer::new(log_buffer.clone());
 
     // 记录进程启动时间
-    let _ = crate::services::logs::START_TIME.set(std::time::Instant::now());
+    services::logs::mark_started();
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
@@ -164,27 +151,10 @@ async fn main() -> anyhow::Result<()> {
     let state = utils::AppState::new(db, config.clone(), search_engine, log_buffer);
 
     // ── 启动 AI 定时调度器 ──
-    let scheduler = crate::services::ai_scheduler::AiScheduler::new(std::sync::Arc::new(state.clone()));
+    let scheduler = services::ai_scheduler::AiScheduler::new(std::sync::Arc::new(state.clone()));
     tokio::spawn(async move { scheduler.start().await });
 
-    let app = Router::new()
-        .merge(controllers::api_routes(state.clone()))
-        .merge(controllers::page_routes(state.clone()))
-        .fallback(controllers::pages::spa_fallback)
-        // ── 压缩：对 text/html/js/css/json/svg 等开启 gzip + Brotli ──
-        .layer(middleware::compression())
-        // ── 安全响应头：HSTS / X-Content-Type-Options / Referrer-Policy / X-Frame-Options ──
-        .layer(middleware::SecurityHeadersLayer)
-        // ── 哈希静态资源缓存：/assets/* → 1 年 immutable ──
-        .layer(middleware::AssetCacheLayer)
-        .layer(DefaultBodyLimit::max(config.storage.max_file_size as usize))
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            middleware::ip_guard::ip_guard_middleware,
-        ))
-        .layer(TraceLayer::new_for_http())
-        .layer(middleware::stack())
-        .with_state(state);
+    let app = build_router(state);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("🚀 MarkShareX 运行在 http://{}", addr);
