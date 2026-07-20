@@ -103,6 +103,7 @@ import { useRouter } from 'vue-router'
 import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMessage, type ChatSession } from '@/api/ai'
 import { marked } from 'marked'
 import { renderMarkdown } from '@/utils/renderMarkdown'
+import { useAuthStore } from '@/stores/auth'
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -113,6 +114,7 @@ function formatDate(iso: string) {
 const props = withDefaults(defineProps<{ mode?: 'front' | 'admin' }>(), { mode: 'admin' })
 const isAdmin = computed(() => props.mode === 'admin')
 const router = useRouter()
+const authStore = useAuthStore()
 
 const open = ref(false)
 const input = ref('')
@@ -354,6 +356,19 @@ watch(open, async (val) => {
   if (val) {
     await nextTick()
     scrollBottom()
+  }
+})
+
+// 登出/登录时重置会话状态
+watch(() => authStore.token, (newToken) => {
+  if (!newToken) {
+    // 登出：清空会话和消息
+    sessionId.value = null
+    messages.value = []
+    sessions.value = []
+  } else {
+    // 登录：重新加载会话列表
+    loadSessions()
   }
 })
 
