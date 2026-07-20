@@ -12,7 +12,6 @@ data_dir = "./data"
 [server]
 host = "0.0.0.0"
 port = 5023
-base_url = "http://0.0.0.0:5023"
 
 # ------------------------------ 数据库配置 ------------------------------
 [database]
@@ -78,3 +77,8 @@ duckduckgo_url = ""
 [ai]
 # 工具调用最大轮次（资讯采集等复杂任务建议 12-15）
 max_tool_rounds = 8
+
+# 允许提供商连接的内网地址（用于本地 Ollama 等场景）
+# 示例: allowed_provider_networks = ["192.168.1.100", "10.0.0.50"]
+# 留空则拒绝所有内网地址
+allowed_provider_networks = []
