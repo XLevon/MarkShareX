@@ -70,10 +70,10 @@ async function load() {
   try {
     if (props.mode === 'types') {
       const res = await fetchAdminArticleTypes()
-      items.value = (res.data ?? []) as ItemWithCount[]
+      items.value = (res.data?.data ?? []) as ItemWithCount[]
     } else {
       const res = await fetchAdminArticleStatuses()
-      items.value = (res.data ?? []) as ItemWithCount[]
+      items.value = (res.data?.data ?? []) as ItemWithCount[]
     }
   } catch { message.error('加载失败') }
 }
