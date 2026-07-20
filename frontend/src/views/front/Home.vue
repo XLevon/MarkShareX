@@ -109,19 +109,15 @@
       <!-- Title -->
       <div class="mb-4">
         <h1 class="text-3xl font-bold mb-2 flex items-center gap-2" :style="{ color: 'var(--color-text)' }">
-          <svg width="28" height="28" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="url(#nsg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="url(#nsg)" stroke-width="2" stroke-linecap="round"></path>
             <defs>
-              <linearGradient id="news-grad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#6366f1"></stop>
-                <stop offset="100%" stop-color="#a855f7"></stop>
+              <linearGradient id="nsg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#f59e0b"></stop>
+                <stop offset="100%" stop-color="#ef4444"></stop>
               </linearGradient>
             </defs>
-            <rect width="880" height="880" x="72" y="72" rx="120" fill="none" stroke="url(#news-grad)" stroke-width="50"></rect>
-            <line x1="72" y1="320" x2="952" y2="320" stroke="url(#news-grad)" stroke-width="50"></line>
-            <line x1="72" y1="540" x2="600" y2="540" stroke="url(#news-grad)" stroke-width="50" stroke-linecap="round"></line>
-            <line x1="72" y1="700" x2="400" y2="700" stroke="url(#news-grad)" stroke-width="50" stroke-linecap="round"></line>
-            <circle cx="780" cy="610" r="100" fill="#f59e0b"></circle>
-            <text x="780" y="645" text-anchor="middle" fill="#fff" font-size="110" font-weight="bold">N</text>
           </svg>
           每日简讯
         </h1>
