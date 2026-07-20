@@ -23,7 +23,7 @@
         <div class="topbar-category">
           <n-select
             v-model:value="form.category_id"
-            :options="categoryOptions"
+            :options="(categoryOptions as any)"
             placeholder="选择分类"
             clearable
             size="small"

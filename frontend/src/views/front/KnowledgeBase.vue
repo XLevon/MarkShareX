@@ -143,7 +143,7 @@
                         <div class="flex flex-wrap gap-1 min-h-[20px] mt-1">
                           <span
                             v-for="tag in (post.tags || []).slice(0, 3)"
-                            :key="tag"
+                            :key="tag.id"
                             class="px-1.5 py-0.5 text-xs rounded-full"
                             :style="{ backgroundColor: 'var(--color-primary-bg)', color: 'var(--color-primary)' }"
                           >
@@ -187,17 +187,17 @@
                         </svg>
                         <span class="home-brush-text">📌 置顶</span>
                       </div>
-                      <div v-if="getBadgeType(post)" class="home-brush-badge" :class="'home-brush-type-' + getBadgeType(post).key">
+                      <div v-if="getBadgeType(post)" class="home-brush-badge" :class="'home-brush-type-' + getBadgeType(post)?.key">
                         <svg class="home-brush-stroke" viewBox="0 0 90 28" aria-hidden="true">
                           <path d="M5,2 C14,1 24,3 36,5 C50,7 64,2 78,2 C84,3 86,7 86,11 C84,21 70,25 56,24 C42,23 28,26 16,25 C8,24 3,20 3,14 C3,7 3,3 5,2 Z" />
                         </svg>
-                        <span class="home-brush-text">{{ getBadgeType(post).label }}</span>
+                        <span class="home-brush-text">{{ getBadgeType(post)?.label }}</span>
                       </div>
-                      <div v-if="getBadgeStatus(post)" class="home-brush-badge" :class="'home-brush-status-' + getBadgeStatus(post).key">
+                      <div v-if="getBadgeStatus(post)" class="home-brush-badge" :class="'home-brush-status-' + getBadgeStatus(post)?.key">
                         <svg class="home-brush-stroke" viewBox="0 0 90 28" aria-hidden="true">
                           <path d="M5,2 C14,1 24,3 36,5 C50,7 64,2 78,2 C84,3 86,7 86,11 C84,21 70,25 56,24 C42,23 28,26 16,25 C8,24 3,20 3,14 C3,7 3,3 5,2 Z" />
                         </svg>
-                        <span class="home-brush-text">{{ getBadgeStatus(post).label }}</span>
+                        <span class="home-brush-text">{{ getBadgeStatus(post)?.label }}</span>
                       </div>
                     </div>
                   </div>
@@ -378,7 +378,7 @@ const pinnedPosts = ref<Post[]>([])
 const categories = ref<Category[]>([])
 const tags = ref<Tag[]>([])
 const collapsedGroups = reactive(new Set<string>())
-const collapsedSidebar = ref<Set<number>>(new Set())
+const collapsedSidebar = ref<Set<number>>(new Set<number>())
 const siteManager = ref<SiteManagerInfo | null>(null)
 const visibleGroupCount = ref(0)
 const bottomSentinel = ref<HTMLElement | null>(null)
@@ -502,11 +502,11 @@ async function loadData() {
     categories.value.sort((a, b) => a.sort_order - b.sort_order)
     if (settingsStore.settings.sidebar_collapse === 'true') {
       const childParentIds = new Set(
-        categories.value.filter(c => c.parent_id).map(c => c.parent_id)
+        categories.value.filter(c => c.parent_id).map(c => c.parent_id as number)
       )
       collapsedSidebar.value = new Set(childParentIds)
     } else {
-      collapsedSidebar.value = new Set()
+      collapsedSidebar.value = new Set<number>()
     }
     tags.value = tagResp.data.data
     tags.value.sort((a, b) => (b.post_count || 0) - (a.post_count || 0))

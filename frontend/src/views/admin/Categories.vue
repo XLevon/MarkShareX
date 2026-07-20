@@ -2,7 +2,7 @@
   <div>
     <n-card>
       <n-data-table :columns="columns" :data="flatCategories" :loading="loading" :bordered="false" size="large"
-        :row-props="getRowProps"
+        :row-props="(getRowProps as any)"
         :row-class-name="getRowClass"
       />
     </n-card>

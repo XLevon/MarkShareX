@@ -76,7 +76,7 @@
         :row-key="rowKey"
         :checked-row-keys="checkedIds"
         :scroll-x="1040"
-        @update:checked-row-keys="onCheckedChange"
+        @update:checked-row-keys="(onCheckedChange as any)"
         :pagination="false"
       />
 

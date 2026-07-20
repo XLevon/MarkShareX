@@ -76,9 +76,9 @@
             {{ dayjs(post.published_at).format('YYYY年MM月DD日') }}
           </span>
           <!-- Author -->
-          <router-link v-if="post.author" :to="`/author/${post.author.id}`" class="flex items-center gap-1.5 no-underline transition-colors" :style="{ color: 'var(--color-text-muted)' }">
-            <span class="avatar-circle">{{ (post.author.display_name || 'A')[0].toUpperCase() }}</span>
-            {{ post.author.display_name || post.author.username || '匿名' }}
+          <router-link v-if="post.author" :to="`/author/${post.author_id}`" class="flex items-center gap-1.5 no-underline transition-colors" :style="{ color: 'var(--color-text-muted)' }">
+            <span class="avatar-circle">{{ (post.author_display_name || 'A')[0].toUpperCase() }}</span>
+            {{ post.author_display_name || post.author_name || '匿名' }}
           </router-link>
           <!-- Category -->
           <span v-if="post.category_name">

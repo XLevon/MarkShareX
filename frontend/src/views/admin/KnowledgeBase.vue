@@ -6,7 +6,7 @@
         :data="items"
         :bordered="false"
         size="small"
-        :row-props="getRowProps"
+        :row-props="(getRowProps as any)"
         :row-class-name="getRowClass"
       />
     </n-card>

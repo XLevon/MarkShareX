@@ -44,7 +44,7 @@
       <div v-if="showFilters" class="filter-bar">
         <n-select
           v-model:value="selectedCategoryIds"
-          :options="categoryOptions"
+          :options="(categoryOptions as any)"
           multiple
           placeholder="分类"
           clearable
@@ -266,7 +266,7 @@
               <label class="modal-field-label">分类</label>
               <n-select
                 v-model:value="quickEditCategoryId"
-                :options="categoryTreeOptions"
+                :options="(categoryTreeOptions as any)"
                 placeholder="选择分类"
                 clearable
                 filterable
