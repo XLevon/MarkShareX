@@ -169,7 +169,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const message = useMessage()
 const authStore = useAuthStore()
-const isAdmin = computed(() => authStore.user?.role === 'admin')
+const isAdmin = computed(() => authStore.user?.role === 'admin' || authStore.user?.role === 'sub_admin')
 
 const loading = ref(false)
 const saving = ref(false)
