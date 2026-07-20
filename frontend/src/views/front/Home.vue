@@ -110,8 +110,8 @@
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-4">
         <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
         <div class="hidden sm:block flex-1 min-w-2"></div>
-        <div class="flex flex-wrap items-center gap-2">
-          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" style="width:200px">
+        <div class="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 max-w-full">
+          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-full xs:w-[200px]">
             <template #footer>
               <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
                 <n-button size="tiny" quaternary @click="setNewsDateRange('today')">今天</n-button>
