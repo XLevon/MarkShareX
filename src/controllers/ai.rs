@@ -1442,14 +1442,10 @@ pub async fn list_sessions(
             .filter(ai_chat_message::Column::SessionId.eq(s.id))
             .count(&state.db)
             .await?;
-        let user_display_name = if is_privileged && s.user_id != auth.user_id {
-            users::Entity::find_by_id(s.user_id)
-                .one(&state.db)
-                .await?
-                .and_then(|u| u.display_name.or(Some(u.username)))
-        } else {
-            None
-        };
+        let user_display_name = users::Entity::find_by_id(s.user_id)
+            .one(&state.db)
+            .await?
+            .and_then(|u| u.display_name.or(Some(u.username)));
         result.push(ChatSessionResponse {
             id: s.id,
             title: s.title,
