@@ -30,6 +30,7 @@ async fn api_key_authentication_and_whitelist_branches_use_the_production_router
 
     app.set_setting("ip_whitelist_enabled", "true").await?;
     app.set_setting("ip_whitelist", r#"["192.0.2.10"]"#).await?;
+    marksharex::middleware::ip_guard::invalidate_ip_rules_cache().await;
 
     app.server
         .post("/api/v1/posts")
@@ -109,6 +110,7 @@ async fn ip_blacklist_uses_real_ip_then_forwarded_for_then_socket_fallback() -> 
         r#"["198.51.100.7","203.0.113.9","127.0.0.1"]"#,
     )
     .await?;
+    marksharex::middleware::ip_guard::invalidate_ip_rules_cache().await;
 
     app.server
         .get("/api/v1/health")

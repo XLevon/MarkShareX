@@ -29,6 +29,15 @@ pub struct AppState {
     pub log_buffer: Arc<LogBuffer>,
 }
 
+/// Parsed IP guard configuration, cacheable.
+#[derive(Clone, Default)]
+pub struct IpGuardRules {
+    pub blacklist_enabled: bool,
+    pub blacklist: Vec<String>,
+    pub whitelist_enabled: bool,
+    pub whitelist: Vec<String>,
+}
+
 impl AppState {
     pub fn new(
         db: DatabaseConnection,
