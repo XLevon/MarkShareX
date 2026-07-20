@@ -129,13 +129,13 @@ async function loadMeta() {
   try {
     if (props.filterType === 'type') {
       const res = await fetchArticleTypes()
-      metaList.value = ((res.data as any) ?? []).map((t: any) => ({
+      metaList.value = (res.data?.data ?? []).map((t: any) => ({
         code: t.code, display_name: t.display_name, color: t.color, post_count: t.post_count
       }))
       for (const t of metaList.value) typeMap.value[t.code] = t.display_name
     } else {
       const res = await fetchArticleStatuses()
-      metaList.value = ((res.data as any) ?? []).map((s: any) => ({
+      metaList.value = (res.data?.data ?? []).map((s: any) => ({
         code: s.code, display_name: s.display_name, color: s.color, post_count: s.post_count
       }))
       for (const s of metaList.value) statusMap.value[s.code] = s.display_name
@@ -154,7 +154,7 @@ async function loadPosts() {
     else params.article_status = filterValue.value
 
     const res = await fetchPosts(params)
-    posts.value = (res.data as any) ?? []
+    posts.value = res.data?.data ?? []
     total.value = res.data?.pagination?.total ?? 0
     hasMore.value = posts.value.length < total.value
   } catch { posts.value = [] }
@@ -171,7 +171,7 @@ async function loadMorePosts() {
     else params.article_status = filterValue.value
 
     const res = await fetchPosts(params)
-    posts.value.push(...((res.data as any) ?? []))
+    posts.value.push(...(res.data?.data ?? []))
     hasMore.value = posts.value.length < total.value
   } catch { /* ignore */ }
   loadingMore.value = false

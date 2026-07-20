@@ -487,8 +487,8 @@ async function loadUsers() {
     if (filterStatus.value) params.status = filterStatus.value
     if (searchQuery.value.trim()) params.search = searchQuery.value.trim()
     const { data: resp } = await fetchUsers(params)
-    users.value = resp.data || []
-    totalPages.value = Math.max(1, resp.pagination.pages)
+    users.value = resp.data.data || []
+    totalPages.value = Math.max(1, resp.data.pagination.pages || 1)
   } catch {
     users.value = []
   } finally {
@@ -639,7 +639,7 @@ async function handleReject() {
 async function loadLoginLogs() {
   try {
     const { data: resp } = await fetchLoginLogs({ page_size: 20 })
-    loginLogs.value = resp.data || []
+    loginLogs.value = resp.data.data || []
   } catch { /* silent */ }
 }
 
@@ -664,9 +664,9 @@ async function loadAllLogs(page: number) {
     if (logsFilter.userId && logsFilter.userId > 0) params.user_id = logsFilter.userId
     if (logsFilter.success !== undefined) params.success = logsFilter.success
     const { data: resp } = await fetchLoginLogs(params)
-    allLoginLogs.value = resp.data || []
-    logsPage.value = resp.pagination.page
-    logsTotalPages.value = resp.pagination.pages || 1
+    allLoginLogs.value = resp.data.data || []
+    logsPage.value = resp.data.pagination.page
+    logsTotalPages.value = resp.data.pagination.pages || 1
   } catch { /* silent */ }
 }
 
