@@ -255,4 +255,9 @@ a {
   [class*="n-date-picker-panel"] [class*="month"] {
     width: 100% !important;
   }
+  /* Footer action buttons: 清除 / 确认 + custom 今天… */
+  [class*="n-date-picker"] [class*="actions"],
+  [class*="n-date-picker"] [class*="footer"] {
+    flex-wrap: wrap !important;
+  }
 }
