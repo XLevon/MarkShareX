@@ -121,9 +121,17 @@
             <polyline v-else points="6 15 12 9 18 15"/>
           </svg>
         </button>
+        <button v-if="activeTab === 'published' && isAdmin && posts.length > 0"
+          class="btn-warning btn-sm" style="margin-left: 8px" @click="batchUnpublishPosts">
+          批量下线
+        </button>
         <button v-if="activeTab === 'draft' && isAdmin && posts.length > 0"
           class="btn-danger btn-sm" style="margin-left: 8px" @click="batchDeleteDrafts">
           批量删除草稿
+        </button>
+        <button v-if="activeTab === 'draft' && isAdmin && posts.length > 0"
+          class="btn-primary btn-sm" style="margin-left: 8px" @click="batchPublishDrafts">
+          批量发布
         </button>
       </div>
 
@@ -765,6 +773,32 @@ async function batchDeleteDrafts() {
     loadCounts()
   } catch (e: any) {
     alert(e?.response?.data?.error || '批量删除失败')
+  }
+}
+
+async function batchPublishDrafts() {
+  if (!posts.value.length) return
+  if (!confirm(`确定发布当前列表中已加载的 ${posts.value.length} 篇草稿吗？`)) return
+  const ids = posts.value.map(p => p.id)
+  try {
+    await api.post('/admin/posts/batch-publish', { ids })
+    resetAndLoad()
+    loadCounts()
+  } catch (e: any) {
+    alert(e?.response?.data?.error || '批量发布失败')
+  }
+}
+
+async function batchUnpublishPosts() {
+  if (!posts.value.length) return
+  if (!confirm(`确定将当前列表中已加载的 ${posts.value.length} 篇文章下线为草稿吗？`)) return
+  const ids = posts.value.map(p => p.id)
+  try {
+    await api.post('/admin/posts/batch-unpublish', { ids })
+    resetAndLoad()
+    loadCounts()
+  } catch (e: any) {
+    alert(e?.response?.data?.error || '批量下线失败')
   }
 }
 

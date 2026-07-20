@@ -10,6 +10,7 @@ declare module 'vue' {
     ActionBar: typeof import('./components/front/ActionBar.vue')['default']
     AdminLayout: typeof import('./components/admin/AdminLayout.vue')['default']
     AiChatWidget: typeof import('./components/shared/AiChatWidget.vue')['default']
+    BatchPaginationBar: typeof import('./components/shared/BatchPaginationBar.vue')['default']
     CodeCopyWrapper: typeof import('./components/shared/CodeCopyWrapper.vue')['default']
     FriendLinks: typeof import('./components/front/FriendLinks.vue')['default']
     FrontLayout: typeof import('./components/front/FrontLayout.vue')['default']

@@ -1254,6 +1254,74 @@ pub async fn batch_delete_posts(
     }))
 }
 
+/// POST /api/v1/admin/posts/batch-publish — 批量发布草稿（仅 admin）
+#[derive(Deserialize, ToSchema)]
+pub struct BatchPublishPostsRequest {
+    pub ids: Vec<i32>,
+}
+
+pub async fn batch_publish_posts(
+    State(state): State<AppState>,
+    _privileged: PrivilegedUser,
+    Json(req): Json<BatchPublishPostsRequest>,
+) -> Result<Json<ApiResponse<i32>>, AppError> {
+    let now = crate::utils::now_local();
+    let mut count = 0;
+    for id in &req.ids {
+        let post = posts::Entity::find_by_id(*id)
+            .one(&state.db)
+            .await?
+            .ok_or(AppError::NotFound("文章不存在".into()))?;
+        if post.status == "draft" {
+            let title = post.title.clone();
+            let content = post.content.clone().unwrap_or_default();
+            let mut active: posts::ActiveModel = post.into();
+            active.status = Set("published".to_string());
+            active.published_at = Set(Some(now));
+            active.updated_at = Set(now);
+            active.update(&state.db).await?;
+            let _ = state.search_engine.index_document(*id as u64, &title, &content);
+            count += 1;
+        }
+    }
+    Ok(Json(ApiResponse {
+        data: count,
+        pagination: None,
+    }))
+}
+
+/// POST /api/v1/admin/posts/batch-unpublish — 批量下线已发布文章（仅 admin）
+#[derive(Deserialize, ToSchema)]
+pub struct BatchUnpublishPostsRequest {
+    pub ids: Vec<i32>,
+}
+
+pub async fn batch_unpublish_posts(
+    State(state): State<AppState>,
+    _privileged: PrivilegedUser,
+    Json(req): Json<BatchUnpublishPostsRequest>,
+) -> Result<Json<ApiResponse<i32>>, AppError> {
+    let mut count = 0;
+    for id in &req.ids {
+        let post = posts::Entity::find_by_id(*id)
+            .one(&state.db)
+            .await?
+            .ok_or(AppError::NotFound("文章不存在".into()))?;
+        if post.status == "published" {
+            let mut active: posts::ActiveModel = post.into();
+            active.status = Set("draft".to_string());
+            active.updated_at = Set(crate::utils::now_local());
+            active.update(&state.db).await?;
+            let _ = state.search_engine.delete_from_index(*id as u64);
+            count += 1;
+        }
+    }
+    Ok(Json(ApiResponse {
+        data: count,
+        pagination: None,
+    }))
+}
+
 /// GET /api/v1/posts/slug/{slug} — Get post by slug
 
 #[utoipa::path(

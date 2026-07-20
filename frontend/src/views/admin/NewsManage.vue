@@ -48,26 +48,24 @@
           </div>
         </div>
       </div>
-      <div v-if="checkedIds.length" class="batch-actions">
-        <n-button size="small" type="success" @click="batchPublish">发布 {{ checkedIds.length }}</n-button>
-        <n-button size="small" type="warning" @click="batchUnpublish">撤回 {{ checkedIds.length }}</n-button>
-        <n-button v-if="isAdmin" size="small" type="error" @click="batchDelete">删除 {{ checkedIds.length }}</n-button>
-      </div>
     </n-card>
 
     <n-card>
-      <!-- 顶部分页：与前台每日简讯保持一致 -->
-      <div class="pagination-wrap pagination-top">
-        <button class="page-arrow" :disabled="pagination.page === 1" @click="goToPage(pagination.page - 1)">‹</button>
-        <template v-for="(p, index) in visiblePages" :key="`${p}-${index}`">
-          <span v-if="p === -1" class="page-ellipsis">…</span>
-          <button v-else class="page-number" :class="{ active: p === pagination.page }" @click="goToPage(p)">{{ p }}</button>
-        </template>
-        <button class="page-arrow" :disabled="pagination.page >= totalPages" @click="goToPage(pagination.page + 1)">›</button>
-        <select class="page-size-select" :value="pagination.pageSize" @change="onPageSizeChange(Number(($event.target as HTMLSelectElement).value))">
-          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }} 条/页</option>
-        </select>
-      </div>
+      <!-- 顶部分页：批量操作在左，分页在右 -->
+      <BatchPaginationBar
+        :checked-count="checkedIds.length"
+        :is-admin="isAdmin"
+        :page="pagination.page"
+        :total-pages="totalPages"
+        :page-size="pagination.pageSize"
+        :visible-pages="visiblePages"
+        :page-size-options="pageSizeOptions"
+        @publish="batchPublish"
+        @unpublish="batchUnpublish"
+        @delete="batchDelete"
+        @go-to-page="goToPage"
+        @page-size-change="onPageSizeChange"
+      />
 
       <n-data-table
         :columns="columns"
@@ -81,17 +79,20 @@
       />
 
       <!-- 底部分页 -->
-      <div class="pagination-wrap pagination-bottom">
-        <button class="page-arrow" :disabled="pagination.page === 1" @click="goToPage(pagination.page - 1)">‹</button>
-        <template v-for="(p, index) in visiblePages" :key="`${p}-${index}`">
-          <span v-if="p === -1" class="page-ellipsis">…</span>
-          <button v-else class="page-number" :class="{ active: p === pagination.page }" @click="goToPage(p)">{{ p }}</button>
-        </template>
-        <button class="page-arrow" :disabled="pagination.page >= totalPages" @click="goToPage(pagination.page + 1)">›</button>
-        <select class="page-size-select" :value="pagination.pageSize" @change="onPageSizeChange(Number(($event.target as HTMLSelectElement).value))">
-          <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }} 条/页</option>
-        </select>
-      </div>
+      <BatchPaginationBar
+        :checked-count="checkedIds.length"
+        :is-admin="isAdmin"
+        :page="pagination.page"
+        :total-pages="totalPages"
+        :page-size="pagination.pageSize"
+        :visible-pages="visiblePages"
+        :page-size-options="pageSizeOptions"
+        @publish="batchPublish"
+        @unpublish="batchUnpublish"
+        @delete="batchDelete"
+        @go-to-page="goToPage"
+        @page-size-change="onPageSizeChange"
+      />
     </n-card>
 
     <!-- Create/Edit Modal -->
@@ -160,6 +161,7 @@
 <script setup lang="ts">
 import { ref, onMounted, h, computed } from 'vue'
 import { NButton, NSwitch, NSpace, NCheckbox, useMessage } from 'naive-ui'
+import BatchPaginationBar from '@/components/shared/BatchPaginationBar.vue'
 import { fetchAdminNews, fetchAdminNewsItem, createNews, updateNews, deleteNews, type NewsItem } from '@/api/news'
 import api from '@/api'
 

@@ -702,6 +702,14 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
             post(posts::batch_delete_posts),
         )
         .route(
+            "/api/v1/admin/posts/batch-publish",
+            post(posts::batch_publish_posts),
+        )
+        .route(
+            "/api/v1/admin/posts/batch-unpublish",
+            post(posts::batch_unpublish_posts),
+        )
+        .route(
             "/api/v1/admin/posts/pin-order",
             put(posts::update_pin_order),
         )
