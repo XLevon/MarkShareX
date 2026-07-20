@@ -1,5 +1,5 @@
 <template>
-  <div class="pagination-wrap">
+  <div class="pagination-wrap" :class="{ 'has-batch': checkedCount > 0 }">
     <div class="batch-actions-inline" v-if="checkedCount > 0">
       <n-button size="small" type="success" @click="$emit('publish')">发布 {{ checkedCount }}</n-button>
       <n-button size="small" type="warning" @click="$emit('unpublish')">撤回 {{ checkedCount }}</n-button>
@@ -45,10 +45,13 @@ defineEmits<{
 .pagination-wrap {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
   max-width: 100%;
+}
+.pagination-wrap.has-batch {
+  justify-content: space-between;
 }
 .batch-actions-inline {
   display: flex;
@@ -126,6 +129,9 @@ defineEmits<{
   .pagination-wrap {
     justify-content: flex-end;
     gap: 4px;
+  }
+  .pagination-wrap.has-batch {
+    justify-content: space-between;
   }
   .page-arrow,
   .page-number {
