@@ -108,7 +108,10 @@
     <section class="max-w-4xl mx-auto px-4 pt-12 md:pt-16 pb-8">
       <!-- Header row: title + search + date -->
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-4">
-        <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
+        <div>
+          <h1 class="text-3xl font-bold mb-2" :style="{ color: 'var(--color-text)' }">📰 每日简讯</h1>
+          <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览最新资讯，掌握行业动态</p>
+        </div>
         <div class="hidden sm:block flex-1 min-w-2"></div>
         <div class="flex items-center gap-2 max-w-full">
           <!-- PC: NaiveUI 日期范围选择器 -->
