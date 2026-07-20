@@ -94,6 +94,9 @@
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                 </button>
+                <button v-if="isAdmin" class="btn-pwd-sm" @click="openResetPwd(user)" title="修改密码">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </button>
               </div>
             </td>
           </tr>
@@ -242,6 +245,24 @@
           <div class="modal-actions">
             <button type="button" class="btn-secondary" @click="rejectTarget = null">取消</button>
             <button type="submit" class="btn-danger" :disabled="rejecting">{{ rejecting ? '处理中...' : '确认拒绝' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ==================== 重置密码弹窗 ==================== -->
+    <div v-if="pwdTarget" class="modal-overlay" @click.self="pwdTarget = null">
+      <div class="modal-box">
+        <h3>重置密码 — {{ pwdTarget.display_name || pwdTarget.username }}</h3>
+        <form @submit.prevent="submitResetPwd">
+          <div class="form-row">
+            <label>新密码 <span class="required">*</span></label>
+            <input v-model="newPassword" type="password" required minlength="8" class="form-input" placeholder="至少8位" />
+          </div>
+          <div v-if="pwdError" class="form-error">{{ pwdError }}</div>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="pwdTarget = null">取消</button>
+            <button type="submit" class="btn-primary" :disabled="pwdSubmitting">{{ pwdSubmitting ? '处理中...' : '确认重置' }}</button>
           </div>
         </form>
       </div>
@@ -397,6 +418,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
+import api from '@/api'
 import type { AdminUser } from '@/api/admin'
 import { fetchUsers, createUser, updateUser, deleteUser, approveApplication, rejectApplication, getPendingCount, fetchLoginLogs } from '@/api/admin'
 import type { LoginLog } from '@/api/admin'
@@ -588,6 +610,34 @@ async function handleDelete() {
     loadUsers()
   } catch (e: any) {
     message.error(e?.response?.data?.message || '删除失败')
+  }
+}
+
+// ── Reset Password ──
+
+const pwdTarget = ref<AdminUser | null>(null)
+const newPassword = ref('')
+const pwdSubmitting = ref(false)
+const pwdError = ref('')
+
+function openResetPwd(user: AdminUser) {
+  pwdTarget.value = user
+  newPassword.value = ''
+  pwdError.value = ''
+}
+
+async function submitResetPwd() {
+  if (!pwdTarget.value || !newPassword.value) return
+  pwdSubmitting.value = true
+  pwdError.value = ''
+  try {
+    await api.put(`/admin/users/${pwdTarget.value.id}/reset-password`, { password: newPassword.value })
+    pwdTarget.value = null
+    message.success('密码已重置')
+  } catch (e: any) {
+    pwdError.value = e?.response?.data?.message || '重置失败'
+  } finally {
+    pwdSubmitting.value = false
   }
 }
 
@@ -787,6 +837,13 @@ onMounted(async () => {
   cursor: pointer; transition: background 0.15s;
 }
 .btn-delete-sm:hover { background: rgba(239,68,68,0.2); }
+.btn-pwd-sm {
+  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--card-border-color);
+  background: rgba(245,158,11,0.08); color: #fbbf24;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.15s;
+}
+.btn-pwd-sm:hover { background: rgba(245,158,11,0.2); }
 
 /* Pagination */
 .pagination {

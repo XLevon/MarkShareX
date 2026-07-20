@@ -270,6 +270,42 @@ pub async fn update_user_role(
     Ok(Json(ApiResponse::new(AdminUserResponse::from(updated))))
 }
 
+/// PUT /api/v1/admin/users/{id}/reset-password — admin 重置用户密码
+#[derive(Deserialize)]
+pub struct ResetPasswordRequest {
+    pub password: String,
+}
+
+pub async fn reset_user_password(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<i32>,
+    Json(req): Json<ResetPasswordRequest>,
+) -> Result<Json<ApiResponse<String>>, AppError> {
+    if !auth.is_admin() {
+        return Err(AppError::Forbidden);
+    }
+    if req.password.len() < 8 {
+        return Err(AppError::BadRequest("密码至少8位".into()));
+    }
+
+    let user = users::Entity::find_by_id(id)
+        .filter(users::Column::DeletedAt.is_null())
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("用户不存在".into()))?;
+
+    let hashed = bcrypt::hash(&req.password, bcrypt::DEFAULT_COST)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("密码加密失败: {}", e)))?;
+
+    let mut active: users::ActiveModel = user.into();
+    active.password_hash = Set(hashed);
+    active.updated_at = Set(crate::utils::now_local());
+    active.update(&state.db).await?;
+
+    Ok(Json(ApiResponse::new("密码已重置".to_string())))
+}
+
 #[derive(Deserialize)]
 pub struct CreateUserRequest {
     pub username: String,
