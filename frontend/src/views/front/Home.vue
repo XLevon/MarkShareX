@@ -106,15 +106,17 @@
 
     <!-- News Section -->
     <section class="max-w-4xl mx-auto px-4 py-12 md:pt-16">
-      <!-- Header row: title + search + date -->
-      <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-10">
-        <div>
-          <h1 class="text-3xl font-bold mb-2" :style="{ color: 'var(--color-text)' }">📰 每日简讯</h1>
-          <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览最新资讯，掌握行业动态</p>
-        </div>
-        <div class="hidden sm:block flex-1 min-w-2"></div>
-        <div class="flex items-center gap-2 max-w-full">
-          <!-- PC: NaiveUI 日期范围选择器 -->
+      <!-- Title -->
+      <div class="mb-4">
+        <h1 class="text-3xl font-bold mb-2 flex items-center gap-2" :style="{ color: 'var(--color-text)' }">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8z"/></svg>
+          每日简讯
+        </h1>
+        <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览最新资讯，掌握行业动态</p>
+      </div>
+      <!-- Controls row -->
+      <div class="flex flex-wrap items-center gap-2 mb-10">
+        <!-- PC: NaiveUI 日期范围选择器 -->
           <n-date-picker v-if="!isMobile" v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[170px] shrink-0">
             <template #footer>
               <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
