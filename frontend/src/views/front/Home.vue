@@ -668,3 +668,10 @@ onMounted(() => {
   }
 })
 </script>
+
+<style>
+/* PC 端日期范围选择器：开始日期窄，结束日期宽 */
+.n-date-picker input:first-of-type {
+  width: 90px !important;
+}
+</style>
