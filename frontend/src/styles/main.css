@@ -240,13 +240,11 @@ a {
 @media (max-width: 475px) {
   body > [class*="n-date"] {
     max-width: 100vw !important;
-    overflow-x: auto !important;
+    overflow: hidden !important;
   }
-  body > [class*="n-date"] * {
-    max-width: 100% !important;
-  }
-  /* 移动端只显示当前月（第2个面板） */
-  body > [class*="n-date"] > div > div > :first-child {
+  /* Hide second calendar panel on mobile */
+  body > [class*="n-date"] [class*="n-date-table"]:nth-of-type(2),
+  body > [class*="n-date"] [class*="calendar"]:nth-of-type(2) {
     display: none !important;
   }
   body > [class*="n-date"] [class*="actions"],
