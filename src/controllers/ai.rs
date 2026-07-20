@@ -1421,9 +1421,9 @@ pub async fn list_sessions(
     auth: AuthUser,
 ) -> Result<Json<ApiResponse<Vec<ChatSessionResponse>>>, AppError> {
     use crate::models::entity::users;
-    let is_privileged = matches!(auth.role.as_str(), "admin" | "sub_admin");
+    let is_admin = auth.role == "admin";
 
-    let sessions = if is_privileged {
+    let sessions = if is_admin {
         ai_chat_session::Entity::find()
             .order_by_desc(ai_chat_session::Column::UpdatedAt)
             .all(&state.db)
