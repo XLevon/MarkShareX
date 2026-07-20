@@ -40,8 +40,8 @@
                 color: 'var(--color-text)',
               }"
               @keyup.enter="doHeroSearch"
-              @focus="$event.target.style.borderColor = 'var(--color-primary)'"
-              @blur="$event.target.style.borderColor = 'var(--color-border)'"
+              @focus="($event.target as HTMLElement).style.borderColor = 'var(--color-primary)'"
+              @blur="($event.target as HTMLElement).style.borderColor = 'var(--color-border)'"
             />
             <button
               @click="doHeroSearch"

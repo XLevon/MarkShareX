@@ -574,7 +574,7 @@ const providerColumns = [
   }},
   { title: '操作', key: 'actions', width: 140, render(row: AiProvider) {
     return h(NSpace, { size: 'small' }, { default: () => [
-      h(NButton, { size: 'small', loading: testingId === row.id, onClick: () => handleTestProvider(row) }, { default: () => '测试' }),
+      h(NButton, { size: 'small', loading: testingId.value === row.id, onClick: () => handleTestProvider(row) }, { default: () => '测试' }),
       h(NButton, { size: 'small', onClick: () => openProviderForm(row) }, { default: () => '编辑' }),
       h(NButton, { size: 'small', type: 'error', onClick: () => handleDeleteProvider(row) }, { default: () => '删除' }),
     ]})

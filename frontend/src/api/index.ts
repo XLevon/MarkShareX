@@ -122,6 +122,7 @@ export interface Post {
   category_id: number | null
   category: Category | null
   category_name?: string
+  user_id?: number
   tags: Tag[]
   view_count: number
   like_count: number
@@ -132,8 +133,11 @@ export interface Post {
   article_status_name?: string  // display name from article_statuses table
   author?: string
   author_name?: string
+  author_id?: number
+  author_display_name?: string
   reading_time?: number
   is_pinned: boolean
+  allow_comment?: boolean
   published_at: string
   created_at: string
   updated_at: string

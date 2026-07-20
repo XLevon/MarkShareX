@@ -218,9 +218,10 @@ async function loadLogsPage(page: number) {
     const params: any = { page, page_size: 20 }
     if (logsFilterPostId.value) params.post_id = logsFilterPostId.value
     const { data: resp } = await fetchReadLogs(params)
-    readLogs.value = resp.data.data
-    logsTotal.value = resp.data.pagination.total
-    logsTotalPages.value = resp.data.pagination.pages
+    const paginated = resp as unknown as { data: any[]; pagination: { total: number; pages: number } }
+    readLogs.value = paginated.data
+    logsTotal.value = paginated.pagination.total
+    logsTotalPages.value = paginated.pagination.pages
     logsPage.value = page
   } catch { /* ignore */ }
   logsLoading.value = false

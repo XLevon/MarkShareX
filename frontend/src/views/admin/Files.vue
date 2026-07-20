@@ -75,7 +75,7 @@
       >
         {{ tab.label }}
         <span class="filter-count" v-if="tab.key !== 'all'">
-          {{ activeFilter.value === 'unreferenced' && tab.key === 'unreferenced' ? files.length : getTypeCount(tab.key) }}
+          {{ activeFilter === 'unreferenced' && tab.key === 'unreferenced' ? files.length : getTypeCount(tab.key) }}
         </span>
       </button>
       <span v-if="tab.key === 'unreferenced' && activeFilter === 'unreferenced' && files.length > 0" class="unref-actions">

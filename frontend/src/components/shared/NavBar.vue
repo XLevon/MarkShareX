@@ -47,7 +47,7 @@
               >
                 <span class="w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0 relative" style="background: #4f46e5; font-size: 14px; font-weight: 600">
                   {{ userInitial }}
-                  <span v-if="badgeCount > 0" class="avatar-badge">{{ badgeCount > 99 ? '99+' : badgeCount }}</span>
+                  <span v-if="(badgeCount ?? 0) > 0" class="avatar-badge">{{ (badgeCount ?? 0) > 99 ? '99+' : badgeCount }}</span>
                 </span>
                 <span class="hidden sm:inline" style="font-size: 14px" :style="{ color: isDark ? '#d1d5db' : '#1f2937' }">{{ displayUser }}</span>
                 <svg class="hidden sm:block transition-transform duration-150" :class="{ 'rotate-180': showUserMenu }" width="16" height="16" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>

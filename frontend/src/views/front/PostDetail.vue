@@ -90,7 +90,7 @@
           <template v-if="post.tags?.length">
             <router-link
               v-for="tag in post.tags"
-              :key="tag"
+              :key="tag.id"
               :to="`/tag/${tag}`"
               class="px-2 py-0.5 text-xs rounded-full transition-colors no-underline"
               :style="{ backgroundColor: 'var(--color-bg-hover)', color: 'var(--color-text-secondary)' }"
@@ -525,7 +525,7 @@ const canEdit = computed(() => {
   if (user.role === 'admin' || user.role === 'sub_admin') return true
   // Author can only edit their own posts
   if (user.role === 'author') {
-    const authorId = (post.value as any).user_id ?? post.value.author?.id
+    const authorId = post.value.user_id
     return user.id === authorId
   }
   return false

@@ -60,8 +60,8 @@
               :class="{ selected: (libSubTab === 'local' ? selectedLocalId === item.id : selectedNetworkId === item.id) }"
               @click="selectLibItem(libSubTab === 'local' ? 'local' : 'network', item)"
             >
-              <img :src="item.url" :alt="item.label || item.original_name || ''" loading="lazy" :referrerpolicy="libSubTab === 'network' ? 'no-referrer' : undefined" />
-              <span class="picker-name">{{ item.label || item.original_name || item.url }}</span>
+              <img :src="item.url" :alt="(item as any).label || (item as any).original_name || ''" loading="lazy" :referrerpolicy="libSubTab === 'network' ? 'no-referrer' : undefined" />
+              <span class="picker-name">{{ (item as any).label || (item as any).original_name || item.url }}</span>
             </div>
           </div>
         </div>
@@ -177,7 +177,7 @@ const filteredLocalImages = computed(() => {
   if (!libSearch.value.trim()) return localImages.value
   const q = libSearch.value.toLowerCase()
   return localImages.value.filter(f =>
-    (f.original_name || f.filename || '').toLowerCase().includes(q)
+    ((f as any).original_name || f.filename || '').toLowerCase().includes(q)
   )
 })
 

@@ -140,7 +140,7 @@
               :src="post.cover_image || post.category_cover_image"
               class="post-thumb"
               referrerpolicy="no-referrer"
-              @error="$event.target.style.display='none'"
+              @error="($event.target as HTMLElement).style.display='none'"
             />
             <div class="post-main">
               <span class="post-title">{{ post.title || '无标题' }}</span>

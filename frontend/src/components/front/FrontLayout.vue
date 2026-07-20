@@ -86,8 +86,8 @@
             <input v-model="searchQuery" type="text" placeholder="搜索文章、标签或作者..." class="w-full px-3 py-2 pl-9 text-sm rounded-lg border outline-none transition-colors"
               :style="{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }"
               @keyup.enter="doSearch"
-              @focus="$event.target.style.borderColor = 'var(--color-primary)'"
-              @blur="$event.target.style.borderColor = 'var(--color-border)'"
+              @focus="($event.target as HTMLElement).style.borderColor = 'var(--color-primary)'"
+              @blur="($event.target as HTMLElement).style.borderColor = 'var(--color-border)'"
             />
             <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4" :style="{ color: 'var(--color-text-muted)' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>

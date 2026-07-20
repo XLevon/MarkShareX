@@ -17,8 +17,8 @@
           class="w-full px-4 py-3 pl-11 rounded-xl border outline-none text-base transition-colors"
           :style="{ backgroundColor: 'var(--color-bg-card)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }"
           @keyup.enter="doSearch"
-          @focus="$event.target.style.borderColor = 'var(--color-primary)'"
-          @blur="$event.target.style.borderColor = 'var(--color-border)'"
+          @focus="($event.target as HTMLElement).style.borderColor = 'var(--color-primary)'"
+          @blur="($event.target as HTMLElement).style.borderColor = 'var(--color-border)'"
         />
         <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5" :style="{ color: 'var(--color-text-muted)' }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
