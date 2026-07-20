@@ -5,7 +5,7 @@
       <!-- Page Header -->
       <div class="mb-10">
         <h1 class="text-3xl font-bold mb-2" :style="{ color: 'var(--color-text)' }">
-          {{ props.filterType === 'type' ? '文章类型' : '文章状态' }}
+          {{ props.filterType === 'type' ? '📋 文章类型' : '🔄 文章状态' }}
         </h1>
         <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">
           {{ props.filterType === 'type' ? '按创作方式分类浏览文章' : '按内容时效性筛选文章' }}

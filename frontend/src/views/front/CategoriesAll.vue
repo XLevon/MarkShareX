@@ -2,7 +2,7 @@
   <div class="max-w-4xl mx-auto px-4 py-12">
     <!-- Page Header -->
     <div class="mb-10">
-      <h1 class="text-3xl font-bold mb-2" :style="{ color: 'var(--color-text)' }">分类</h1>
+      <h1 class="text-3xl font-bold mb-2" :style="{ color: 'var(--color-text)' }">📁 分类专栏</h1>
       <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览所有分类，发现感兴趣的内容</p>
     </div>
 
