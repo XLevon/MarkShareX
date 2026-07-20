@@ -245,8 +245,8 @@ a {
   body > [class*="n-date"] * {
     max-width: 100% !important;
   }
-  /* Only show current month, hide adjacent month panel */
-  body > [class*="n-date"] [class*="month"]:last-child {
+  /* 移动端只显示一个月 */
+  body > [class*="n-date"] > div > div > :nth-child(2) {
     display: none !important;
   }
   body > [class*="n-date"] [class*="actions"],
