@@ -245,6 +245,10 @@ a {
   body > [class*="n-date"] * {
     max-width: 100% !important;
   }
+  /* Only show current month, hide adjacent month panel */
+  body > [class*="n-date"] [class*="month"]:last-child {
+    display: none !important;
+  }
   body > [class*="n-date"] [class*="actions"],
   body > [class*="n-date"] [class*="footer"] {
     flex-wrap: wrap !important;
