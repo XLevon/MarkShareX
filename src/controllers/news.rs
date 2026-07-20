@@ -404,7 +404,7 @@ pub async fn batch_delete_news(
     auth: AuthUser,
     Json(req): Json<BatchDeleteRequest>,
 ) -> Result<Json<ApiResponse<i32>>, AppError> {
-    if auth.role != "admin" && auth.role != "sub_admin" {
+    if !auth.is_privileged() {
         return Err(AppError::Forbidden);
     }
     let count = news::Entity::delete_many()
