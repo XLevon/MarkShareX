@@ -391,8 +391,7 @@ const userOptions = ref<{ label: string; value: number }[]>([])
 async function loadUsers() {
   try {
     const { data: resp } = await fetchUsers({ page_size: 500 })
-    const paginated = resp as unknown as { data: any[] }
-    userOptions.value = (paginated.data || []).map((u: any) => ({
+    userOptions.value = (resp.data || []).map((u: any) => ({
       label: `${u.display_name || u.username} (${u.role})`,
       value: u.id,
     }))
