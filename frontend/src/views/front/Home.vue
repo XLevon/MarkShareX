@@ -110,21 +110,8 @@
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-4">
         <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
         <div class="hidden sm:block flex-1 min-w-2"></div>
-        <div class="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 max-w-full">
-          <input
-            v-model="newsSearch"
-            type="text"
-            placeholder="搜索资讯..."
-            class="w-full sm:w-48 md:w-64 px-3 py-1.5 text-sm rounded-lg border outline-none transition-colors"
-            :style="{
-              backgroundColor: 'var(--color-bg-card)',
-              borderColor: 'var(--color-border)',
-              color: 'var(--color-text)',
-            }"
-            @focus="($event.target as HTMLInputElement).style.borderColor = 'var(--color-primary)'"
-            @blur="($event.target as HTMLInputElement).style.borderColor = 'var(--color-border)'"
-          />
-          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-full xs:w-[200px]" :default-calendar-start-time="calendarStartTime" @update:value="onDateRangeUpdate">
+        <div class="flex items-center gap-2 max-w-full">
+          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[170px] shrink-0" :default-calendar-start-time="calendarStartTime" @update:value="onDateRangeUpdate">
             <template #footer>
               <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
                 <n-button size="tiny" quaternary @click="setNewsDateRange('today')">今天</n-button>
@@ -136,6 +123,19 @@
               </div>
             </template>
           </n-date-picker>
+          <input
+            v-model="newsSearch"
+            type="text"
+            placeholder="搜索资讯..."
+            class="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-lg border outline-none transition-colors"
+            :style="{
+              backgroundColor: 'var(--color-bg-card)',
+              borderColor: 'var(--color-border)',
+              color: 'var(--color-text)',
+            }"
+            @focus="($event.target as HTMLInputElement).style.borderColor = 'var(--color-primary)'"
+            @blur="($event.target as HTMLInputElement).style.borderColor = 'var(--color-border)'"
+          />
         </div>
       </div>
       <!-- Topic type filter pills -->
