@@ -111,7 +111,8 @@
         <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
         <div class="hidden sm:block flex-1 min-w-2"></div>
         <div class="flex items-center gap-2 max-w-full">
-          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[170px] shrink-0" :default-calendar-start-time="calendarStartTime" @update:value="onDateRangeUpdate">
+          <!-- PC: NaiveUI 日期范围选择器 -->
+          <n-date-picker v-if="!isMobile" v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[170px] shrink-0">
             <template #footer>
               <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
                 <n-button size="tiny" quaternary @click="setNewsDateRange('today')">今天</n-button>
@@ -123,6 +124,11 @@
               </div>
             </template>
           </n-date-picker>
+          <!-- 移动端：两个独立日期选择器 -->
+          <template v-else>
+            <n-date-picker v-model:value="newsRangeStart" type="date" clearable size="small" class="flex-1 min-w-0" placeholder="开始" @update:value="onMobileDateChange" />
+            <n-date-picker v-model:value="newsRangeEnd" type="date" clearable size="small" class="flex-1 min-w-0" placeholder="结束" @update:value="onMobileDateChange" />
+          </template>
           <input
             v-model="newsSearch"
             type="text"
@@ -329,6 +335,9 @@ const newsPageData = ref<Map<number, NewsItem[]>>(new Map())  // page cache
 const newsSearch = ref('')
 const newsTopicFilters = ref(new Set<string>())
 const newsDateRange = ref<[number, number] | null>(null)
+const isMobile = ref(false)
+const newsRangeStart = ref<number | null>(null)
+const newsRangeEnd = ref<number | null>(null)
 const calendarStartTime = computed(() => {
   const base = newsDateRange.value
     ? new Date(newsDateRange.value[0])
@@ -383,6 +392,14 @@ function toggleNewsTopic(value: string) {
     if (next.has(value)) next.delete(value)
     else next.add(value)
     newsTopicFilters.value = next
+  }
+}
+
+function onMobileDateChange() {
+  if (newsRangeStart.value && newsRangeEnd.value) {
+    newsDateRange.value = [newsRangeStart.value, newsRangeEnd.value]
+  } else {
+    newsDateRange.value = null
   }
 }
 
@@ -628,6 +645,10 @@ watch([newsDateRange, newsSearch], () => { loadTopicTypes() })
 watch(() => route.query.search, () => loadStats())
 
 onMounted(() => {
+  // 响应式检测移动端
+  const mq = window.matchMedia('(max-width: 475px)')
+  isMobile.value = mq.matches
+  mq.addEventListener('change', (e) => { isMobile.value = e.matches })
   loadStats()
   loadPage(0)
   loadTopicTypes()
