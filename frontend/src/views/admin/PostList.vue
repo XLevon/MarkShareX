@@ -1306,6 +1306,16 @@ watch(() => route.query.status, (newVal) => {
   cursor: pointer;
 }
 .btn-danger:hover { background: #b91c1c; }
+.btn-warning {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-warning:hover { background: #d97706; }
 
 /* ===== 预览弹窗 ===== */
 .preview-overlay {
