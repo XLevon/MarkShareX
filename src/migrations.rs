@@ -56,12 +56,13 @@ pub async fn run(db: &DatabaseConnection) -> anyhow::Result<usize> {
         let execute_result: Result<(), anyhow::Error> = async {
             let txn = db.begin().await?;
             for statement in sql.split(';').filter(|s| !s.trim().is_empty()) {
-                let result = txn
-                    .execute_unprepared(&format!("{};", statement.trim()))
-                    .await;
+                let migrated_sql = format!("{};", statement.trim());
+                let result = txn.execute_unprepared(&migrated_sql).await;
                 if let Err(e) = result {
                     let err_msg = e.to_string().to_lowercase();
-                    if err_msg.contains("duplicate column") {
+                    // Only skip "duplicate column name" errors from
+                    // ALTER TABLE ADD COLUMN when re-running on already-migrated DB.
+                    if err_msg.contains("duplicate column name") {
                         tracing::warn!(
                             "  ⚠️ 列已存在（幂等跳过）: {}",
                             statement.trim().lines().next().unwrap_or("")
@@ -73,7 +74,7 @@ pub async fn run(db: &DatabaseConnection) -> anyhow::Result<usize> {
                         "迁移 {} 失败: {} —— SQL: {}",
                         file_name,
                         e,
-                        statement.trim()
+                        migrated_sql
                     ));
                 }
             }

@@ -70,6 +70,12 @@ impl SearchEngine {
         let body_field = schema.get_field("body")?;
         let post_id_field = schema.get_field("post_id")?;
 
+        // Atomically delete any existing document with the same post_id
+        // before inserting the new one, so the index always has exactly
+        // one document per post.
+        let term = tantivy::Term::from_field_u64(post_id_field, post_id);
+        writer.delete_term(term);
+
         let mut doc = TantivyDocument::new();
         let tokenized_title = cjk_tokenize(title);
         let tokenized_body = cjk_tokenize(body);

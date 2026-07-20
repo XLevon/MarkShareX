@@ -12,27 +12,31 @@ interface UserInfo {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  // Always read from localStorage for cross-tab sharing
-  const token = ref(localStorage.getItem('marksharex_token') || '')
-  const refreshTokenVal = ref(localStorage.getItem('marksharex_refresh_token') || '')
+  function readToken(key: string): string {
+    return localStorage.getItem(key) || sessionStorage.getItem(key) || ''
+  }
+
+  const token = ref(readToken('marksharex_token'))
+  const refreshTokenVal = ref(readToken('marksharex_refresh_token'))
   const user = ref<UserInfo | null>(null)
 
   try {
-    const saved = localStorage.getItem('marksharex_user')
+    const saved = readToken('marksharex_user')
     if (saved) user.value = JSON.parse(saved)
   } catch {}
 
   const isAuthenticated = computed(() => !!token.value)
 
   function setTokens(accessToken: string, refreshToken: string, userInfo?: UserInfo, rememberMe = false) {
+    const storage = rememberMe ? localStorage : sessionStorage
     token.value = accessToken
     refreshTokenVal.value = refreshToken
     if (userInfo) {
       user.value = userInfo
-      localStorage.setItem('marksharex_user', JSON.stringify(userInfo))
+      storage.setItem('marksharex_user', JSON.stringify(userInfo))
     }
-    localStorage.setItem('marksharex_token', accessToken)
-    localStorage.setItem('marksharex_refresh_token', refreshToken)
+    storage.setItem('marksharex_token', accessToken)
+    storage.setItem('marksharex_refresh_token', refreshToken)
   }
 
   async function login(username: string, password: string, rememberMe = false) {

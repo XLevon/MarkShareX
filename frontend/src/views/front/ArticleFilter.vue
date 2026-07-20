@@ -199,26 +199,24 @@ onMounted(async () => {
 })
 onUnmounted(() => { observer?.disconnect() })
 
-// 监听路由切换
-watch(() => route.path, async () => {
-  observer?.disconnect()
-  page.value = 1
-  await loadMeta()
-  if (filterValue.value) {
-    await loadPosts()
-    await nextTick()
-    setupObserver()
-  } else { posts.value = []; total.value = 0; hasMore.value = false }
-})
-
-watch(() => route.params.code, async (newVal) => {
-  observer?.disconnect()
-  if (newVal) {
-    await loadPosts()
-    await nextTick()
-    setupObserver()
-  } else { posts.value = []; total.value = 0; hasMore.value = false }
-})
+// 监听路由切换 — 合并 path 和 code 避免重复请求
+watch(
+  () => [route.path, route.params.code] as const,
+  async ([_path, code]) => {
+    observer?.disconnect()
+    page.value = 1
+    await loadMeta()
+    if (filterValue.value) {
+      await loadPosts()
+      await nextTick()
+      setupObserver()
+    } else {
+      posts.value = []
+      total.value = 0
+      hasMore.value = false
+    }
+  },
+)
 </script>
 
 <style scoped>
