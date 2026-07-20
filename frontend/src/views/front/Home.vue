@@ -105,7 +105,7 @@
     </section>
 
     <!-- News Section -->
-    <section class="max-w-4xl mx-auto px-4 pt-12 md:pt-16 pb-8">
+    <section class="max-w-4xl mx-auto px-4 py-12 md:pt-16">
       <!-- Header row: title + search + date -->
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-0 mb-10">
         <div>
