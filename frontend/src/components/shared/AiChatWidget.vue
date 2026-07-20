@@ -51,7 +51,7 @@
               @click="switchSession(s.id)"
             >
               <div class="ai-session-title">
-                <template v-if="s.user_display_name">【{{ s.user_display_name }}】</template>{{ s.title }}（{{ s.msg_count }}条消息）
+                <template v-if="s.user_display_name">【{{ s.user_display_name }}】</template>{{ s.title }}（{{ s.msg_count }}条）
               </div>
               <div class="ai-session-meta">{{ formatDate(s.created_at) }}</div>
               <button class="ai-session-del" @click.stop="deleteSessionHandler(s.id)" title="删除">
