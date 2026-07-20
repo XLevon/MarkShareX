@@ -508,6 +508,20 @@ async fn list_endpoints() -> Json<ApiResponse<Vec<EndpointInfo>>> {
             description: "获取管理员信息",
             auth_required: false,
         },
+        // CSP violation report
+        EndpointInfo {
+            method: "POST",
+            path: "/api/v1/csp-report",
+            description: "CSP 违规报告",
+            auth_required: false,
+        },
+        // AI
+        EndpointInfo {
+            method: "GET",
+            path: "/api/v1/ai/default-agent",
+            description: "获取默认 AI 代理配置",
+            auth_required: false,
+        },
     ];
     Json(ApiResponse::new(endpoints))
 }
