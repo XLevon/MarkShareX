@@ -109,11 +109,7 @@
       <!-- Title -->
       <div class="mb-4">
         <h1 class="text-3xl font-bold mb-2 flex items-center gap-2" :style="{ color: 'var(--color-text)' }">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 5L6 9H2v6h4l5 4V5z"></path>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-          </svg>
+          <span class="text-2xl" style="filter:grayscale(0)">📢</span>
           每日简讯
         </h1>
         <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览最新资讯，掌握行业动态</p>
