@@ -637,19 +637,3 @@ onMounted(() => {
   }
 })
 </script>
-
-<style>
-@media (max-width: 475px) {
-  .n-date-panel {
-    width: 100vw !important;
-    max-width: 100vw !important;
-    left: 0 !important;
-  }
-  .n-date-panel .n-date-panel-calendar {
-    flex-direction: column !important;
-  }
-  .n-date-panel .n-date-panel-month {
-    width: 100% !important;
-  }
-}
-</style>
