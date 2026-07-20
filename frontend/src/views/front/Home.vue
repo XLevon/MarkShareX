@@ -330,8 +330,10 @@ const newsSearch = ref('')
 const newsTopicFilters = ref(new Set<string>())
 const newsDateRange = ref<[number, number] | null>(null)
 const calendarStartTime = computed(() => {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime()
+  const base = newsDateRange.value
+    ? new Date(newsDateRange.value[0])
+    : new Date()
+  return new Date(base.getFullYear(), base.getMonth() - 1, 1).getTime()
 })
 const topicTypeValues = ref<string[]>([])
 
