@@ -115,7 +115,7 @@
         <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览最新资讯，掌握行业动态</p>
       </div>
       <!-- Controls row -->
-      <div class="flex flex-wrap items-center gap-2 mb-10">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
         <!-- PC: NaiveUI 日期范围选择器 -->
           <n-date-picker v-if="!isMobile" v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[170px] shrink-0">
             <template #footer>
@@ -149,7 +149,7 @@
           />
       </div>
       <!-- Topic type filter pills -->
-      <div class="flex flex-wrap gap-1.5 mb-6">
+      <div class="flex flex-wrap gap-1.5 mb-4">
         <button
           v-for="t in topicTypes"
           :key="t.value"
