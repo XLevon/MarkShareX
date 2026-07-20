@@ -50,8 +50,10 @@
               :class="['ai-session-item', { active: s.id === sessionId }]"
               @click="switchSession(s.id)"
             >
-              <div class="ai-session-title">{{ s.title }}</div>
-              <div class="ai-session-meta">{{ s.msg_count }} 条消息</div>
+              <div class="ai-session-title">
+                <template v-if="s.user_display_name">【{{ s.user_display_name }}】</template>{{ s.title }}
+              </div>
+              <div class="ai-session-meta">{{ s.msg_count }} 条消息 · {{ formatDate(s.created_at) }}</div>
               <button class="ai-session-del" @click.stop="deleteSessionHandler(s.id)" title="删除">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
@@ -101,6 +103,11 @@ import { useRouter } from 'vue-router'
 import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMessage, type ChatSession } from '@/api/ai'
 import { marked } from 'marked'
 import { renderMarkdown } from '@/utils/renderMarkdown'
+
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const props = withDefaults(defineProps<{ mode?: 'front' | 'admin' }>(), { mode: 'admin' })
 const isAdmin = computed(() => props.mode === 'admin')

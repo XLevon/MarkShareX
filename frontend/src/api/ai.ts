@@ -212,6 +212,7 @@ export interface ChatSession {
   id: number
   title: string
   user_id: number
+  user_display_name: string | null
   agent_config_id: number | null
   msg_count: number
   created_at: string

@@ -1379,6 +1379,7 @@ pub struct ChatSessionResponse {
     pub id: i32,
     pub title: String,
     pub user_id: i32,
+    pub user_display_name: Option<String>,
     pub agent_config_id: Option<i32>,
     pub msg_count: usize,
     pub created_at: chrono::NaiveDateTime,
@@ -1419,11 +1420,21 @@ pub async fn list_sessions(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<ApiResponse<Vec<ChatSessionResponse>>>, AppError> {
-    let sessions = ai_chat_session::Entity::find()
-        .filter(ai_chat_session::Column::UserId.eq(auth.user_id))
-        .order_by_desc(ai_chat_session::Column::UpdatedAt)
-        .all(&state.db)
-        .await?;
+    use crate::models::entity::users;
+    let is_privileged = matches!(auth.role.as_str(), "admin" | "sub_admin");
+
+    let sessions = if is_privileged {
+        ai_chat_session::Entity::find()
+            .order_by_desc(ai_chat_session::Column::UpdatedAt)
+            .all(&state.db)
+            .await?
+    } else {
+        ai_chat_session::Entity::find()
+            .filter(ai_chat_session::Column::UserId.eq(auth.user_id))
+            .order_by_desc(ai_chat_session::Column::UpdatedAt)
+            .all(&state.db)
+            .await?
+    };
 
     let mut result = Vec::new();
     for s in sessions {
@@ -1431,10 +1442,19 @@ pub async fn list_sessions(
             .filter(ai_chat_message::Column::SessionId.eq(s.id))
             .count(&state.db)
             .await?;
+        let user_display_name = if is_privileged && s.user_id != auth.user_id {
+            users::Entity::find_by_id(s.user_id)
+                .one(&state.db)
+                .await?
+                .and_then(|u| u.display_name.or(Some(u.username)))
+        } else {
+            None
+        };
         result.push(ChatSessionResponse {
             id: s.id,
             title: s.title,
             user_id: s.user_id,
+            user_display_name,
             agent_config_id: s.agent_config_id,
             msg_count: count as usize,
             created_at: s.created_at,
@@ -1471,6 +1491,7 @@ pub async fn create_session(
             id: inserted.id,
             title: inserted.title,
             user_id: inserted.user_id,
+            user_display_name: None,
             agent_config_id: inserted.agent_config_id,
             msg_count: 0,
             created_at: inserted.created_at,
