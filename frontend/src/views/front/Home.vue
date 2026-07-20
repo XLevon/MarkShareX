@@ -117,7 +117,7 @@
       <!-- Controls row -->
       <div class="flex flex-wrap items-center gap-2 mb-3">
         <!-- PC: NaiveUI 日期范围选择器 -->
-          <n-date-picker v-if="!isMobile" v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[210px] shrink-0">
+          <n-date-picker v-if="!isMobile" v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-[240px] shrink-0">
             <template #footer>
               <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
                 <n-button size="tiny" quaternary @click="setNewsDateRange('today')">今天</n-button>
