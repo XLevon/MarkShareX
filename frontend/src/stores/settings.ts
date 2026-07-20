@@ -39,7 +39,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function fetchSettings() {
     try {
       const { data: resp } = await apiFetchSettings()
-      settings.value = resp.data.settings || (resp.data as any)
+      settings.value = resp.data as any
       loaded.value = true
     } catch {
       // use defaults

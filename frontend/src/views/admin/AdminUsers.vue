@@ -487,8 +487,9 @@ async function loadUsers() {
     if (filterStatus.value) params.status = filterStatus.value
     if (searchQuery.value.trim()) params.search = searchQuery.value.trim()
     const { data: resp } = await fetchUsers(params)
-    users.value = resp.data.data
-    totalPages.value = Math.max(1, resp.data.pagination.pages)
+    const paginated = resp as unknown as { data: AdminUser[]; pagination: { pages: number; total: number } }
+    users.value = paginated.data
+    totalPages.value = Math.max(1, paginated.pagination.pages)
   } catch {
     users.value = []
   } finally {
@@ -639,7 +640,8 @@ async function handleReject() {
 async function loadLoginLogs() {
   try {
     const { data: resp } = await fetchLoginLogs({ page_size: 20 })
-    loginLogs.value = resp.data.data
+    const paginated = resp as unknown as { data: LoginLog[] }
+    loginLogs.value = paginated.data
   } catch { /* silent */ }
 }
 
@@ -664,9 +666,10 @@ async function loadAllLogs(page: number) {
     if (logsFilter.userId && logsFilter.userId > 0) params.user_id = logsFilter.userId
     if (logsFilter.success !== undefined) params.success = logsFilter.success
     const { data: resp } = await fetchLoginLogs(params)
-    allLoginLogs.value = resp.data.data
-    logsPage.value = resp.data.pagination?.page || page
-    logsTotalPages.value = resp.data.pagination?.pages || 1
+    const paginated = resp as unknown as { data: LoginLog[]; pagination?: { page?: number; pages?: number } }
+    allLoginLogs.value = paginated.data
+    logsPage.value = paginated.pagination?.page || page
+    logsTotalPages.value = paginated.pagination?.pages || 1
   } catch { /* silent */ }
 }
 

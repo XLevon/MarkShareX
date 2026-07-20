@@ -1,7 +1,7 @@
 import api from './index'
 import type { Post, PaginatedData } from './index'
 
-export function fetchPosts(params?: {
+export interface PostsParams {
   page?: number
   page_size?: number
   status?: string
@@ -12,7 +12,9 @@ export function fetchPosts(params?: {
   article_status?: string
   is_pinned?: boolean
   include_subcategories?: boolean
-}) {
+}
+
+export function fetchPosts(params?: PostsParams) {
   return api.get<PaginatedData<Post>>('/posts', { params })
 }
 

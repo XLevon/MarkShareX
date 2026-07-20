@@ -404,10 +404,10 @@ async function handleSave(status: string) {
       article_status: form.article_status,
     }
     if (isEdit.value) {
-      await updatePost(Number(route.params.id), payload)
+      await updatePost(Number(route.params.id), payload as any)
       message.success('文章已更新')
     } else {
-      await createPost(payload)
+      await createPost(payload as any)
       message.success(status === 'published' ? '文章已发布' : '草稿已保存')
     }
     // 保存成功 → 图片已关联到文章内容，清除追踪

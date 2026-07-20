@@ -1,5 +1,6 @@
 import api from './index'
 import type { FileInfo, PaginatedData } from './index'
+export type { FileInfo }
 
 export interface Md5CheckResult {
   md5: string

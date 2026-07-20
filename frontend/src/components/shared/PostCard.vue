@@ -42,7 +42,7 @@
           <span v-if="categoryText" class="card-category">{{ categoryText }}</span>
           <span v-if="post.tags && post.tags.length" class="card-meta-sep">·</span>
           <span v-if="post.tags && post.tags.length" class="card-tags-inline">
-            <span v-for="tag in post.tags.slice(0, maxTags)" :key="tag" class="card-tag">{{ tag }}</span>
+            <span v-for="tag in post.tags.slice(0, maxTags)" :key="tag.id" class="card-tag">{{ tag }}</span>
           </span>
           <!-- Spacer: pushes stats to right -->
           <span class="bottom-spacer"></span>
@@ -69,7 +69,7 @@
           <span v-if="categoryText" class="card-category">{{ categoryText }}</span>
           <span v-if="post.tags && post.tags.length" class="card-meta-sep">·</span>
           <span v-if="post.tags && post.tags.length" class="card-tags-inline">
-            <span v-for="tag in post.tags.slice(0, maxTags)" :key="tag" class="card-tag">{{ tag }}</span>
+            <span v-for="tag in post.tags.slice(0, maxTags)" :key="tag.id" class="card-tag">{{ tag }}</span>
           </span>
         </template>
       </div>

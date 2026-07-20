@@ -1,6 +1,15 @@
 import axios from 'axios'
 import type { AxiosInstance } from 'axios'
 
+export interface ApiResponse<T> {
+  data: T
+  pagination?: {
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
 const api: AxiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
@@ -112,6 +121,7 @@ export interface Post {
   status: 'draft' | 'published'
   category_id: number | null
   category: Category | null
+  category_name?: string
   tags: Tag[]
   view_count: number
   like_count: number
@@ -202,4 +212,9 @@ export interface Settings {
   batch_load_size: string
   scroll_load_size: string
   'site-manager'?: string
+  ip_whitelist_enabled?: string
+  ip_whitelist?: string
+  ip_blacklist_enabled?: string
+  ip_blacklist?: string
+  [key: string]: string | undefined
 }
