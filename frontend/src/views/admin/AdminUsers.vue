@@ -433,6 +433,7 @@ const currentUserRole = computed(() => {
   return 'visitor'
 })
 const isSubAdmin = computed(() => currentUserRole.value === 'sub_admin')
+const isAdmin = computed(() => currentUserRole.value === 'admin')
 
 const loading = ref(false)
 const message = useMessage()
