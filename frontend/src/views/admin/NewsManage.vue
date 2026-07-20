@@ -581,87 +581,6 @@ onMounted(() => {
   width: 100% !important;
   min-width: 0;
 }
-.batch-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-.pagination-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 100%;
-}
-.pagination-top {
-  margin-bottom: 12px;
-}
-.pagination-bottom {
-  margin-top: 12px;
-}
-.page-arrow,
-.page-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--card-border-color, var(--color-border));
-  border-radius: 6px;
-  background: var(--card-bg, var(--color-bg-card));
-  color: var(--input-color, var(--color-text));
-  cursor: pointer;
-  transition: color .15s, border-color .15s, background-color .15s;
-}
-.page-arrow {
-  font-size: 24px;
-  line-height: 1;
-}
-.page-number {
-  font-size: 12px;
-}
-.page-number.active {
-  color: #fff;
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  cursor: default;
-}
-.page-arrow:hover:not(:disabled),
-.page-number:hover:not(.active) {
-  color: var(--color-primary);
-  border-color: var(--color-primary);
-}
-.page-arrow:disabled {
-  opacity: .3;
-  cursor: not-allowed;
-}
-.page-ellipsis {
-  display: inline-flex;
-  width: 20px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-.page-size-select {
-  height: 28px;
-  margin-left: 2px;
-  padding: 0 24px 0 8px;
-  border: 1px solid var(--card-border-color, var(--color-border));
-  border-radius: 6px;
-  background: var(--card-bg, var(--color-bg-card));
-  color: var(--input-color, var(--color-text));
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-}
-.page-size-select:focus {
-  border-color: var(--color-primary);
-}
 
 @media (max-width: 640px) {
   .page-header {
@@ -678,22 +597,6 @@ onMounted(() => {
   }
   .filter-label {
     flex-basis: 40px;
-  }
-  .pagination-wrap {
-    justify-content: flex-end;
-    gap: 4px;
-  }
-  .page-arrow,
-  .page-number {
-    width: 27px;
-    height: 27px;
-  }
-  .page-ellipsis {
-    width: 14px;
-  }
-  .page-size-select {
-    height: 27px;
-    padding-left: 6px;
   }
 }
 </style>
