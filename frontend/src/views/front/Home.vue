@@ -111,7 +111,7 @@
         <h2 class="text-lg md:text-xl font-bold" :style="{ color: 'var(--color-text)' }">📢 每日简讯</h2>
         <div class="hidden sm:block flex-1 min-w-2"></div>
         <div class="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 max-w-full">
-          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-full xs:w-[200px]">
+          <n-date-picker v-model:value="newsDateRange" type="daterange" clearable size="small" class="w-full xs:w-[200px]" :default-calendar-start-time="calendarStartTime">
             <template #footer>
               <div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--color-border)">
                 <n-button size="tiny" quaternary @click="setNewsDateRange('today')">今天</n-button>
@@ -329,6 +329,10 @@ const newsPageData = ref<Map<number, NewsItem[]>>(new Map())  // page cache
 const newsSearch = ref('')
 const newsTopicFilters = ref(new Set<string>())
 const newsDateRange = ref<[number, number] | null>(null)
+const calendarStartTime = computed(() => {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime()
+})
 const topicTypeValues = ref<string[]>([])
 
 const topicTypeLabelMap: Record<string, string> = {

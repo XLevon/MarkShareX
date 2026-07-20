@@ -245,8 +245,8 @@ a {
   body > [class*="n-date"] * {
     max-width: 100% !important;
   }
-  /* 移动端只显示一个月 */
-  body > [class*="n-date"] > div > div > :nth-child(2) {
+  /* 移动端只显示当前月（第2个面板） */
+  body > [class*="n-date"] > div > div > :first-child {
     display: none !important;
   }
   body > [class*="n-date"] [class*="actions"],
