@@ -109,7 +109,20 @@
       <!-- Title -->
       <div class="mb-4">
         <h1 class="text-3xl font-bold mb-2 flex items-center gap-2" :style="{ color: 'var(--color-text)' }">
-          <span class="text-[#6366f1] text-2xl">📰</span>
+          <svg width="28" height="28" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="news-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#6366f1"></stop>
+                <stop offset="100%" stop-color="#a855f7"></stop>
+              </linearGradient>
+            </defs>
+            <rect width="880" height="880" x="72" y="72" rx="120" fill="none" stroke="url(#news-grad)" stroke-width="50"></rect>
+            <line x1="72" y1="320" x2="952" y2="320" stroke="url(#news-grad)" stroke-width="50"></line>
+            <line x1="72" y1="540" x2="600" y2="540" stroke="url(#news-grad)" stroke-width="50" stroke-linecap="round"></line>
+            <line x1="72" y1="700" x2="400" y2="700" stroke="url(#news-grad)" stroke-width="50" stroke-linecap="round"></line>
+            <circle cx="780" cy="610" r="100" fill="#f59e0b"></circle>
+            <text x="780" y="645" text-anchor="middle" fill="#fff" font-size="110" font-weight="bold">N</text>
+          </svg>
           每日简讯
         </h1>
         <p class="text-sm" :style="{ color: 'var(--color-text-muted)' }">浏览最新资讯，掌握行业动态</p>
