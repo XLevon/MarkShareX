@@ -1,12 +1,12 @@
+use crate::utils::{client_info, ip_utils, AppState};
 use axum::{
     extract::ConnectInfo,
     http::{Request, StatusCode},
     middleware::Next,
     response::Response,
 };
-use std::net::SocketAddr;
 use sea_orm::EntityTrait;
-use crate::utils::{AppState, client_info, ip_utils};
+use std::net::SocketAddr;
 
 /// IP 黑白名单中间件
 ///
@@ -32,11 +32,16 @@ pub async fn ip_guard_middleware(
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "配置读取失败".into()))?;
 
     let get = |key: &str| -> Option<String> {
-        settings.iter().find(|s| s.key == key).map(|s| s.value.clone())
+        settings
+            .iter()
+            .find(|s| s.key == key)
+            .map(|s| s.value.clone())
     };
 
     // ── 黑名单检查 ──
-    let blacklist_enabled = get("ip_blacklist_enabled").map(|v| v == "true").unwrap_or(false);
+    let blacklist_enabled = get("ip_blacklist_enabled")
+        .map(|v| v == "true")
+        .unwrap_or(false);
     if blacklist_enabled {
         if let Some(blacklist_json) = get("ip_blacklist") {
             let blacklist = ip_utils::parse_valid_ips(&blacklist_json);
@@ -47,7 +52,9 @@ pub async fn ip_guard_middleware(
     }
 
     // ── 白名单检查（仅限制 X-API-Key 请求）──
-    let whitelist_enabled = get("ip_whitelist_enabled").map(|v| v == "true").unwrap_or(false);
+    let whitelist_enabled = get("ip_whitelist_enabled")
+        .map(|v| v == "true")
+        .unwrap_or(false);
     if whitelist_enabled {
         let is_api_key_request = request.headers().get("X-API-Key").is_some();
         if is_api_key_request {

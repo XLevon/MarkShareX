@@ -1,13 +1,13 @@
 use axum::{extract::State, Json};
 use sea_orm::*;
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::middleware::auth::AuthUser;
-use crate::models::entity::users;
 use crate::models::entity::settings;
+use crate::models::entity::users;
 use crate::services;
-use crate::utils::{AppError, AppState, ApiResponse};
+use crate::utils::{ApiResponse, AppError, AppState};
 
 // ── GET /api/v1/profile ────────────────────────────────────────────────
 
@@ -53,7 +53,9 @@ pub async fn get_profile(
         bio: user.bio,
         title: user.title,
         created_at: user.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        last_login_at: user.last_login_at.map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string()),
+        last_login_at: user
+            .last_login_at
+            .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string()),
     })))
 }
 
@@ -122,16 +124,28 @@ pub async fn update_profile(
     let mut active_model: users::ActiveModel = user.into();
 
     if let Some(name) = req.display_name {
-        active_model.display_name = Set(if name.trim().is_empty() { None } else { Some(name.trim().to_string()) });
+        active_model.display_name = Set(if name.trim().is_empty() {
+            None
+        } else {
+            Some(name.trim().to_string())
+        });
     }
     if let Some(email) = req.email {
         active_model.email = Set(email.trim().to_string());
     }
     if let Some(bio) = req.bio {
-        active_model.bio = Set(if bio.trim().is_empty() { None } else { Some(bio.trim().to_string()) });
+        active_model.bio = Set(if bio.trim().is_empty() {
+            None
+        } else {
+            Some(bio.trim().to_string())
+        });
     }
     if let Some(title) = req.title {
-        active_model.title = Set(if title.trim().is_empty() { None } else { Some(title.trim().to_string()) });
+        active_model.title = Set(if title.trim().is_empty() {
+            None
+        } else {
+            Some(title.trim().to_string())
+        });
     }
 
     active_model.updated_at = Set(now);
@@ -148,7 +162,9 @@ pub async fn update_profile(
         bio: updated.bio,
         title: updated.title,
         created_at: updated.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-        last_login_at: updated.last_login_at.map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string()),
+        last_login_at: updated
+            .last_login_at
+            .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string()),
     })))
 }
 
@@ -197,12 +213,14 @@ pub async fn get_site_manager_info(
     // Fallback: first active admin
     let admin = match admin {
         Some(a) => Some(a),
-        None => users::Entity::find()
-            .filter(users::Column::Role.eq("admin"))
-            .filter(users::Column::IsActive.eq(true))
-            .filter(users::Column::DeletedAt.is_null())
-            .one(&state.db)
-            .await?,
+        None => {
+            users::Entity::find()
+                .filter(users::Column::Role.eq("admin"))
+                .filter(users::Column::IsActive.eq(true))
+                .filter(users::Column::DeletedAt.is_null())
+                .one(&state.db)
+                .await?
+        }
     };
 
     match admin {

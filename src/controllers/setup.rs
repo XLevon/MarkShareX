@@ -1,9 +1,9 @@
-use axum::{extract::State, Json};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse};
 use crate::models::entity::users;
+use crate::utils::{ApiResponse, AppError, AppState};
+use axum::{extract::State, Json};
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 // ── 默认管理员和系统设置已移至 migrations/0000000000_init_schema.sql ──
 
@@ -67,7 +67,9 @@ pub async fn setup(
         .await?;
 
     if admin_count > 0 {
-        return Err(AppError::BadRequest("系统已初始化，禁止重复操作".to_string()));
+        return Err(AppError::BadRequest(
+            "系统已初始化，禁止重复操作".to_string(),
+        ));
     }
 
     // Create admin user

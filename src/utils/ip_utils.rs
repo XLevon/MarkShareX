@@ -18,7 +18,11 @@ pub fn is_valid_ip(s: &str) -> bool {
     // 校验 CIDR 前缀（如果有）
     if let Some(mask) = cidr {
         if let Ok(n) = mask.parse::<u8>() {
-            if is_v4 { n <= 32 } else { n <= 128 }
+            if is_v4 {
+                n <= 32
+            } else {
+                n <= 128
+            }
         } else {
             false
         }
@@ -31,9 +35,12 @@ pub fn is_valid_ip(s: &str) -> bool {
 pub fn parse_valid_ips(json: &str) -> Vec<String> {
     // 试试新格式：[{"ip":"...","remark":"..."}, ...]
     #[derive(serde::Deserialize)]
-    struct IpEntry { ip: String }
+    struct IpEntry {
+        ip: String,
+    }
     if let Ok(entries) = serde_json::from_str::<Vec<IpEntry>>(json) {
-        return entries.into_iter()
+        return entries
+            .into_iter()
             .map(|e| e.ip)
             .filter(|ip| is_valid_ip(ip))
             .collect();

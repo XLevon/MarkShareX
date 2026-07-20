@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { fetchPublicChangelogs, type ChangelogEntry } from '@/api/changelog'
+import { renderMarkdown } from '@/utils/renderMarkdown'
 
 const changelogs = ref<ChangelogEntry[]>([])
 const loading = ref(true)
@@ -66,18 +67,6 @@ function formatDate(dateStr: string) {
     month: 'long',
     day: 'numeric',
   })
-}
-
-function renderMarkdown(md: string) {
-  return md
-    .replace(/### (.+)/g, '<h3 style="font-size:1.1em;font-weight:600;margin:1em 0 0.5em">$1</h3>')
-    .replace(/## (.+)/g, '<h2 style="font-size:1.2em;font-weight:700;margin:1.2em 0 0.5em">$1</h2>')
-    .replace(/# (.+)/g, '<h1 style="font-size:1.4em;font-weight:700;margin:1.4em 0 0.5em">$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code style="background:var(--color-border);padding:0.15em 0.4em;border-radius:3px;font-size:0.9em">$1</code>')
-    .replace(/^- (.+)/gm, '<li style="margin-left:1.5em">$1</li>')
-    .replace(/\n/g, '<br/>')
 }
 
 onMounted(async () => {

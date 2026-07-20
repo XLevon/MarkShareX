@@ -100,6 +100,7 @@ import { ref, nextTick, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMessage, type ChatSession } from '@/api/ai'
 import { marked } from 'marked'
+import { renderMarkdown } from '@/utils/renderMarkdown'
 
 const props = withDefaults(defineProps<{ mode?: 'front' | 'admin' }>(), { mode: 'admin' })
 const isAdmin = computed(() => props.mode === 'admin')
@@ -249,7 +250,7 @@ async function newSession() {
 }
 
 function renderMsg(content: string) {
-  return marked.parse(content)
+  return renderMarkdown(content)
 }
 
 /** 拦截消息中的链接点击：内部链接用 router.push，外部链接正常跳转 */

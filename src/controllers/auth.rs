@@ -1,11 +1,11 @@
-use axum::{extract::State, Json, http::HeaderMap, extract::ConnectInfo};
+use crate::models::entity::{login_logs, refresh_tokens, users};
+use crate::services;
+use crate::utils::{client_info, ApiResponse, AppError, AppState};
+use axum::{extract::ConnectInfo, extract::State, http::HeaderMap, Json};
+use sea_orm::*;
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse, client_info};
-use crate::services;
-use crate::models::entity::{users, refresh_tokens, login_logs};
-use sea_orm::*;
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -73,14 +73,17 @@ pub async fn register(
 ) -> Result<Json<ApiResponse<LoginResponse>>, AppError> {
     // Validation
     if req.username.trim().is_empty() || req.email.trim().is_empty() || req.password.len() < 8 {
-        return Err(AppError::BadRequest("用户名、邮箱不能为空，密码至少8位".into()));
+        return Err(AppError::BadRequest(
+            "用户名、邮箱不能为空，密码至少8位".into(),
+        ));
     }
 
     // Check existing user
     let existing = users::Entity::find()
         .filter(
-            users::Column::Username.eq(&req.username)
-                .or(users::Column::Email.eq(&req.email))
+            users::Column::Username
+                .eq(&req.username)
+                .or(users::Column::Email.eq(&req.email)),
         )
         .filter(users::Column::DeletedAt.is_null())
         .one(&state.db)
@@ -130,7 +133,7 @@ pub async fn register(
     let now = crate::utils::now_local();
     // 记住我：30 天，否则按配置（默认 7 天）
     let refresh_secs = if req.remember_me.unwrap_or(false) {
-        2592000  // 30 days
+        2592000 // 30 days
     } else {
         state.config.auth.refresh_expire_seconds
     };
@@ -170,10 +173,12 @@ pub async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<LoginResponse>>, AppError> {
     let ip = client_info::extract_client_ip(&headers, Some(socket_addr));
-    let user_agent = headers.get("user-agent")
+    let user_agent = headers
+        .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let device_type = user_agent.as_deref()
+    let device_type = user_agent
+        .as_deref()
         .map(|ua| client_info::device_label(Some(ua), "password"));
 
     // Try username first, then email
@@ -187,12 +192,14 @@ pub async fn login(
     // If not found by username, try email
     let user = match user {
         Some(u) => Some(u),
-        None => users::Entity::find()
-            .filter(users::Column::Email.eq(&req.username))
-            .filter(users::Column::IsActive.eq(true))
-            .filter(users::Column::DeletedAt.is_null())
-            .one(&state.db)
-            .await?,
+        None => {
+            users::Entity::find()
+                .filter(users::Column::Email.eq(&req.username))
+                .filter(users::Column::IsActive.eq(true))
+                .filter(users::Column::DeletedAt.is_null())
+                .one(&state.db)
+                .await?
+        }
     };
 
     let user = match user {
@@ -252,7 +259,7 @@ pub async fn login(
     let now = crate::utils::now_local();
     // 记住我：30 天，否则按配置（默认 7 天）
     let refresh_secs = if req.remember_me.unwrap_or(false) {
-        2592000  // 30 days
+        2592000 // 30 days
     } else {
         state.config.auth.refresh_expire_seconds
     };

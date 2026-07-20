@@ -1,9 +1,10 @@
-mod error;
-mod response;
 pub mod client_info;
-pub mod serde_helpers;
-pub mod ip_utils;
+mod error;
 pub mod ip_migration;
+pub mod ip_utils;
+mod response;
+pub mod safe_url;
+pub mod serde_helpers;
 
 pub use error::AppError;
 pub use response::{ApiResponse, Pagination};
@@ -13,11 +14,11 @@ pub fn now_local() -> chrono::NaiveDateTime {
     chrono::Local::now().naive_local()
 }
 
+use crate::config::AppConfig;
+use crate::services::logs::LogBuffer;
+use crate::services::search::SearchEngine;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
-use crate::config::AppConfig;
-use crate::services::search::SearchEngine;
-use crate::services::logs::LogBuffer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -37,11 +38,14 @@ impl AppState {
     ) -> Self {
         let templates_dir = format!("{}/templates/default", config.data_dir);
 
-        let tera = tera::Tera::new(&format!("{}/**/*", templates_dir))
-            .unwrap_or_else(|e| {
-                tracing::error!("Failed to load templates from {}: {}. Using empty engine.", templates_dir, e);
-                tera::Tera::default()
-            });
+        let tera = tera::Tera::new(&format!("{}/**/*", templates_dir)).unwrap_or_else(|e| {
+            tracing::error!(
+                "Failed to load templates from {}: {}. Using empty engine.",
+                templates_dir,
+                e
+            );
+            tera::Tera::default()
+        });
 
         tracing::info!("Templates loaded from {}", templates_dir);
 

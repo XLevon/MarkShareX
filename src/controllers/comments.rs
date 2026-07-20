@@ -1,15 +1,15 @@
-use axum::{
-    extract::{State, Path, Query},
-    Json,
-};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::comments;
 use crate::models::entity::users;
-use sea_orm::*;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
 use sea_orm::sea_query::Expr;
+use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 // ── Response types ──
 
@@ -98,7 +98,9 @@ pub async fn list_post_comments(
     auth: Option<AuthUser>,
 ) -> Result<Json<ApiResponse<Vec<CommentResponse>>>, AppError> {
     let is_admin_view = query.admin.as_deref() == Some("1")
-        && auth.as_ref().map_or(false, |a| matches!(a.role.as_str(), "admin" | "sub_admin"));
+        && auth
+            .as_ref()
+            .map_or(false, |a| matches!(a.role.as_str(), "admin" | "sub_admin"));
 
     if is_admin_view {
         crate::services::posts::get_post(&state.db, post_id).await?;
@@ -176,7 +178,12 @@ pub async fn create_comment(
             .unwrap_or_else(|| a.username.clone());
         (Some(a.user_id), display_name, None)
     } else {
-        let name = req.author_name.as_deref().unwrap_or("匿名").trim().to_string();
+        let name = req
+            .author_name
+            .as_deref()
+            .unwrap_or("匿名")
+            .trim()
+            .to_string();
         if name.is_empty() {
             return Err(AppError::Validation("请填写昵称".to_string()));
         }
@@ -187,7 +194,9 @@ pub async fn create_comment(
     let now = crate::utils::now_local();
 
     // 读取 comment_moderation 设置，决定访客/匿名留言是否需要审核
-    let moderation_enabled = get_setting_bool(&state.db, "comment_moderation").await.unwrap_or(false);
+    let moderation_enabled = get_setting_bool(&state.db, "comment_moderation")
+        .await
+        .unwrap_or(false);
 
     // Determine initial status
     let initial_status = if let Some(ref a) = auth {
@@ -212,11 +221,19 @@ pub async fn create_comment(
             }
         } else {
             // visitor: depends on moderation setting
-            if moderation_enabled { "pending".to_string() } else { "approved".to_string() }
+            if moderation_enabled {
+                "pending".to_string()
+            } else {
+                "approved".to_string()
+            }
         }
     } else {
         // anonymous: depends on moderation setting
-        if moderation_enabled { "pending".to_string() } else { "approved".to_string() }
+        if moderation_enabled {
+            "pending".to_string()
+        } else {
+            "approved".to_string()
+        }
     };
 
     let model = comments::ActiveModel {
@@ -263,8 +280,7 @@ pub async fn list_all_comments(
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
 
-    let mut select = comments::Entity::find()
-        .filter(comments::Column::DeletedAt.is_null());
+    let mut select = comments::Entity::find().filter(comments::Column::DeletedAt.is_null());
 
     // Role-based visibility
     let is_privileged = auth.is_privileged();
@@ -305,11 +321,14 @@ pub async fn list_all_comments(
         std::collections::HashMap::new()
     };
 
-    let data: Vec<CommentResponse> = items.into_iter().map(|c| {
-        let mut resp = CommentResponse::from(c);
-        resp.post_title = post_titles.get(&resp.post_id).cloned();
-        resp
-    }).collect();
+    let data: Vec<CommentResponse> = items
+        .into_iter()
+        .map(|c| {
+            let mut resp = CommentResponse::from(c);
+            resp.post_title = post_titles.get(&resp.post_id).cloned();
+            resp
+        })
+        .collect();
 
     let pages = ((total as f64) / (page_size as f64)).ceil() as u64;
 

@@ -1,44 +1,16 @@
-use axum::{extract::{State, Query, Path, Multipart}, Json};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::files;
 use crate::services::files as file_service;
-
-/// 根据文件扩展名推断 MIME 类型，作为浏览器 content_type 不可靠时的回退
-fn infer_mime_by_extension(filename: &str) -> Option<&'static str> {
-    let ext = filename.rsplit('.').next()?.to_lowercase();
-    Some(match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "svg" => "image/svg+xml",
-        "pdf" => "application/pdf",
-        "md" | "markdown" => "text/markdown",
-        "txt" => "text/plain",
-        "zip" => "application/zip",
-        "gz" | "tgz" => "application/gzip",
-        "tar" => "application/x-tar",
-        "7z" => "application/x-7z-compressed",
-        "rar" => "application/x-rar-compressed",
-        // 视频
-        "mp4" => "video/mp4",
-        "webm" => "video/webm",
-        "ogv" | "ogg" => "video/ogg",
-        "mov" => "video/quicktime",
-        "avi" => "video/x-msvideo",
-        // 音频
-        "mp3" => "audio/mpeg",
-        "m4a" => "audio/mp4",
-        "wav" => "audio/wav",
-        "aac" => "audio/aac",
-        "flac" => "audio/flac",
-        _ => return None,
-    })
-}
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
+use axum::{
+    body::Body,
+    extract::{Multipart, Path, Query, State},
+    http::{header, Response},
+    Json,
+};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
 pub struct FileResponse {
@@ -54,7 +26,7 @@ pub struct FileResponse {
 impl FileResponse {
     fn from_model(f: files::Model) -> Self {
         let url = file_service::get_file_url(&f.filename);
-        
+
         Self {
             id: f.id,
             filename: f.filename,
@@ -65,6 +37,34 @@ impl FileResponse {
             created_at: f.created_at,
         }
     }
+}
+
+/// GET /uploads/:filename — Serve one validated storage file without following symlinks.
+pub async fn serve_upload(
+    State(state): State<AppState>,
+    Path(filename): Path<String>,
+) -> Result<Response<Body>, AppError> {
+    let upload_dir = state.config.storage.upload_dir.clone();
+    let read_filename = filename.clone();
+    let read_result = tokio::task::spawn_blocking(move || {
+        file_service::read_storage_file(&read_filename, &upload_dir)
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.into()))?;
+    let data = match read_result {
+        Ok(data) => data,
+        Err(AppError::IoError(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::NotFound("文件不存在".to_string()));
+        }
+        Err(error) => return Err(error),
+    };
+    let content_type =
+        file_service::infer_mime_by_extension(&filename).unwrap_or("application/octet-stream");
+    Response::builder()
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_LENGTH, data.len())
+        .body(Body::from(data))
+        .map_err(|error| AppError::Internal(error.into()))
 }
 
 #[derive(Deserialize)]
@@ -109,22 +109,7 @@ pub async fn upload_file(
             content_type
         };
 
-        let original_name = field
-            .file_name()
-            .unwrap_or("unknown")
-            .to_string();
-
-        // 文件类型校验：优先用浏览器 MIME，失败时按扩展名推断
-        let is_allowed = state.config.storage.allowed_types.iter().any(|t| t == &content_type)
-            || infer_mime_by_extension(&original_name)
-                .map(|m| state.config.storage.allowed_types.iter().any(|t| t == m))
-                .unwrap_or(false);
-
-        if !is_allowed {
-            return Err(AppError::BadRequest(format!(
-                "不支持的文件类型: {} (文件: {})", content_type, original_name
-            )));
-        }
+        let original_name = field.file_name().unwrap_or("unknown").to_string();
 
         let data = field
             .bytes()
@@ -146,6 +131,8 @@ pub async fn upload_file(
             &content_type,
             &data,
             &state.config.storage.upload_dir,
+            &state.config.storage.allowed_types,
+            state.config.storage.max_file_size,
             query.rename.as_deref(),
             query.overwrite.unwrap_or(false),
         )
@@ -179,7 +166,7 @@ pub async fn list_files(
         crate::services::files::list_files_by_user(&state.db, auth.user_id, page, page_size).await?
     };
     let pagination = Pagination::new(total, page, page_size);
-    
+
     // 动态计算每个文件的 URL
     let data: Vec<FileResponse> = items
         .into_iter()
@@ -234,7 +221,12 @@ pub async fn batch_delete_files(
     if !auth.is_admin() {
         return Err(AppError::Forbidden);
     }
-    let deleted = crate::services::files::batch_delete_files(&state.db, &req.ids, &state.config.storage.upload_dir).await?;
+    let deleted = crate::services::files::batch_delete_files(
+        &state.db,
+        &req.ids,
+        &state.config.storage.upload_dir,
+    )
+    .await?;
     Ok(Json(ApiResponse::new(BatchDeleteResult { deleted })))
 }
 
@@ -265,7 +257,7 @@ pub async fn check_md5_exists(
     Json(body): Json<CheckMd5Request>,
 ) -> Result<Json<ApiResponse<Vec<Md5CheckResult>>>, AppError> {
     let mut results: Vec<Md5CheckResult> = Vec::new();
-    
+
     for md5 in body.md5_list {
         if let Some(file) = files::Entity::find()
             .filter(
@@ -292,7 +284,7 @@ pub async fn check_md5_exists(
             });
         }
     }
-    
+
     Ok(Json(ApiResponse::new(results)))
 }
 
@@ -322,18 +314,18 @@ pub async fn batch_upload(
     if !auth.is_admin() {
         return Err(AppError::Forbidden);
     }
-    
+
     let mut results: Vec<BatchUploadResult> = Vec::new();
-    
+
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("");
-        
+
         if name == "files" {
             let content_type = field
                 .content_type()
                 .unwrap_or("application/octet-stream")
                 .to_string();
-            
+
             // 处理SVG文件的content_type
             let content_type = if content_type == "image/svg" {
                 "image/svg+xml".to_string()
@@ -343,24 +335,6 @@ pub async fn batch_upload(
 
             let original_name = field.file_name().unwrap_or("unknown").to_string();
 
-            // 文件类型校验：优先用浏览器 MIME，失败时按扩展名推断
-            let is_allowed = state.config.storage.allowed_types.iter().any(|t| t == &content_type)
-                || infer_mime_by_extension(&original_name)
-                    .map(|m| state.config.storage.allowed_types.iter().any(|t| t == m))
-                    .unwrap_or(false);
-
-            if !is_allowed {
-                let name_for_error = original_name.clone();
-                results.push(BatchUploadResult {
-                    original_name,
-                    success: false,
-                    url: None,
-                    file_id: None,
-                    error: Some(format!("不支持的文件类型: {} (文件: {})", content_type, name_for_error)),
-                });
-                continue;
-            }
-            
             let data = match field.bytes().await {
                 Ok(d) => d,
                 Err(e) => {
@@ -374,7 +348,7 @@ pub async fn batch_upload(
                     continue;
                 }
             };
-            
+
             // 检查文件大小
             if data.len() as u64 > state.config.storage.max_file_size {
                 results.push(BatchUploadResult {
@@ -390,7 +364,7 @@ pub async fn batch_upload(
                 });
                 continue;
             }
-            
+
             // 上传文件（已集成 MD5 去重）
             match crate::services::files::upload_file(
                 &state.db,
@@ -399,9 +373,13 @@ pub async fn batch_upload(
                 &content_type,
                 &data,
                 &state.config.storage.upload_dir,
+                &state.config.storage.allowed_types,
+                state.config.storage.max_file_size,
                 None,
                 false,
-            ).await {
+            )
+            .await
+            {
                 Ok(file) => {
                     let url = file_service::get_file_url(&file.filename);
                     results.push(BatchUploadResult {
@@ -424,7 +402,7 @@ pub async fn batch_upload(
             }
         }
     }
-    
+
     Ok(Json(ApiResponse::new(results)))
 }
 /// GET /api/v1/files/unreferenced — List unreferenced files

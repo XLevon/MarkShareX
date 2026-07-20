@@ -1,10 +1,13 @@
-use axum::{extract::{State, Path}, Json};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::categories;
+use crate::utils::{ApiResponse, AppError, AppState};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
 pub struct CategoryResponse {
@@ -58,11 +61,20 @@ pub struct CreateCategoryRequest {
 pub struct UpdateCategoryRequest {
     pub name: Option<String>,
     pub description: Option<String>,
-    #[serde(default, deserialize_with = "crate::utils::serde_helpers::double_option::deserialize")]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_helpers::double_option::deserialize"
+    )]
     pub image_url: Option<Option<String>>,
-    #[serde(default, deserialize_with = "crate::utils::serde_helpers::double_option::deserialize")]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_helpers::double_option::deserialize"
+    )]
     pub image_filename: Option<Option<String>>,
-    #[serde(default, deserialize_with = "crate::utils::serde_helpers::double_option::deserialize")]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_helpers::double_option::deserialize"
+    )]
     pub parent_id: Option<Option<i32>>,
     pub sort_order: Option<i32>,
     pub is_visible: Option<bool>,
@@ -95,7 +107,10 @@ pub async fn list_admin_categories(
         let stmt = sea_orm::Statement::from_sql_and_values(
             state.db.get_database_backend(),
             &raw_sql,
-            cat_ids.iter().map(|&id| id.into()).collect::<Vec<sea_orm::Value>>(),
+            cat_ids
+                .iter()
+                .map(|&id| id.into())
+                .collect::<Vec<sea_orm::Value>>(),
         );
         let results = state.db.query_all(stmt).await?;
         let mut map = std::collections::HashMap::new();
@@ -134,9 +149,8 @@ pub async fn list_categories(
 ) -> Result<Json<ApiResponse<Vec<CategoryResponse>>>, AppError> {
     // 公开接口：排除隐藏分类 + 隐藏父类的子分类
     let hidden_ids = get_hidden_category_ids(&state.db).await?;
-    
-    let mut query = categories::Entity::find()
-        .filter(categories::Column::DeletedAt.is_null());
+
+    let mut query = categories::Entity::find().filter(categories::Column::DeletedAt.is_null());
     if !hidden_ids.is_empty() {
         query = query.filter(categories::Column::Id.is_not_in(hidden_ids));
     }
@@ -157,7 +171,10 @@ pub async fn list_categories(
         let stmt = sea_orm::Statement::from_sql_and_values(
             state.db.get_database_backend(),
             &raw_sql,
-            cat_ids.iter().map(|&id| id.into()).collect::<Vec<sea_orm::Value>>(),
+            cat_ids
+                .iter()
+                .map(|&id| id.into())
+                .collect::<Vec<sea_orm::Value>>(),
         );
         let results = state.db.query_all(stmt).await?;
         let mut map = std::collections::HashMap::new();
@@ -245,7 +262,7 @@ pub async fn create_category(
     let result = model.insert(&state.db).await?;
 
     // 处理图片 URL：network_resource_id > 网络URL > 资源库文件名
-        let category_cover = resolve_category_cover(&state.db, &result).await;
+    let category_cover = resolve_category_cover(&state.db, &result).await;
     let mut resp = CategoryResponse::from(result);
     resp.image_url = category_cover;
 
@@ -293,7 +310,8 @@ pub async fn update_category(
             active.network_resource_id = Set(None);
         } else {
             let nr_id = if image_url.as_ref().map_or(false, |s| s.starts_with("nr:")) {
-                super::network_resources::ensure_url(&state.db, &image_url.as_ref().unwrap()).await?
+                super::network_resources::ensure_url(&state.db, &image_url.as_ref().unwrap())
+                    .await?
             } else {
                 None
             };
@@ -325,7 +343,7 @@ pub async fn update_category(
     let category_cover = resolve_category_cover(&state.db, &updated).await;
     let mut resp = CategoryResponse::from(updated);
     resp.image_url = category_cover;
-    
+
     Ok(Json(ApiResponse::new(resp)))
 }
 /// PUT /api/v1/admin/categories/reorder — 拖动排序
@@ -381,17 +399,18 @@ pub async fn delete_category(
     }
 
     // 检查是否有文章关联
-    let post_count: i64 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let post_count: i64 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             format!(
                 "SELECT COUNT(*) FROM posts WHERE category_id = {} AND deleted_at IS NULL",
                 id
             ),
-        )
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-    .unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     if post_count > 0 {
         return Err(AppError::BadRequest(format!(
@@ -413,18 +432,18 @@ pub async fn delete_category(
 }
 
 /// 获取前台不可见的分类 ID 集合（含隐藏分类 + 隐藏父类的子分类）
-pub async fn get_hidden_category_ids(db: &sea_orm::DatabaseConnection) -> Result<Vec<i32>, AppError> {
+pub async fn get_hidden_category_ids(
+    db: &sea_orm::DatabaseConnection,
+) -> Result<Vec<i32>, AppError> {
     let all = categories::Entity::find()
         .filter(categories::Column::DeletedAt.is_null())
         .all(db)
         .await?;
-    
+
     // 收集直接设为隐藏的分类 ID
-    let mut hidden: std::collections::HashSet<i32> = all.iter()
-        .filter(|c| !c.is_visible)
-        .map(|c| c.id)
-        .collect();
-    
+    let mut hidden: std::collections::HashSet<i32> =
+        all.iter().filter(|c| !c.is_visible).map(|c| c.id).collect();
+
     // 隐藏父类的子分类也视为隐藏（递归处理多层级）
     loop {
         let before = hidden.len();
@@ -441,7 +460,7 @@ pub async fn get_hidden_category_ids(db: &sea_orm::DatabaseConnection) -> Result
             break; // 没有新增，停止
         }
     }
-    
+
     Ok(hidden.into_iter().collect())
 }
 
@@ -455,5 +474,6 @@ async fn resolve_category_cover(
         cat.network_resource_id,
         cat.image_url.as_deref(),
         cat.image_filename.as_deref(),
-    ).await
+    )
+    .await
 }

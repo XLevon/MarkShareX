@@ -1,9 +1,12 @@
-use axum::{extract::{Path, State}, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{AppState, AppError, ApiResponse};
 use crate::middleware::auth::AuthUser;
-use crate::models::entity::{article_types, article_statuses, posts};
+use crate::models::entity::{article_statuses, article_types, posts};
+use crate::utils::{ApiResponse, AppError, AppState};
 use sea_orm::*;
 
 // ─── Response with post_count ───
@@ -136,7 +139,10 @@ pub async fn create_article_type(
         updated_at: Set(now),
         ..Default::default()
     };
-    let inserted = item.insert(&state.db).await.map_err(|e| AppError::DbError(e))?;
+    let inserted = item
+        .insert(&state.db)
+        .await
+        .map_err(|e| AppError::DbError(e))?;
     Ok(Json(ApiResponse::new(inserted)))
 }
 
@@ -154,13 +160,22 @@ pub async fn update_article_type(
         .ok_or(AppError::NotFound("文章类型不存在".into()))?;
 
     let mut active: article_types::ActiveModel = item.into();
-    if let Some(v) = body.display_name { active.display_name = Set(v); }
-    if let Some(v) = body.color { active.color = Set(v); }
-    if let Some(v) = body.sort_order { active.sort_order = Set(v); }
-    if let Some(v) = body.is_active { active.is_active = Set(v); }
+    if let Some(v) = body.display_name {
+        active.display_name = Set(v);
+    }
+    if let Some(v) = body.color {
+        active.color = Set(v);
+    }
+    if let Some(v) = body.sort_order {
+        active.sort_order = Set(v);
+    }
+    if let Some(v) = body.is_active {
+        active.is_active = Set(v);
+    }
     active.updated_at = Set(crate::utils::now_local());
 
-    let updated = active.update(&state.db)
+    let updated = active
+        .update(&state.db)
         .await
         .map_err(|e| AppError::DbError(e))?;
     Ok(Json(ApiResponse::new(updated)))
@@ -180,10 +195,15 @@ pub async fn delete_article_type(
 
     let count = count_posts_by_type(&state.db, &item.code).await;
     if count > 0 {
-        return Err(AppError::BadRequest(format!("该类型下有 {} 篇文章，无法删除", count)));
+        return Err(AppError::BadRequest(format!(
+            "该类型下有 {} 篇文章，无法删除",
+            count
+        )));
     }
 
-    item.delete(&state.db).await.map_err(|e| AppError::DbError(e))?;
+    item.delete(&state.db)
+        .await
+        .map_err(|e| AppError::DbError(e))?;
     Ok(Json(ApiResponse::new("删除成功".to_string())))
 }
 
@@ -201,7 +221,10 @@ pub async fn reorder_article_types(
             .ok_or(AppError::NotFound("文章类型不存在".into()))?;
         let mut active: article_types::ActiveModel = item.into();
         active.sort_order = Set(index as i32);
-        active.update(&state.db).await.map_err(|e| AppError::DbError(e))?;
+        active
+            .update(&state.db)
+            .await
+            .map_err(|e| AppError::DbError(e))?;
     }
     Ok(Json(ApiResponse::new(())))
 }
@@ -263,7 +286,10 @@ pub async fn create_article_status(
         updated_at: Set(now),
         ..Default::default()
     };
-    let inserted = item.insert(&state.db).await.map_err(|e| AppError::DbError(e))?;
+    let inserted = item
+        .insert(&state.db)
+        .await
+        .map_err(|e| AppError::DbError(e))?;
     Ok(Json(ApiResponse::new(inserted)))
 }
 
@@ -281,13 +307,22 @@ pub async fn update_article_status(
         .ok_or(AppError::NotFound("状态标签不存在".into()))?;
 
     let mut active: article_statuses::ActiveModel = item.into();
-    if let Some(v) = body.display_name { active.display_name = Set(v); }
-    if let Some(v) = body.color { active.color = Set(v); }
-    if let Some(v) = body.sort_order { active.sort_order = Set(v); }
-    if let Some(v) = body.is_active { active.is_active = Set(v); }
+    if let Some(v) = body.display_name {
+        active.display_name = Set(v);
+    }
+    if let Some(v) = body.color {
+        active.color = Set(v);
+    }
+    if let Some(v) = body.sort_order {
+        active.sort_order = Set(v);
+    }
+    if let Some(v) = body.is_active {
+        active.is_active = Set(v);
+    }
     active.updated_at = Set(crate::utils::now_local());
 
-    let updated = active.update(&state.db)
+    let updated = active
+        .update(&state.db)
         .await
         .map_err(|e| AppError::DbError(e))?;
     Ok(Json(ApiResponse::new(updated)))
@@ -307,10 +342,15 @@ pub async fn delete_article_status(
 
     let count = count_posts_by_status(&state.db, &item.code).await;
     if count > 0 {
-        return Err(AppError::BadRequest(format!("该状态标签下有 {} 篇文章，无法删除", count)));
+        return Err(AppError::BadRequest(format!(
+            "该状态标签下有 {} 篇文章，无法删除",
+            count
+        )));
     }
 
-    item.delete(&state.db).await.map_err(|e| AppError::DbError(e))?;
+    item.delete(&state.db)
+        .await
+        .map_err(|e| AppError::DbError(e))?;
     Ok(Json(ApiResponse::new("删除成功".to_string())))
 }
 
@@ -328,7 +368,10 @@ pub async fn reorder_article_statuses(
             .ok_or(AppError::NotFound("状态标签不存在".into()))?;
         let mut active: article_statuses::ActiveModel = item.into();
         active.sort_order = Set(index as i32);
-        active.update(&state.db).await.map_err(|e| AppError::DbError(e))?;
+        active
+            .update(&state.db)
+            .await
+            .map_err(|e| AppError::DbError(e))?;
     }
     Ok(Json(ApiResponse::new(())))
 }

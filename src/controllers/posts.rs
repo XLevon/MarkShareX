@@ -1,11 +1,14 @@
-use axum::{extract::{State, Path, Query, ConnectInfo}, Json};
+use crate::middleware::auth::{AuthUser, OptionalAuthUser, PrivilegedUser};
+use crate::models::entity::{article_statuses, article_types, posts, users};
+use crate::utils::{ApiResponse, AppError, AppState};
+use axum::{
+    extract::{ConnectInfo, Path, Query, State},
+    Json,
+};
+use sea_orm::*;
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse};
-use crate::middleware::auth::{AuthUser, OptionalAuthUser, PrivilegedUser};
-use crate::models::entity::{posts, users, article_types, article_statuses};
-use sea_orm::*;
 
 fn authorize_post_create(auth: &AuthUser) -> Result<(), AppError> {
     if auth.is_privileged() || auth.role == "author" {
@@ -152,8 +155,12 @@ fn parse_comma_i32(s: Option<&str>) -> Option<Vec<i32>> {
 
 /// Parse comma-separated string into Vec<String> (e.g. "tutorial,news")
 fn parse_comma_string(s: Option<&str>) -> Option<Vec<String>> {
-    s.filter(|v| !v.is_empty())
-        .map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    s.filter(|v| !v.is_empty()).map(|v| {
+        v.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    })
 }
 
 #[derive(Serialize, ToSchema)]
@@ -245,43 +252,55 @@ impl From<posts::Model> for PostResponse {
 async fn fill_kb_names(db: &DatabaseConnection, posts: &mut [PostResponse]) {
     use sea_orm::ColumnTrait;
     use sea_orm::QueryFilter;
-    
+
     // Collect unique codes
     let mut type_codes: Vec<String> = Vec::new();
     let mut status_codes: Vec<String> = Vec::new();
     for p in posts.iter() {
         if let Some(ref code) = p.article_type {
-            if !type_codes.contains(code) { type_codes.push(code.clone()); }
+            if !type_codes.contains(code) {
+                type_codes.push(code.clone());
+            }
         }
         if let Some(ref code) = p.article_status {
-            if !status_codes.contains(code) { status_codes.push(code.clone()); }
+            if !status_codes.contains(code) {
+                status_codes.push(code.clone());
+            }
         }
     }
-    
-    if type_codes.is_empty() && status_codes.is_empty() { return; }
-    
+
+    if type_codes.is_empty() && status_codes.is_empty() {
+        return;
+    }
+
     // Lookup type display_names
     let type_names: std::collections::HashMap<String, String> = if !type_codes.is_empty() {
         article_types::Entity::find()
             .filter(article_types::Column::Code.is_in(type_codes.clone()))
-            .all(db).await
+            .all(db)
+            .await
             .unwrap_or_default()
             .into_iter()
             .map(|t| (t.code, t.display_name))
             .collect()
-    } else { std::collections::HashMap::new() };
-    
+    } else {
+        std::collections::HashMap::new()
+    };
+
     // Lookup status display_names
     let status_names: std::collections::HashMap<String, String> = if !status_codes.is_empty() {
         article_statuses::Entity::find()
             .filter(article_statuses::Column::Code.is_in(status_codes.clone()))
-            .all(db).await
+            .all(db)
+            .await
             .unwrap_or_default()
             .into_iter()
             .map(|s| (s.code, s.display_name))
             .collect()
-    } else { std::collections::HashMap::new() };
-    
+    } else {
+        std::collections::HashMap::new()
+    };
+
     // Fill into responses
     for p in posts.iter_mut() {
         if let Some(ref code) = p.article_type {
@@ -316,11 +335,17 @@ pub struct UpdatePostRequest {
     pub title: Option<String>,
     pub content: Option<String>,
     pub summary: Option<String>,
-    #[serde(default, deserialize_with = "crate::utils::serde_helpers::double_option::deserialize")]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_helpers::double_option::deserialize"
+    )]
     pub category_id: Option<Option<i32>>,
     pub status: Option<String>,
     pub post_type: Option<String>,
-    #[serde(default, deserialize_with = "crate::utils::serde_helpers::double_option::deserialize")]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_helpers::double_option::deserialize"
+    )]
     pub cover_image: Option<Option<String>>,
     pub is_pinned: Option<bool>,
     pub allow_comment: Option<bool>,
@@ -358,7 +383,11 @@ pub async fn list_posts(
     let effective_status = Some(public_post_status(query.status.as_deref()));
     // 排除隐藏分类下的文章
     let hidden_ids = super::categories::get_hidden_category_ids(&state.db).await?;
-    let exclude_ids = if hidden_ids.is_empty() { None } else { Some(hidden_ids.as_slice()) };
+    let exclude_ids = if hidden_ids.is_empty() {
+        None
+    } else {
+        Some(hidden_ids.as_slice())
+    };
     let (posts_list, pagination) = crate::services::posts::list_posts(
         &state.db,
         page,
@@ -382,7 +411,8 @@ pub async fn list_posts(
 
     // Batch-fetch categories to avoid N+1 queries
     let category_ids: Vec<i32> = posts_list.iter().filter_map(|p| p.category_id).collect();
-    let mut category_cover_map: std::collections::HashMap<i32, String> = std::collections::HashMap::new();
+    let mut category_cover_map: std::collections::HashMap<i32, String> =
+        std::collections::HashMap::new();
     let categories = if !category_ids.is_empty() {
         let cats = crate::models::entity::categories::Entity::find()
             .filter(crate::models::entity::categories::Column::Id.is_in(category_ids))
@@ -394,11 +424,15 @@ pub async fn list_posts(
                 c.network_resource_id,
                 c.image_url.as_deref(),
                 c.image_filename.as_deref(),
-            ).await {
+            )
+            .await
+            {
                 category_cover_map.insert(c.id, cover);
             }
         }
-        cats.into_iter().map(|c| (c.id, c.name)).collect::<std::collections::HashMap<i32, String>>()
+        cats.into_iter()
+            .map(|c| (c.id, c.name))
+            .collect::<std::collections::HashMap<i32, String>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -410,26 +444,39 @@ pub async fn list_posts(
             .filter(users::Column::Id.is_in(user_ids))
             .all(&state.db)
             .await?;
-        us.into_iter().map(|u| (u.id, u.display_name.unwrap_or(u.username))).collect::<std::collections::HashMap<i32, String>>()
+        us.into_iter()
+            .map(|u| (u.id, u.display_name.unwrap_or(u.username)))
+            .collect::<std::collections::HashMap<i32, String>>()
     } else {
         std::collections::HashMap::new()
     };
 
     // Batch-fetch real view counts from read_logs table
-    let post_ids_str = posts_list.iter().map(|p| p.id.to_string()).collect::<Vec<_>>().join(",");
+    let post_ids_str = posts_list
+        .iter()
+        .map(|p| p.id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
     let view_counts = if !post_ids_str.is_empty() {
         let sql = format!(
             "SELECT post_id, COUNT(*) as cnt FROM read_logs WHERE post_id IN ({}) GROUP BY post_id",
             post_ids_str
         );
-        let rows = state.db.query_all(sea_orm::Statement::from_string(
-            state.db.get_database_backend(), sql,
-        )).await.unwrap_or_default();
-        rows.into_iter().filter_map(|r| {
-            let id = r.try_get_by_index::<i32>(0).ok()?;
-            let cnt = r.try_get_by_index::<i64>(1).ok()?;
-            Some((id, cnt as i32))
-        }).collect::<std::collections::HashMap<i32, i32>>()
+        let rows = state
+            .db
+            .query_all(sea_orm::Statement::from_string(
+                state.db.get_database_backend(),
+                sql,
+            ))
+            .await
+            .unwrap_or_default();
+        rows.into_iter()
+            .filter_map(|r| {
+                let id = r.try_get_by_index::<i32>(0).ok()?;
+                let cnt = r.try_get_by_index::<i64>(1).ok()?;
+                Some((id, cnt as i32))
+            })
+            .collect::<std::collections::HashMap<i32, i32>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -440,14 +487,21 @@ pub async fn list_posts(
             "SELECT post_id, COUNT(*) as cnt FROM likes WHERE post_id IN ({}) GROUP BY post_id",
             post_ids_str
         );
-        let rows = state.db.query_all(sea_orm::Statement::from_string(
-            state.db.get_database_backend(), sql,
-        )).await.unwrap_or_default();
-        rows.into_iter().filter_map(|r| {
-            let id = r.try_get_by_index::<i32>(0).ok()?;
-            let cnt = r.try_get_by_index::<i64>(1).ok()?;
-            Some((id, cnt as i32))
-        }).collect::<std::collections::HashMap<i32, i32>>()
+        let rows = state
+            .db
+            .query_all(sea_orm::Statement::from_string(
+                state.db.get_database_backend(),
+                sql,
+            ))
+            .await
+            .unwrap_or_default();
+        rows.into_iter()
+            .filter_map(|r| {
+                let id = r.try_get_by_index::<i32>(0).ok()?;
+                let cnt = r.try_get_by_index::<i64>(1).ok()?;
+                Some((id, cnt as i32))
+            })
+            .collect::<std::collections::HashMap<i32, i32>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -458,12 +512,21 @@ pub async fn list_posts(
             "SELECT pt.post_id, t.name FROM post_tags pt JOIN tags t ON pt.tag_id = t.id WHERE pt.post_id IN ({}) ORDER BY t.name",
             post_ids_str
         );
-        if let Ok(rows) = state.db.query_all(sea_orm::Statement::from_string(
-            state.db.get_database_backend(), sql,
-        )).await {
-            let mut map: std::collections::HashMap<i32, Vec<String>> = std::collections::HashMap::new();
+        if let Ok(rows) = state
+            .db
+            .query_all(sea_orm::Statement::from_string(
+                state.db.get_database_backend(),
+                sql,
+            ))
+            .await
+        {
+            let mut map: std::collections::HashMap<i32, Vec<String>> =
+                std::collections::HashMap::new();
             for row in rows {
-                if let (Ok(pid), Ok(name)) = (row.try_get_by_index::<i32>(0), row.try_get_by_index::<String>(1)) {
+                if let (Ok(pid), Ok(name)) = (
+                    row.try_get_by_index::<i32>(0),
+                    row.try_get_by_index::<String>(1),
+                ) {
                     map.entry(pid).or_default().push(name);
                 }
             }
@@ -480,11 +543,15 @@ pub async fn list_posts(
         let cover_network_id = post.cover_network_id;
         let cover_image_url = post.cover_image_url.clone();
         let cover_image_filename = post.cover_image_filename.clone();
-        let category_name = post.category_id.and_then(|cid| categories.get(&cid).cloned());
-        let category_cover = post.category_id.and_then(|cid| category_cover_map.get(&cid).cloned());
+        let category_name = post
+            .category_id
+            .and_then(|cid| categories.get(&cid).cloned());
+        let category_cover = post
+            .category_id
+            .and_then(|cid| category_cover_map.get(&cid).cloned());
         let author_name = users.get(&post.user_id).cloned();
         let mut resp = PostResponse::from(post);
-        
+
         // 处理cover_image（新字段优先，旧字段兜底）
         resp.cover_image = super::network_resources::resolve_post_cover(
             &state.db,
@@ -492,16 +559,21 @@ pub async fn list_posts(
             cover_image_url.as_deref(),
             cover_image_filename.as_deref(),
             resp.cover_image.as_deref(),
-        ).await;
-        
+        )
+        .await;
+
         // 设置category_cover_image（resolve_cover_url 已返回相对路径 /uploads/xxx 或外链URL）
         resp.category_cover_image = category_cover.filter(|u| !u.is_empty());
-        
+
         resp.category_name = category_name;
         resp.author_name = author_name;
         resp.view_count = view_counts.get(&resp.id).copied().unwrap_or(0);
         resp.like_count = like_counts.get(&resp.id).copied().unwrap_or(0);
-        resp.tags = tags_map.get(&resp.id).cloned().map(|v| if v.is_empty() { None } else { Some(v) }).flatten();
+        resp.tags = tags_map
+            .get(&resp.id)
+            .cloned()
+            .map(|v| if v.is_empty() { None } else { Some(v) })
+            .flatten();
         data.push(resp);
     }
 
@@ -521,6 +593,9 @@ pub async fn list_admin_posts(
     auth: AuthUser,
     Query(query): Query<ListPostsQuery>,
 ) -> Result<Json<ApiResponse<Vec<PostResponse>>>, AppError> {
+    // Management listing is available only to authors and privileged users;
+    // non-privileged authors remain forcibly scoped to their own rows below.
+    authorize_post_create(&auth)?;
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
 
@@ -550,7 +625,8 @@ pub async fn list_admin_posts(
 
     // Batch-fetch categories to avoid N+1 queries
     let category_ids: Vec<i32> = posts_list.iter().filter_map(|p| p.category_id).collect();
-    let mut category_cover_map: std::collections::HashMap<i32, String> = std::collections::HashMap::new();
+    let mut category_cover_map: std::collections::HashMap<i32, String> =
+        std::collections::HashMap::new();
     let categories = if !category_ids.is_empty() {
         let cats = crate::models::entity::categories::Entity::find()
             .filter(crate::models::entity::categories::Column::Id.is_in(category_ids))
@@ -562,11 +638,15 @@ pub async fn list_admin_posts(
                 c.network_resource_id,
                 c.image_url.as_deref(),
                 c.image_filename.as_deref(),
-            ).await {
+            )
+            .await
+            {
                 category_cover_map.insert(c.id, cover);
             }
         }
-        cats.into_iter().map(|c| (c.id, c.name)).collect::<std::collections::HashMap<i32, String>>()
+        cats.into_iter()
+            .map(|c| (c.id, c.name))
+            .collect::<std::collections::HashMap<i32, String>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -584,8 +664,11 @@ pub async fn list_admin_posts(
                 .filter(crate::models::entity::tags::Column::Id.is_in(tag_ids))
                 .all(&state.db)
                 .await?
-        } else { vec![] };
-        let tag_name_map: std::collections::HashMap<i32, String> = tags_data.into_iter().map(|t| (t.id, t.name)).collect();
+        } else {
+            vec![]
+        };
+        let tag_name_map: std::collections::HashMap<i32, String> =
+            tags_data.into_iter().map(|t| (t.id, t.name)).collect();
         let mut map: std::collections::HashMap<i32, Vec<String>> = std::collections::HashMap::new();
         for pt in post_tags {
             if let Some(name) = tag_name_map.get(&pt.tag_id) {
@@ -615,10 +698,20 @@ pub async fn list_admin_posts(
     let view_counts = if !post_ids.is_empty() {
         let pv_stmt = sea_orm::Statement::from_string(
             state.db.get_database_backend(),
-            format!("SELECT post_id, COUNT(*) FROM read_logs WHERE post_id IN ({}) GROUP BY post_id",
-                    post_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(","))
+            format!(
+                "SELECT post_id, COUNT(*) FROM read_logs WHERE post_id IN ({}) GROUP BY post_id",
+                post_ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
         );
-        state.db.query_all(pv_stmt).await?.iter()
+        state
+            .db
+            .query_all(pv_stmt)
+            .await?
+            .iter()
             .filter_map(|row| {
                 let id: Option<i32> = row.try_get_by_index(0).ok();
                 let cnt: Option<i32> = row.try_get_by_index(1).ok();
@@ -639,9 +732,12 @@ pub async fn list_admin_posts(
         let cover_image_url = p.cover_image_url.clone();
         let cover_image_filename = p.cover_image_filename.clone();
         let category_name = p.category_id.and_then(|cid| categories.get(&cid).cloned());
-        let category_cover = p.category_id.and_then(|cid| category_cover_map.get(&cid).cloned());
+        let category_cover = p
+            .category_id
+            .and_then(|cid| category_cover_map.get(&cid).cloned());
         let author = authors.get(&p.user_id);
-        let author_name = author.map(|a| a.display_name.clone().unwrap_or_else(|| a.username.clone()));
+        let author_name =
+            author.map(|a| a.display_name.clone().unwrap_or_else(|| a.username.clone()));
         let mut resp = PostResponse::from(p);
         // Resolve cover_image（新字段优先，旧字段兜底）
         resp.cover_image = super::network_resources::resolve_post_cover(
@@ -650,14 +746,19 @@ pub async fn list_admin_posts(
             cover_image_url.as_deref(),
             cover_image_filename.as_deref(),
             resp.cover_image.as_deref(),
-        ).await;
+        )
+        .await;
         // Set category_cover_image from category fallback（已是相对路径 /uploads/xxx 或外链URL）
         resp.category_cover_image = category_cover.filter(|u| !u.is_empty());
         resp.category_name = category_name;
         resp.author_name = author_name;
         resp.view_count = view_counts.get(&resp.id).copied().unwrap_or(0);
         resp.like_count = 0;
-        resp.tags = tags_map.get(&resp.id).cloned().and_then(|v| if v.is_empty() { None } else { Some(v) });
+        resp.tags =
+            tags_map
+                .get(&resp.id)
+                .cloned()
+                .and_then(|v| if v.is_empty() { None } else { Some(v) });
         data.push(resp);
     }
 
@@ -679,27 +780,32 @@ pub async fn get_post(
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = crate::services::posts::get_post(&state.db, id).await?;
     authorize_post_read(auth.as_ref(), &post)?;
-    let category_name = crate::services::posts::get_category_name(&state.db, post.category_id).await;
+    let category_name =
+        crate::services::posts::get_category_name(&state.db, post.category_id).await;
     let tags = crate::services::posts::get_post_tags(&state.db, post.id).await?;
 
     // Real view count from read_logs
-    let view_count: i64 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let view_count: i64 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             format!("SELECT COUNT(*) FROM read_logs WHERE post_id = {}", id),
-        ),
-    ).await?.and_then(|r| r.try_get_by_index::<i64>(0).ok()).unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     // Real like count from likes
-    let real_likes: i32 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let real_likes: i32 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             format!("SELECT COUNT(*) FROM likes WHERE post_id = {}", id),
-        )
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-    .map(|v| v as i32)
-    .unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .map(|v| v as i32)
+        .unwrap_or(0);
 
     // Author info
     let author = users::Entity::find_by_id(post.user_id)
@@ -726,7 +832,8 @@ pub async fn get_post(
         cover_image_url.as_deref(),
         cover_image_filename.as_deref(),
         resp.cover_image.as_deref(),
-    ).await;
+    )
+    .await;
     // Resolve ./uploads/ relative paths to root-relative URLs
     if let Some(ref content) = resp.content {
         resp.content = Some(content.replace("./uploads/", "/uploads/"));
@@ -737,7 +844,8 @@ pub async fn get_post(
 
     // 先将 nr:{id} 替换为真实 URL（必须在生成 content_html 之前）
     if let Some(ref content) = resp.content {
-        resp.content = Some(super::network_resources::resolve_nr_in_content(&state.db, content).await);
+        resp.content =
+            Some(super::network_resources::resolve_nr_in_content(&state.db, content).await);
     }
 
     // Generate content_html from content if missing, empty, or missing referrerpolicy on images
@@ -746,13 +854,15 @@ pub async fn get_post(
     });
     if needs_render {
         if let Some(ref content) = resp.content {
-            resp.content_html = Some(crate::services::posts::render_markdown(&state.db, content).await);
+            resp.content_html =
+                Some(crate::services::posts::render_markdown(&state.db, content).await);
         }
     }
 
     // 如果 content_html 已存在于 DB（含 <img src="nr:N">），也需解析
     if let Some(ref html) = resp.content_html {
-        resp.content_html = Some(super::network_resources::resolve_nr_in_content(&state.db, html).await);
+        resp.content_html =
+            Some(super::network_resources::resolve_nr_in_content(&state.db, html).await);
     }
 
     // Keep the Vue article title as the only H1 without writing normalized HTML back to the DB.
@@ -779,7 +889,8 @@ pub async fn get_post(
                 cat.network_resource_id,
                 cat.image_url.as_deref(),
                 cat.image_filename.as_deref(),
-            ).await;
+            )
+            .await;
         }
     }
 
@@ -787,7 +898,8 @@ pub async fn get_post(
     if let Some(ref code) = resp.article_type {
         if let Ok(Some(t)) = article_types::Entity::find()
             .filter(article_types::Column::Code.eq(code.clone()))
-            .one(&state.db).await
+            .one(&state.db)
+            .await
         {
             resp.article_type_name = Some(t.display_name);
         }
@@ -795,7 +907,8 @@ pub async fn get_post(
     if let Some(ref code) = resp.article_status {
         if let Ok(Some(s)) = article_statuses::Entity::find()
             .filter(article_statuses::Column::Code.eq(code.clone()))
-            .one(&state.db).await
+            .one(&state.db)
+            .await
         {
             resp.article_status_name = Some(s.display_name);
         }
@@ -818,8 +931,10 @@ pub async fn create_post(
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     authorize_post_create(&auth)?;
     authorize_post_pin_change(&auth, false, req.is_pinned)?;
-    let base_slug = req.slug.unwrap_or_else(|| crate::services::posts::generate_slug(&req.title));
-    
+    let base_slug = req
+        .slug
+        .unwrap_or_else(|| crate::services::posts::generate_slug(&req.title));
+
     // Ensure slug uniqueness (including deleted posts since slug is unique in database)
     let mut slug = base_slug.clone();
     let mut counter = 1;
@@ -835,9 +950,7 @@ pub async fn create_post(
         slug = format!("{}-{}", base_slug, counter);
     }
     // Store normalized content (relative paths: ./uploads/...)
-    let content_to_store = req.content.as_ref().map(|c| {
-        normalize_uploads_url(c)
-    });
+    let content_to_store = req.content.as_ref().map(|c| normalize_uploads_url(c));
     // 将已知网络资源 URL 替换为 nr:{id}（保存时反向归一化）
     let content_to_store = match content_to_store {
         Some(c) => Some(super::network_resources::normalize_nr_in_content(&state.db, &c).await),
@@ -846,7 +959,8 @@ pub async fn create_post(
     let content_html = if let Some(ref content) = req.content {
         let normalized = normalize_uploads_url(content);
         // 先生成 nr:→URL 的解析版本，确保 comrak 能正确渲染 <img src>
-        let resolved = super::network_resources::resolve_nr_in_content(&state.db, &normalized).await;
+        let resolved =
+            super::network_resources::resolve_nr_in_content(&state.db, &normalized).await;
         Some(crate::services::posts::render_markdown(&state.db, &resolved).await)
     } else {
         None
@@ -862,7 +976,9 @@ pub async fn create_post(
     // 封面有三种来源：本地文件 | nr:{id} 网络资源 | 普通外链 URL（不入库）
     // 自托管 URL → 转为 ./uploads/xxx；外部URL/nr: → 保持原样
     let cover_image = req.cover_image.map(|url| {
-        if url.starts_with("nr:") { return url; }
+        if url.starts_with("nr:") {
+            return url;
+        }
         if url.starts_with("http://") || url.starts_with("https://") {
             normalize_uploads_url(&url)
         } else {
@@ -871,7 +987,11 @@ pub async fn create_post(
     });
     // 拆分为新字段：URL 类（nr: + http(s)）vs 本地文件名
     let (cover_image_url, cover_image_filename) = match &cover_image {
-        Some(url) if url.starts_with("nr:") || url.starts_with("http://") || url.starts_with("https://") => {
+        Some(url)
+            if url.starts_with("nr:")
+                || url.starts_with("http://")
+                || url.starts_with("https://") =>
+        {
             (Some(url.clone()), None)
         }
         Some(name) => (None, Some(name.clone())),
@@ -895,15 +1015,17 @@ pub async fn create_post(
         summary: Set(req.summary),
         content: Set(content_to_store),
         content_html: Set(content_html),
-        cover_image: Set(cover_image),               // 🔒 旧字段，兼容
-        cover_image_url: Set(cover_image_url),        // 🆕 URL 类
+        cover_image: Set(cover_image),         // 🔒 旧字段，兼容
+        cover_image_url: Set(cover_image_url), // 🆕 URL 类
         cover_image_filename: Set(cover_image_filename), // 🆕 本地文件名
         cover_network_id: Set(cover_network_id),
         status: Set(status.clone()),
         post_type: Set(req.post_type.unwrap_or_else(|| "post".to_string())),
         is_pinned: Set(req.is_pinned.unwrap_or(false)),
         allow_comment: Set(req.allow_comment.unwrap_or(true)),
-        article_type: Set(req.article_type.unwrap_or_else(|| "ai_organized".to_string())),
+        article_type: Set(req
+            .article_type
+            .unwrap_or_else(|| "ai_organized".to_string())),
         article_status: Set(req.article_status.unwrap_or_else(|| "latest".to_string())),
         sort_order: Set(0),
         view_count: Set(0),
@@ -927,7 +1049,9 @@ pub async fn create_post(
         let title = post.title.clone();
         let content = post.content.clone().unwrap_or_default();
         let post_id = post.id as u64;
-        let _ = state.search_engine.index_document(post_id, &title, &content);
+        let _ = state
+            .search_engine
+            .index_document(post_id, &title, &content);
     }
 
     Ok(Json(ApiResponse::new(PostResponse::from(post))))
@@ -980,9 +1104,11 @@ pub async fn update_post(
     if let Some(content) = req.content {
         let normalized = normalize_uploads_url(&content);
         // 将已知网络资源 URL 替换为 nr:{id}
-        let normalized = super::network_resources::normalize_nr_in_content(&state.db, &normalized).await;
+        let normalized =
+            super::network_resources::normalize_nr_in_content(&state.db, &normalized).await;
         // 先生成 nr:→URL 的解析版本，确保 comrak 能正确渲染 <img src>
-        let resolved_for_html = super::network_resources::resolve_nr_in_content(&state.db, &normalized).await;
+        let resolved_for_html =
+            super::network_resources::resolve_nr_in_content(&state.db, &normalized).await;
         let html = crate::services::posts::render_markdown(&state.db, &resolved_for_html).await;
         post_active.content = Set(Some(normalized));
         post_active.content_html = Set(Some(html));
@@ -1006,7 +1132,9 @@ pub async fn update_post(
     if let Some(cover_image) = req.cover_image {
         // 自托管 URL → ./uploads/xxx；外部URL/nr: → 保持原样
         let normalized = cover_image.map(|url| {
-            if url.starts_with("nr:") { return url; }
+            if url.starts_with("nr:") {
+                return url;
+            }
             if url.starts_with("http://") || url.starts_with("https://") {
                 normalize_uploads_url(&url)
             } else {
@@ -1015,7 +1143,11 @@ pub async fn update_post(
         });
         // 拆分为新字段：URL 类（nr: + http(s)）vs 本地文件名
         let (cover_url, cover_filename) = match &normalized {
-            Some(url) if url.starts_with("nr:") || url.starts_with("http://") || url.starts_with("https://") => {
+            Some(url)
+                if url.starts_with("nr:")
+                    || url.starts_with("http://")
+                    || url.starts_with("https://") =>
+            {
                 (Some(url.clone()), None)
             }
             Some(name) => (None, Some(name.clone())),
@@ -1023,13 +1155,17 @@ pub async fn update_post(
         };
         // nr:{id} → 验证网络资源；普通外链/本地文件 → 不入库
         let nr_id = if normalized.as_ref().map_or(false, |s| s.starts_with("nr:")) {
-            super::network_resources::ensure_url(&state.db, normalized.as_ref().unwrap_or(&"".to_string())).await?
+            super::network_resources::ensure_url(
+                &state.db,
+                normalized.as_ref().unwrap_or(&"".to_string()),
+            )
+            .await?
         } else {
             None
         };
-        post_active.cover_image = Set(normalized.clone());      // 🔒 旧字段，兼容
-        post_active.cover_image_url = Set(cover_url);            // 🆕 URL 类
-        post_active.cover_image_filename = Set(cover_filename);  // 🆕 本地文件名
+        post_active.cover_image = Set(normalized.clone()); // 🔒 旧字段，兼容
+        post_active.cover_image_url = Set(cover_url); // 🆕 URL 类
+        post_active.cover_image_filename = Set(cover_filename); // 🆕 本地文件名
         post_active.cover_network_id = Set(nr_id);
     }
     if let Some(is_pinned) = writable_post_pin_value(&auth, req.is_pinned) {
@@ -1062,7 +1198,9 @@ pub async fn update_post(
         let title = updated.title.clone();
         let content = updated.content.clone().unwrap_or_default();
         let post_id = updated.id as u64;
-        let _ = state.search_engine.index_document(post_id, &title, &content);
+        let _ = state
+            .search_engine
+            .index_document(post_id, &title, &content);
     } else {
         let _ = state.search_engine.delete_from_index(updated.id as u64);
     }
@@ -1110,7 +1248,10 @@ pub async fn batch_delete_posts(
         let _ = state.search_engine.delete_from_index(*id as u64);
         count += 1;
     }
-    Ok(Json(ApiResponse { data: count, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: count,
+        pagination: None,
+    }))
 }
 
 /// GET /api/v1/posts/slug/{slug} — Get post by slug
@@ -1129,27 +1270,32 @@ pub async fn get_post_by_slug(
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = crate::services::posts::get_post_by_slug(&state.db, &slug).await?;
     authorize_post_read(auth.as_ref(), &post)?;
-    let category_name = crate::services::posts::get_category_name(&state.db, post.category_id).await;
+    let category_name =
+        crate::services::posts::get_category_name(&state.db, post.category_id).await;
     let tags = crate::services::posts::get_post_tags(&state.db, post.id).await?;
 
     // Real view count from read_logs (recorded by frontend POST /api/v1/read-logs)
-    let view_count: i64 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let view_count: i64 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             format!("SELECT COUNT(*) FROM read_logs WHERE post_id = {}", post.id),
-        ),
-    ).await?.and_then(|r| r.try_get_by_index::<i64>(0).ok()).unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     // Real like count from likes
-    let real_likes: i32 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let real_likes: i32 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             format!("SELECT COUNT(*) FROM likes WHERE post_id = {}", post.id),
-        )
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-    .map(|v| v as i32)
-    .unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .map(|v| v as i32)
+        .unwrap_or(0);
 
     // Author info
     let author = users::Entity::find_by_id(post.user_id)
@@ -1164,7 +1310,7 @@ pub async fn get_post_by_slug(
             avatar_url: u.avatar_url,
             bio: u.bio,
         });
-    
+
     let cover_network_id = post.cover_network_id;
     let cover_image_url = post.cover_image_url.clone();
     let cover_image_filename = post.cover_image_filename.clone();
@@ -1176,7 +1322,8 @@ pub async fn get_post_by_slug(
         cover_image_url.as_deref(),
         cover_image_filename.as_deref(),
         resp.cover_image.as_deref(),
-    ).await;
+    )
+    .await;
     // Resolve ./uploads/ relative paths to root-relative URLs
     if let Some(ref content) = resp.content {
         resp.content = Some(content.replace("./uploads/", "/uploads/"));
@@ -1187,7 +1334,8 @@ pub async fn get_post_by_slug(
 
     // 先将 nr:{id} 替换为真实 URL（必须在生成 content_html 之前）
     if let Some(ref content) = resp.content {
-        resp.content = Some(super::network_resources::resolve_nr_in_content(&state.db, content).await);
+        resp.content =
+            Some(super::network_resources::resolve_nr_in_content(&state.db, content).await);
     }
 
     // Generate content_html from content if missing, empty, or missing referrerpolicy on images
@@ -1196,13 +1344,15 @@ pub async fn get_post_by_slug(
     });
     if needs_render {
         if let Some(ref content) = resp.content {
-            resp.content_html = Some(crate::services::posts::render_markdown(&state.db, content).await);
+            resp.content_html =
+                Some(crate::services::posts::render_markdown(&state.db, content).await);
         }
     }
 
     // 如果 content_html 已存在于 DB（含 <img src="nr:N">），也需解析
     if let Some(ref html) = resp.content_html {
-        resp.content_html = Some(super::network_resources::resolve_nr_in_content(&state.db, html).await);
+        resp.content_html =
+            Some(super::network_resources::resolve_nr_in_content(&state.db, html).await);
     }
 
     // Keep the Vue article title as the only H1 without writing normalized HTML back to the DB.
@@ -1229,7 +1379,8 @@ pub async fn get_post_by_slug(
                 cat.network_resource_id,
                 cat.image_url.as_deref(),
                 cat.image_filename.as_deref(),
-            ).await;
+            )
+            .await;
         }
     }
 
@@ -1237,7 +1388,8 @@ pub async fn get_post_by_slug(
     if let Some(ref code) = resp.article_type {
         if let Ok(Some(t)) = article_types::Entity::find()
             .filter(article_types::Column::Code.eq(code.clone()))
-            .one(&state.db).await
+            .one(&state.db)
+            .await
         {
             resp.article_type_name = Some(t.display_name);
         }
@@ -1245,7 +1397,8 @@ pub async fn get_post_by_slug(
     if let Some(ref code) = resp.article_status {
         if let Ok(Some(s)) = article_statuses::Entity::find()
             .filter(article_statuses::Column::Code.eq(code.clone()))
-            .one(&state.db).await
+            .one(&state.db)
+            .await
         {
             resp.article_status_name = Some(s.display_name);
         }
@@ -1298,46 +1451,53 @@ pub async fn toggle_like(
     let user_id = auth.user_id;
 
     // Check if already liked
-    let row = db.query_one(
-        sea_orm::Statement::from_string(
+    let row = db
+        .query_one(sea_orm::Statement::from_string(
             db.get_database_backend(),
-            format!("SELECT id FROM likes WHERE user_id = {} AND post_id = {}", user_id, post_id),
-        )
-    ).await?;
+            format!(
+                "SELECT id FROM likes WHERE user_id = {} AND post_id = {}",
+                user_id, post_id
+            ),
+        ))
+        .await?;
 
     let liked = if row.is_some() {
         // Unlike: remove like, decrement counter
         db.execute_unprepared(&format!(
             "DELETE FROM likes WHERE user_id = {} AND post_id = {}",
             user_id, post_id
-        )).await?;
+        ))
+        .await?;
         db.execute_unprepared(&format!(
             "UPDATE posts SET like_count = MAX(0, like_count - 1) WHERE id = {}",
             post_id
-        )).await?;
+        ))
+        .await?;
         false
     } else {
         // Like: insert, increment counter
         db.execute_unprepared(&format!(
             "INSERT INTO likes (user_id, post_id) VALUES ({}, {})",
             user_id, post_id
-        )).await?;
+        ))
+        .await?;
         db.execute_unprepared(&format!(
             "UPDATE posts SET like_count = like_count + 1 WHERE id = {}",
             post_id
-        )).await?;
+        ))
+        .await?;
         true
     };
 
     // Get updated like_count
-    let count: i32 = db.query_one(
-        sea_orm::Statement::from_string(
+    let count: i32 = db
+        .query_one(sea_orm::Statement::from_string(
             db.get_database_backend(),
             format!("SELECT like_count FROM posts WHERE id = {}", post_id),
-        )
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i32>(0).ok())
-    .unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i32>(0).ok())
+        .unwrap_or(0);
 
     Ok(Json(ApiResponse::new(LikeStatusResponse {
         liked,
@@ -1360,21 +1520,24 @@ pub async fn get_like_status(
     require_published_post(&state.db, post_id).await?;
     let db = &state.db;
 
-    let row = db.query_one(
-        sea_orm::Statement::from_string(
+    let row = db
+        .query_one(sea_orm::Statement::from_string(
             db.get_database_backend(),
-            format!("SELECT id FROM likes WHERE user_id = {} AND post_id = {}", auth.user_id, post_id),
-        )
-    ).await?;
+            format!(
+                "SELECT id FROM likes WHERE user_id = {} AND post_id = {}",
+                auth.user_id, post_id
+            ),
+        ))
+        .await?;
 
-    let count: i32 = db.query_one(
-        sea_orm::Statement::from_string(
+    let count: i32 = db
+        .query_one(sea_orm::Statement::from_string(
             db.get_database_backend(),
             format!("SELECT like_count FROM posts WHERE id = {}", post_id),
-        )
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i32>(0).ok())
-    .unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i32>(0).ok())
+        .unwrap_or(0);
 
     Ok(Json(ApiResponse::new(LikeStatusResponse {
         liked: row.is_some(),
@@ -1395,8 +1558,16 @@ pub struct RecordReadLogRequest {
 async fn is_ip_whitelisted(state: &AppState, ip: &str) -> bool {
     use crate::models::entity::settings;
     use crate::utils::ip_utils;
-    let items = settings::Entity::find().all(&state.db).await.unwrap_or_default();
-    let get = |key: &str| items.iter().find(|s| s.key == key).map(|s| s.value.as_str());
+    let items = settings::Entity::find()
+        .all(&state.db)
+        .await
+        .unwrap_or_default();
+    let get = |key: &str| {
+        items
+            .iter()
+            .find(|s| s.key == key)
+            .map(|s| s.value.as_str())
+    };
 
     if get("ip_whitelist_enabled") != Some("true") {
         return false;
@@ -1421,8 +1592,8 @@ pub async fn record_read_log(
     auth: Option<crate::middleware::auth::AuthUser>,
     Json(req): Json<RecordReadLogRequest>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    use crate::utils::client_info;
     use crate::models::entity::read_logs;
+    use crate::utils::client_info;
 
     require_published_post(&state.db, req.post_id).await?;
     let ip = client_info::extract_client_ip(&headers, Some(socket_addr));
@@ -1447,10 +1618,12 @@ pub async fn record_read_log(
         return Ok(Json(ApiResponse::new(())));
     }
 
-    let user_agent = headers.get("user-agent")
+    let user_agent = headers
+        .get("user-agent")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let device_type = user_agent.as_deref()
+    let device_type = user_agent
+        .as_deref()
         .map(|ua| client_info::parse_device_type(ua).to_string());
 
     let now = crate::utils::now_local();
@@ -1493,26 +1666,34 @@ pub async fn list_authors(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<AuthorListItem>>>, AppError> {
     // Subquery: users who have published posts, with counts
-    let sql = "SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, COUNT(p.id) as post_count \
+    let sql =
+        "SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, COUNT(p.id) as post_count \
                FROM users u \
                INNER JOIN posts p ON p.user_id = u.id \
                WHERE p.status = 'published' AND p.deleted_at IS NULL \
                GROUP BY u.id \
                ORDER BY post_count DESC";
-    let rows = state.db.query_all(sea_orm::Statement::from_string(
-        state.db.get_database_backend(), sql.to_string(),
-    )).await?;
+    let rows = state
+        .db
+        .query_all(sea_orm::Statement::from_string(
+            state.db.get_database_backend(),
+            sql.to_string(),
+        ))
+        .await?;
 
-    let authors: Vec<AuthorListItem> = rows.into_iter().filter_map(|r| {
-        Some(AuthorListItem {
-            id: r.try_get_by_index::<i32>(0).ok()?,
-            username: r.try_get_by_index::<String>(1).ok()?,
-            display_name: r.try_get_by_index::<Option<String>>(2).ok()?,
-            avatar_url: r.try_get_by_index::<Option<String>>(3).ok()?,
-            bio: r.try_get_by_index::<Option<String>>(4).ok()?,
-            post_count: r.try_get_by_index::<i64>(5).ok()?,
+    let authors: Vec<AuthorListItem> = rows
+        .into_iter()
+        .filter_map(|r| {
+            Some(AuthorListItem {
+                id: r.try_get_by_index::<i32>(0).ok()?,
+                username: r.try_get_by_index::<String>(1).ok()?,
+                display_name: r.try_get_by_index::<Option<String>>(2).ok()?,
+                avatar_url: r.try_get_by_index::<Option<String>>(3).ok()?,
+                bio: r.try_get_by_index::<Option<String>>(4).ok()?,
+                post_count: r.try_get_by_index::<i64>(5).ok()?,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(ApiResponse::new(authors)))
 }
@@ -1584,11 +1765,14 @@ pub async fn unified_search(
             .all(&state.db)
             .await
             .map(|items| {
-                items.into_iter().map(|p| SearchArticle {
-                    id: p.id,
-                    title: p.title,
-                    slug: p.slug,
-                }).collect()
+                items
+                    .into_iter()
+                    .map(|p| SearchArticle {
+                        id: p.id,
+                        title: p.title,
+                        slug: p.slug,
+                    })
+                    .collect()
             })
             .unwrap_or_default()
     } else {
@@ -1607,22 +1791,27 @@ pub async fn unified_search(
              ORDER BY post_count DESC \
              LIMIT 10"
         );
-        state.db.query_all(sea_orm::Statement::from_sql_and_values(
-            state.db.get_database_backend(),
-            &sql,
-            vec![tag_like.into()],
-        )).await
-        .map(|rows| {
-            rows.into_iter().filter_map(|r| {
-                Some(SearchTag {
-                    id: r.try_get_by_index::<i32>(0).ok()?,
-                    name: r.try_get_by_index::<String>(1).ok()?,
-                    slug: r.try_get_by_index::<String>(2).ok()?,
-                    post_count: r.try_get_by_index::<i64>(3).ok()?,
-                })
-            }).collect()
-        })
-        .unwrap_or_default()
+        state
+            .db
+            .query_all(sea_orm::Statement::from_sql_and_values(
+                state.db.get_database_backend(),
+                &sql,
+                vec![tag_like.into()],
+            ))
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .filter_map(|r| {
+                        Some(SearchTag {
+                            id: r.try_get_by_index::<i32>(0).ok()?,
+                            name: r.try_get_by_index::<String>(1).ok()?,
+                            slug: r.try_get_by_index::<String>(2).ok()?,
+                            post_count: r.try_get_by_index::<i64>(3).ok()?,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     };
 
     // 3. SQL LIKE search on authors (users with published posts)
@@ -1638,24 +1827,33 @@ pub async fn unified_search(
              ORDER BY COUNT(p.id) DESC \
              LIMIT 10"
         );
-        state.db.query_all(sea_orm::Statement::from_sql_and_values(
-            state.db.get_database_backend(),
-            &sql,
-            vec![author_like.clone().into(), author_like.into()],
-        )).await
-        .map(|rows| {
-            rows.into_iter().filter_map(|r| {
-                Some(SearchAuthor {
-                    id: r.try_get_by_index::<i32>(0).ok()?,
-                    username: r.try_get_by_index::<String>(1).ok()?,
-                    display_name: r.try_get_by_index::<Option<String>>(2).ok()?,
-                })
-            }).collect()
-        })
-        .unwrap_or_default()
+        state
+            .db
+            .query_all(sea_orm::Statement::from_sql_and_values(
+                state.db.get_database_backend(),
+                &sql,
+                vec![author_like.clone().into(), author_like.into()],
+            ))
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .filter_map(|r| {
+                        Some(SearchAuthor {
+                            id: r.try_get_by_index::<i32>(0).ok()?,
+                            username: r.try_get_by_index::<String>(1).ok()?,
+                            display_name: r.try_get_by_index::<Option<String>>(2).ok()?,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     };
 
-    Ok(Json(ApiResponse::new(SearchResponse { articles, tags, authors })))
+    Ok(Json(ApiResponse::new(SearchResponse {
+        articles,
+        tags,
+        authors,
+    })))
 }
 
 // ── 置顶相关 ──
@@ -1677,12 +1875,15 @@ pub async fn pin_post(
         .ok_or(AppError::NotFound("文章不存在".to_string()))?;
 
     // Get current max pin_order
-    let max_order: i64 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let max_order: i64 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             "SELECT COALESCE(MAX(sort_order), 0) FROM posts WHERE is_pinned = 1".to_string(),
-        ),
-    ).await?.and_then(|r| r.try_get_by_index::<i64>(0).ok()).unwrap_or(0);
+        ))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     let mut active: posts::ActiveModel = post.into();
     active.is_pinned = Set(true);
@@ -1743,7 +1944,8 @@ pub async fn list_pinned_posts(
 
     // Batch-fetch categories + category covers
     let category_ids: Vec<i32> = posts_list.iter().filter_map(|p| p.category_id).collect();
-    let mut category_cover_map: std::collections::HashMap<i32, String> = std::collections::HashMap::new();
+    let mut category_cover_map: std::collections::HashMap<i32, String> =
+        std::collections::HashMap::new();
     let categories = if !category_ids.is_empty() {
         let cats = crate::models::entity::categories::Entity::find()
             .filter(crate::models::entity::categories::Column::Id.is_in(category_ids))
@@ -1755,11 +1957,15 @@ pub async fn list_pinned_posts(
                 c.network_resource_id,
                 c.image_url.as_deref(),
                 c.image_filename.as_deref(),
-            ).await {
+            )
+            .await
+            {
                 category_cover_map.insert(c.id, cover);
             }
         }
-        cats.into_iter().map(|c| (c.id, c.name)).collect::<std::collections::HashMap<i32, String>>()
+        cats.into_iter()
+            .map(|c| (c.id, c.name))
+            .collect::<std::collections::HashMap<i32, String>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -1771,7 +1977,9 @@ pub async fn list_pinned_posts(
             .filter(users::Column::Id.is_in(user_ids))
             .all(&state.db)
             .await?;
-        us.into_iter().map(|u| (u.id, u.display_name.unwrap_or(u.username))).collect::<std::collections::HashMap<i32, String>>()
+        us.into_iter()
+            .map(|u| (u.id, u.display_name.unwrap_or(u.username)))
+            .collect::<std::collections::HashMap<i32, String>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -1795,7 +2003,8 @@ pub async fn list_pinned_posts(
             cover_image_url.as_deref(),
             cover_image_filename.as_deref(),
             resp.cover_image.as_deref(),
-        ).await;
+        )
+        .await;
 
         resp.category_cover_image = category_cover.filter(|u| !u.is_empty());
         resp.category_name = category_name;
@@ -1838,7 +2047,10 @@ mod authorization_tests {
         assert!(authorize_post_create(&auth_user(1, "author")).is_ok());
         assert!(authorize_post_create(&auth_user(1, "sub_admin")).is_ok());
         assert!(authorize_post_create(&auth_user(1, "admin")).is_ok());
-        assert!(matches!(authorize_post_create(&auth_user(1, "visitor")), Err(AppError::Forbidden)));
+        assert!(matches!(
+            authorize_post_create(&auth_user(1, "visitor")),
+            Err(AppError::Forbidden)
+        ));
         assert!(matches!(
             authorize_post_pin_change(&auth_user(1, "author"), false, Some(true)),
             Err(AppError::Forbidden)
@@ -1850,16 +2062,27 @@ mod authorization_tests {
         let author = auth_user(1, "author");
         assert_eq!(scoped_admin_author_id(&author, None), Some(1));
         assert_eq!(scoped_admin_author_id(&author, Some(2)), Some(1));
-        assert_eq!(scoped_admin_author_id(&auth_user(9, "sub_admin"), Some(2)), Some(2));
+        assert_eq!(
+            scoped_admin_author_id(&auth_user(9, "sub_admin"), Some(2)),
+            Some(2)
+        );
     }
 
     #[test]
     fn authors_can_update_only_their_own_posts_and_cannot_reassign_them() {
         let owner = auth_user(1, "author");
         assert!(authorize_post_update(&owner, &post(1, "draft"), None).is_ok());
-        assert!(matches!(authorize_post_update(&owner, &post(2, "draft"), None), Err(AppError::Forbidden)));
-        assert!(matches!(authorize_post_update(&owner, &post(1, "draft"), Some(2)), Err(AppError::Forbidden)));
-        assert!(authorize_post_update(&auth_user(9, "sub_admin"), &post(2, "draft"), Some(3)).is_ok());
+        assert!(matches!(
+            authorize_post_update(&owner, &post(2, "draft"), None),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_post_update(&owner, &post(1, "draft"), Some(2)),
+            Err(AppError::Forbidden)
+        ));
+        assert!(
+            authorize_post_update(&auth_user(9, "sub_admin"), &post(2, "draft"), Some(3)).is_ok()
+        );
         assert!(matches!(
             authorize_post_pin_change(&owner, false, Some(true)),
             Err(AppError::Forbidden)
@@ -1902,8 +2125,14 @@ mod authorization_tests {
     fn authors_can_delete_only_their_own_drafts() {
         let owner = auth_user(1, "author");
         assert!(authorize_post_delete(&owner, &post(1, "draft")).is_ok());
-        assert!(matches!(authorize_post_delete(&owner, &post(1, "published")), Err(AppError::Forbidden)));
-        assert!(matches!(authorize_post_delete(&owner, &post(2, "draft")), Err(AppError::Forbidden)));
+        assert!(matches!(
+            authorize_post_delete(&owner, &post(1, "published")),
+            Err(AppError::Forbidden)
+        ));
+        assert!(matches!(
+            authorize_post_delete(&owner, &post(2, "draft")),
+            Err(AppError::Forbidden)
+        ));
         assert!(authorize_post_delete(&auth_user(9, "admin"), &post(2, "published")).is_ok());
     }
 

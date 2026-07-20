@@ -1,9 +1,9 @@
+use crate::middleware::auth::AuthUser;
+use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{extract::State, Json};
+use sea_orm::ConnectionTrait;
 use serde::Serialize;
 use utoipa::ToSchema;
-use sea_orm::ConnectionTrait;
-use crate::utils::{AppState, AppError, ApiResponse};
-use crate::middleware::auth::AuthUser;
 
 // ── Logs ──
 
@@ -44,7 +44,9 @@ pub async fn get_logs(
     require_admin(&auth)?;
 
     let limit = query.limit.unwrap_or(100).min(1000);
-    let logs = state.log_buffer.query(query.level.as_deref(), limit, query.search.as_deref());
+    let logs = state
+        .log_buffer
+        .query(query.level.as_deref(), limit, query.search.as_deref());
 
     Ok(Json(ApiResponse::new(LogQueryResponse {
         total_cached: {
@@ -59,7 +61,7 @@ pub async fn get_logs(
 
 #[derive(Serialize, ToSchema)]
 pub struct HealthResponse {
-    pub status: String,        // "ok" or "degraded"
+    pub status: String, // "ok" or "degraded"
     pub version: String,
     pub uptime_seconds: u64,
     pub database: DatabaseHealth,
@@ -99,10 +101,7 @@ pub async fn get_health(
     require_admin(&auth)?;
 
     // ── DB ping ──
-    let db_ok = state.db
-        .execute_unprepared("SELECT 1")
-        .await
-        .is_ok();
+    let db_ok = state.db.execute_unprepared("SELECT 1").await.is_ok();
 
     // ── Uptime ──
     let uptime = crate::services::logs::uptime_seconds();
@@ -114,7 +113,8 @@ pub async fn get_health(
     let (mem_total_mb, mem_avail_mb, mem_used_pct) = get_memory_info();
 
     // ── Migration count ──
-    let migration_count = state.db
+    let migration_count = state
+        .db
         .query_one(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Sqlite,
             "SELECT COUNT(*) as cnt FROM _migrations",
@@ -195,7 +195,7 @@ fn get_disk_info() -> (f64, f64, f64) {
     let path = std::env::current_dir().unwrap_or_else(|_| "/".into());
     let path_str = path.to_string_lossy();
     if let Ok(output) = std::process::Command::new("df")
-        .arg("-B1")  // bytes
+        .arg("-B1") // bytes
         .arg(path_str.as_ref())
         .output()
     {
@@ -207,7 +207,11 @@ fn get_disk_info() -> (f64, f64, f64) {
                 let total: f64 = parts[1].parse().unwrap_or(0.0);
                 let used: f64 = parts[2].parse().unwrap_or(0.0);
                 let free: f64 = parts[3].parse().unwrap_or(0.0);
-                let pct = if total > 0.0 { (used / total) * 100.0 } else { 0.0 };
+                let pct = if total > 0.0 {
+                    (used / total) * 100.0
+                } else {
+                    0.0
+                };
                 return (total / 1e9, free / 1e9, (pct * 10.0).round() / 10.0);
             }
         }

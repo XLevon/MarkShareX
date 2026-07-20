@@ -1,16 +1,16 @@
+use crate::models::entity::{
+    article_statuses, article_types, categories, post_tags, posts, tags, users,
+};
+use crate::utils::{AppError, AppState};
 use axum::{
     extract::{Path, State},
     http::{header, HeaderMap, StatusCode, Uri},
     response::{Html, IntoResponse, Response},
 };
-use crate::utils::{AppState, AppError};
-use serde_json::json;
 use sea_orm::*;
+use serde_json::json;
 use std::collections::HashSet;
 use std::error::Error as _;
-use crate::models::entity::{
-    article_statuses, article_types, categories, post_tags, posts, tags, users,
-};
 
 const DEFAULT_OG_IMAGE: &[u8] = include_bytes!("../../assets/default-og.png");
 
@@ -84,7 +84,10 @@ fn truncate_by_display_width(value: &str, max_width: usize, prefer_natural_break
         width += character_width;
         hard_end = index + character.len_utf8();
         if prefer_natural_break
-            && matches!(character, '。' | '！' | '？' | '；' | '，' | '、' | ',' | ';')
+            && matches!(
+                character,
+                '。' | '！' | '？' | '；' | '，' | '、' | ',' | ';'
+            )
             && width * 5 >= max_width * 3
         {
             natural_break = Some((hard_end, character));
@@ -128,7 +131,10 @@ fn compact_site_meta_description(value: &str, fallback: &str) -> String {
         .map(str::trim)
         .find(|paragraph| !paragraph.is_empty())
         .unwrap_or(fallback);
-    let compact = first_paragraph.split_whitespace().collect::<Vec<_>>().join(" ");
+    let compact = first_paragraph
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     let compact = compact.trim();
     if compact.is_empty() {
         fallback.chars().take(120).collect()
@@ -184,12 +190,17 @@ pub async fn post_detail(
 
     let post_id = post.id;
     // Real view count from read_logs
-    let view_count: i64 = state.db.query_one(
-        sea_orm::Statement::from_string(
+    let view_count: i64 = state
+        .db
+        .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
             format!("SELECT COUNT(*) FROM read_logs WHERE post_id = {}", post_id),
-        ),
-    ).await.ok().flatten().and_then(|r| r.try_get_by_index::<i64>(0).ok()).unwrap_or(0);
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     let category = if let Some(category_id) = post.category_id {
         categories::Entity::find_by_id(category_id)
@@ -206,7 +217,9 @@ pub async fn post_detail(
         .await
         .unwrap_or_else(|| "Mark-Share-X_用AI学AI".to_string());
     let site_title = display_site_title(&raw_site_title);
-    let site_description = get_setting(&state.db, "site_description").await.unwrap_or_default();
+    let site_description = get_setting(&state.db, "site_description")
+        .await
+        .unwrap_or_default();
     let configured_site_logo = get_setting(&state.db, "site_logo")
         .await
         .filter(|value| !value.trim().is_empty());
@@ -214,7 +227,9 @@ pub async fn post_detail(
         .await
         .as_deref()
         != Some("false");
-    let author = users::Entity::find_by_id(post.user_id).one(&state.db).await?;
+    let author = users::Entity::find_by_id(post.user_id)
+        .one(&state.db)
+        .await?;
     let author_name = author
         .as_ref()
         .and_then(|value| value.display_name.as_deref())
@@ -230,7 +245,8 @@ pub async fn post_detail(
         post.cover_image_url.as_deref(),
         post.cover_image_filename.as_deref(),
         post.cover_image.as_deref(),
-    ).await;
+    )
+    .await;
 
     if cover_image.is_none() {
         if let Some(category) = category.as_ref() {
@@ -239,26 +255,35 @@ pub async fn post_detail(
                 category.network_resource_id,
                 category.image_url.as_deref(),
                 category.image_filename.as_deref(),
-            ).await;
+            )
+            .await;
         }
     }
 
     // Derive base_url from request Host header (for OG meta tags)
-    let scheme = if headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()) == Some("https") {
+    let scheme = if headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        == Some("https")
+    {
         "https"
     } else {
         "http"
     };
-    let raw_host = headers.get("host")
+    let raw_host = headers
+        .get("host")
         .and_then(|v| v.to_str().ok())
         .unwrap_or(&state.config.server.host)
         .to_string();
     // Strip port from host header if present (Host: localhost:5023 → localhost)
     let host_only = raw_host.split(':').next().unwrap_or(&raw_host);
-    let base_url = if host_only == "localhost" || host_only.starts_with("127.") || host_only.starts_with("192.168.") {
+    let base_url = if host_only == "localhost"
+        || host_only.starts_with("127.")
+        || host_only.starts_with("192.168.")
+    {
         format!("{}://{}:{}", scheme, host_only, state.config.server.port)
     } else {
-        format!("{}://{}", scheme, raw_host)  // keep port in Host header for proxied requests
+        format!("{}://{}", scheme, raw_host) // keep port in Host header for proxied requests
     };
 
     // Make the real article/category cover absolute for templates and social metadata.
@@ -292,10 +317,8 @@ pub async fn post_detail(
     };
 
     // Resolve nr:{id} → real URLs
-    let mut resolved_html = crate::controllers::network_resources::resolve_nr_in_content(
-        &state.db,
-        &raw_html,
-    ).await;
+    let mut resolved_html =
+        crate::controllers::network_resources::resolve_nr_in_content(&state.db, &raw_html).await;
 
     // Resolve ./uploads/ → /uploads/ (root-relative) for images
     resolved_html = resolved_html.replace("./uploads/", "/uploads/");
@@ -316,13 +339,14 @@ pub async fn post_detail(
     );
 
     // Query adjacent posts for prev/next navigation
-    let (adjacent_prev, adjacent_next) = crate::services::posts::get_adjacent_posts(&state.db, post_id)
-        .await
-        .unwrap_or_default();
+    let (adjacent_prev, adjacent_next) =
+        crate::services::posts::get_adjacent_posts(&state.db, post_id)
+            .await
+            .unwrap_or_default();
 
     // Query related posts: same category, excluding current, limit 5
     use crate::models::entity::posts as posts_entity;
-    use sea_orm::{QueryFilter, QueryOrder, ColumnTrait, EntityTrait};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
     let related_posts: Vec<(String, String)> = if let Some(cid) = post.category_id {
         posts_entity::Entity::find()
             .filter(posts_entity::Column::CategoryId.eq(cid))
@@ -371,29 +395,43 @@ pub async fn post_detail(
             "slug": tag.slug,
         })).collect::<Vec<_>>(),
     }));
-    ctx.insert("adjacent_prev", &adjacent_prev.map(|(_, title, slug)| json!({"title": title, "slug": slug})));
-    ctx.insert("adjacent_next", &adjacent_next.map(|(_, title, slug)| json!({"title": title, "slug": slug})));
-    ctx.insert("related_posts", &related_posts.iter().map(|(title, slug)| json!({"title": title, "slug": slug})).collect::<Vec<_>>());
+    ctx.insert(
+        "adjacent_prev",
+        &adjacent_prev.map(|(_, title, slug)| json!({"title": title, "slug": slug})),
+    );
+    ctx.insert(
+        "adjacent_next",
+        &adjacent_next.map(|(_, title, slug)| json!({"title": title, "slug": slug})),
+    );
+    ctx.insert(
+        "related_posts",
+        &related_posts
+            .iter()
+            .map(|(title, slug)| json!({"title": title, "slug": slug}))
+            .collect::<Vec<_>>(),
+    );
     let tag_names: Vec<String> = tags.iter().map(|t| t.name.clone()).collect();
     ctx.insert("tag_names", &tag_names);
-    let tag_links = tags.iter().map(|tag| json!({
-        "name": tag.name,
-        "slug": tag.slug,
-    })).collect::<Vec<_>>();
+    let tag_links = tags
+        .iter()
+        .map(|tag| {
+            json!({
+                "name": tag.name,
+                "slug": tag.slug,
+            })
+        })
+        .collect::<Vec<_>>();
     ctx.insert("tag_links", &tag_links);
 
-    let html = state
-        .tera
-        .render("post.html", &ctx)
-        .map_err(|e| {
-            let mut err_chain = format!("{}", e);
-            let mut source = e.source();
-            while let Some(s) = source {
-                err_chain.push_str(&format!("\n  caused by: {}", s));
-                source = s.source();
-            }
-            AppError::Internal(anyhow::anyhow!("Template error: {}", err_chain))
-        })?;
+    let html = state.tera.render("post.html", &ctx).map_err(|e| {
+        let mut err_chain = format!("{}", e);
+        let mut source = e.source();
+        while let Some(s) = source {
+            err_chain.push_str(&format!("\n  caused by: {}", s));
+            source = s.source();
+        }
+        AppError::Internal(anyhow::anyhow!("Template error: {}", err_chain))
+    })?;
 
     Ok(Html(html))
 }
@@ -420,16 +458,21 @@ pub(crate) fn normalize_article_headings(html: &str, article_title: &str) -> Str
     });
     static HTML_TAG_RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?is)<[^>]+>").expect("valid HTML tag regex"));
-    static H1_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)<(/?)h1(\s[^>]*)?>").expect("valid H1 tag regex")
-    });
+    static H1_TAG_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)<(/?)h1(\s[^>]*)?>").expect("valid H1 tag regex"));
 
     let mut normalized = html.to_string();
     if let Some(captures) = LEADING_H1_RE.captures(&normalized) {
         let heading_html = captures.get(1).map_or("", |value| value.as_str());
         let heading_text = decode_heading_entities(&HTML_TAG_RE.replace_all(heading_html, ""));
-        let heading_text = heading_text.split_whitespace().collect::<Vec<_>>().join(" ");
-        let title_text = article_title.split_whitespace().collect::<Vec<_>>().join(" ");
+        let heading_text = heading_text
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let title_text = article_title
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
 
         if heading_text == title_text {
             if let Some(full_match) = captures.get(0) {
@@ -451,23 +494,30 @@ pub(crate) fn normalize_article_headings(html: &str, article_title: &str) -> Str
 /// Generates IDs from the heading text content, supports Chinese characters.
 fn add_heading_ids(html: &str) -> String {
     use regex::Regex;
-    
+
     let re = Regex::new(r"<h([1-3])(\s[^>]*)?>([^<]*)</h[1-3]>").unwrap();
     let mut used_ids = HashSet::new();
-    
+
     re.replace_all(html, |caps: &regex::Captures| {
         let level = caps.get(1).unwrap().as_str();
         let attrs = caps.get(2).map_or("", |m| m.as_str());
         let text = caps.get(3).unwrap().as_str();
-        
+
         // Skip if already has an id
         if attrs.contains("id=") {
             return caps.get(0).unwrap().as_str().to_string();
         }
-        
+
         let id = make_heading_id(text, &mut used_ids);
-        format!("<h{level} id=\"{id}\"{attrs}>{text}</h{level}>", level = level, id = id, attrs = attrs, text = text)
-    }).to_string()
+        format!(
+            "<h{level} id=\"{id}\"{attrs}>{text}</h{level}>",
+            level = level,
+            id = id,
+            attrs = attrs,
+            text = text
+        )
+    })
+    .to_string()
 }
 
 /// Generate a URL-safe ID from heading text (supports Chinese)
@@ -488,9 +538,13 @@ fn make_heading_id(text: &str, used: &mut HashSet<String>) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    
-    let base = if base.is_empty() { "heading".to_string() } else { base };
-    
+
+    let base = if base.is_empty() {
+        "heading".to_string()
+    } else {
+        base
+    };
+
     if used.insert(base.clone()) {
         return base;
     }
@@ -527,7 +581,9 @@ fn escape_html(value: &str) -> String {
 }
 
 fn render_spa_seo_shell(shell: &str, page: &SeoPage) -> Result<String, &'static str> {
-    let title_start = shell.find("<title>").ok_or("SPA shell is missing <title>")?;
+    let title_start = shell
+        .find("<title>")
+        .ok_or("SPA shell is missing <title>")?;
     let title_end = shell[title_start..]
         .find("</title>")
         .map(|offset| title_start + offset + "</title>".len())
@@ -575,9 +631,8 @@ fn render_spa_seo_shell(shell: &str, page: &SeoPage) -> Result<String, &'static 
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
-    let metadata = format!(
-        "{metadata}\n    <script type=\"application/ld+json\">{schema_json}</script>"
-    );
+    let metadata =
+        format!("{metadata}\n    <script type=\"application/ld+json\">{schema_json}</script>");
 
     let mut html = String::with_capacity(shell.len() + page.content_html.len() + 512);
     html.push_str(&shell[..title_start]);
@@ -721,14 +776,22 @@ pub async fn aggregate_page(
         .filter(|value| !value.trim().is_empty())
         .map(|value| compact_site_meta_description(&value, &site_title))
         .unwrap_or_else(|| compact_site_meta_description(&site_description, &site_title));
-    let base_url = derive_base_url(&headers, &state.config.server.host, state.config.server.port);
+    let base_url = derive_base_url(
+        &headers,
+        &state.config.server.host,
+        state.config.server.port,
+    );
     let canonical_url = format!("{}{}", base_url, uri.path());
     let segments: Vec<&str> = uri.path().trim_matches('/').split('/').collect();
 
     let (heading, description, content_html) = match uri.path() {
         "/" => {
             let posts = load_seo_posts(&state, 12, SeoPostFilter::default()).await?;
-            (site_title.clone(), site_description.clone(), render_post_list(&posts))
+            (
+                site_title.clone(),
+                site_description.clone(),
+                render_post_list(&posts),
+            )
         }
         "/knowledge-base" => {
             let posts = load_seo_posts(&state, 50, SeoPostFilter::default()).await?;
@@ -854,7 +917,8 @@ pub async fn aggregate_page(
         "/changelog" => (
             "更新日志".to_string(),
             format!("查看 {} 的版本更新、功能改进与问题修复记录。", site_title),
-            "<section aria-label=\"更新日志\"><p>版本更新、功能改进与问题修复记录。</p></section>".to_string(),
+            "<section aria-label=\"更新日志\"><p>版本更新、功能改进与问题修复记录。</p></section>"
+                .to_string(),
         ),
         _ => match segments.as_slice() {
             ["category", slug] if !slug.is_empty() => {
@@ -945,7 +1009,11 @@ pub async fn aggregate_page(
                 )
                 .await?;
                 let description = format!("浏览“{}”类型的技术文章。", article_type.display_name);
-                (article_type.display_name, description, render_post_list(&posts))
+                (
+                    article_type.display_name,
+                    description,
+                    render_post_list(&posts),
+                )
             }
             ["status", code] if !code.is_empty() => {
                 let article_status = article_statuses::Entity::find()
@@ -966,8 +1034,13 @@ pub async fn aggregate_page(
                     },
                 )
                 .await?;
-                let description = format!("浏览状态为“{}”的技术文章。", article_status.display_name);
-                (article_status.display_name, description, render_post_list(&posts))
+                let description =
+                    format!("浏览状态为“{}”的技术文章。", article_status.display_name);
+                (
+                    article_status.display_name,
+                    description,
+                    render_post_list(&posts),
+                )
             }
             _ => return Err(AppError::NotFound("页面不存在".to_string())),
         },
@@ -988,7 +1061,11 @@ pub async fn aggregate_page(
         canonical_url,
         site_title,
         social_image: format!("{base_url}/default-og.png"),
-        schema_type: if uri.path() == "/" { "WebSite" } else { "CollectionPage" },
+        schema_type: if uri.path() == "/" {
+            "WebSite"
+        } else {
+            "CollectionPage"
+        },
         heading,
         intro: description,
         content_html,
@@ -1009,8 +1086,7 @@ fn extract_meta_text(content_html: &str, title: &str) -> String {
     static BLOCK_END_RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(?i)</(?:p|h[1-6]|li|blockquote|div|section|article)>|<br\s*/?>").unwrap()
     });
-    static TAG_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?s)<[^>]+>").unwrap());
+    static TAG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<[^>]+>").unwrap());
     static ENTITY_RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);").unwrap()
     });
@@ -1018,27 +1094,27 @@ fn extract_meta_text(content_html: &str, title: &str) -> String {
     let without_noise = NON_CONTENT_RE.replace_all(content_html, " ");
     let with_boundaries = BLOCK_END_RE.replace_all(&without_noise, " ");
     let without_tags = TAG_RE.replace_all(&with_boundaries, "");
-    let decoded = ENTITY_RE.replace_all(&without_tags, |caps: &regex::Captures| {
-        match &caps[0] {
-            "&amp;" => "&".to_string(),
-            "&lt;" => "<".to_string(),
-            "&gt;" => ">".to_string(),
-            "&quot;" => "\"".to_string(),
-            "&apos;" => "'".to_string(),
-            "&nbsp;" => " ".to_string(),
-            entity if entity.starts_with("&#x") => u32::from_str_radix(&entity[3..entity.len() - 1], 16)
+    let decoded = ENTITY_RE.replace_all(&without_tags, |caps: &regex::Captures| match &caps[0] {
+        "&amp;" => "&".to_string(),
+        "&lt;" => "<".to_string(),
+        "&gt;" => ">".to_string(),
+        "&quot;" => "\"".to_string(),
+        "&apos;" => "'".to_string(),
+        "&nbsp;" => " ".to_string(),
+        entity if entity.starts_with("&#x") => {
+            u32::from_str_radix(&entity[3..entity.len() - 1], 16)
                 .ok()
                 .and_then(char::from_u32)
                 .map(|c| c.to_string())
-                .unwrap_or_default(),
-            entity if entity.starts_with("&#") => entity[2..entity.len() - 1]
-                .parse::<u32>()
-                .ok()
-                .and_then(char::from_u32)
-                .map(|c| c.to_string())
-                .unwrap_or_default(),
-            _ => String::new(),
+                .unwrap_or_default()
         }
+        entity if entity.starts_with("&#") => entity[2..entity.len() - 1]
+            .parse::<u32>()
+            .ok()
+            .and_then(char::from_u32)
+            .map(|c| c.to_string())
+            .unwrap_or_default(),
+        _ => String::new(),
     });
 
     let mut text = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1051,7 +1127,11 @@ fn extract_meta_text(content_html: &str, title: &str) -> String {
         }
     }
 
-    text.chars().take(160).collect::<String>().trim().to_string()
+    text.chars()
+        .take(160)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn build_meta_description(
@@ -1177,15 +1257,13 @@ pub async fn spa_fallback(uri: Uri) -> Response {
             )
                 .into_response();
             if let Some(value) = directive {
-                response.headers_mut().insert("X-Robots-Tag", value.parse().unwrap());
+                response
+                    .headers_mut()
+                    .insert("X-Robots-Tag", value.parse().unwrap());
             }
             response
         }
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "前端页面文件不存在",
-        )
-            .into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "前端页面文件不存在").into_response(),
     }
 }
 
@@ -1194,7 +1272,11 @@ pub async fn robots_txt(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<(HeaderMap, String), AppError> {
-    let base_url = derive_base_url(&headers, &state.config.server.host, state.config.server.port);
+    let base_url = derive_base_url(
+        &headers,
+        &state.config.server.host,
+        state.config.server.port,
+    );
     let content = format!(
         "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\nSitemap: {}/sitemap.xml\n",
         base_url
@@ -1211,7 +1293,11 @@ pub async fn sitemap_xml(
 ) -> Result<(HeaderMap, String), AppError> {
     use sea_orm::QueryOrder;
 
-    let base_url = derive_base_url(&headers, &state.config.server.host, state.config.server.port);
+    let base_url = derive_base_url(
+        &headers,
+        &state.config.server.host,
+        state.config.server.port,
+    );
 
     // Published, non-deleted posts are the source of truth for every sitemap entry.
     let published_posts = posts::Entity::find()
@@ -1222,8 +1308,14 @@ pub async fn sitemap_xml(
         .await
         .unwrap_or_default();
 
-    let published_post_ids = published_posts.iter().map(|post| post.id).collect::<HashSet<_>>();
-    let published_author_ids = published_posts.iter().map(|post| post.user_id).collect::<HashSet<_>>();
+    let published_post_ids = published_posts
+        .iter()
+        .map(|post| post.id)
+        .collect::<HashSet<_>>();
+    let published_author_ids = published_posts
+        .iter()
+        .map(|post| post.user_id)
+        .collect::<HashSet<_>>();
     let used_article_types = published_posts
         .iter()
         .map(|post| post.article_type.clone())
@@ -1301,7 +1393,11 @@ pub async fn sitemap_xml(
     );
 
     let mut push_url = |path: &str, priority: &str, lastmod: Option<String>| {
-        xml.push_str(&format!("  <url><loc>{}{}</loc>", base_url, escape_html(path)));
+        xml.push_str(&format!(
+            "  <url><loc>{}{}</loc>",
+            base_url,
+            escape_html(path)
+        ));
         if let Some(lastmod) = lastmod {
             xml.push_str(&format!("<lastmod>{}</lastmod>", lastmod));
         }
@@ -1361,17 +1457,25 @@ pub async fn sitemap_xml(
 
 /// Helper: derive base URL from request Host header
 fn derive_base_url(headers: &HeaderMap, config_host: &str, config_port: u16) -> String {
-    let scheme = if headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()) == Some("https") {
+    let scheme = if headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        == Some("https")
+    {
         "https"
     } else {
         "http"
     };
-    let raw_host = headers.get("host")
+    let raw_host = headers
+        .get("host")
         .and_then(|v| v.to_str().ok())
         .unwrap_or(config_host)
         .to_string();
     let host_only = raw_host.split(':').next().unwrap_or(&raw_host);
-    if host_only == "localhost" || host_only.starts_with("127.") || host_only.starts_with("192.168.") {
+    if host_only == "localhost"
+        || host_only.starts_with("127.")
+        || host_only.starts_with("192.168.")
+    {
         format!("{}://{}:{}", scheme, host_only, config_port)
     } else {
         format!("{}://{}", scheme, raw_host)
@@ -1434,8 +1538,8 @@ mod tests {
     use super::{
         build_meta_description, build_meta_title, build_social_image_url,
         compact_site_meta_description, display_site_title, inject_robots_meta,
-        normalize_article_headings, render_spa_seo_shell, seo_display_width,
-        spa_robots_directive, SeoPage,
+        normalize_article_headings, render_spa_seo_shell, seo_display_width, spa_robots_directive,
+        SeoPage,
     };
 
     #[test]
@@ -1449,7 +1553,10 @@ mod tests {
     #[test]
     fn social_image_prefers_cover_and_falls_back_to_embedded_default() {
         assert_eq!(
-            build_social_image_url(Some("https://cdn.example.com/cover.jpg"), "https://www.xlevon.cn"),
+            build_social_image_url(
+                Some("https://cdn.example.com/cover.jpg"),
+                "https://www.xlevon.cn"
+            ),
             "https://cdn.example.com/cover.jpg"
         );
         assert_eq!(
@@ -1494,8 +1601,12 @@ mod tests {
 
         assert!(html.contains("<title>知识库 - MarkShareX</title>"));
         assert!(html.contains("<meta name=\"description\" content=\"浏览技术文章\">"));
-        assert!(html.contains("<link rel=\"canonical\" href=\"https://www.xlevon.cn/knowledge-base\">"));
-        assert!(html.contains("<meta property=\"og:image\" content=\"https://www.xlevon.cn/default-og.png\">"));
+        assert!(
+            html.contains("<link rel=\"canonical\" href=\"https://www.xlevon.cn/knowledge-base\">")
+        );
+        assert!(html.contains(
+            "<meta property=\"og:image\" content=\"https://www.xlevon.cn/default-og.png\">"
+        ));
         assert!(html.contains("<meta name=\"twitter:card\" content=\"summary_large_image\">"));
         assert!(html.contains("\"@type\":\"CollectionPage\""));
         assert!(html.contains("<h1>知识库</h1>"));
@@ -1605,8 +1716,14 @@ mod tests {
     fn private_spa_routes_get_matching_noindex_directives() {
         assert_eq!(spa_robots_directive("/search"), Some("noindex, follow"));
         assert_eq!(spa_robots_directive("/login"), Some("noindex, nofollow"));
-        assert_eq!(spa_robots_directive("/admin/news"), Some("noindex, nofollow"));
-        assert_eq!(spa_robots_directive("/guestbook"), Some("noindex, nofollow"));
+        assert_eq!(
+            spa_robots_directive("/admin/news"),
+            Some("noindex, nofollow")
+        );
+        assert_eq!(
+            spa_robots_directive("/guestbook"),
+            Some("noindex, nofollow")
+        );
         let shell = "<html><head></head><body></body></html>";
         assert!(inject_robots_meta(shell, "noindex, follow")
             .contains("<meta name=\"robots\" content=\"noindex, follow\">"));

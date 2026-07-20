@@ -142,6 +142,7 @@ import { batchDeleteFiles } from '@/api/files'
 import { fetchNetworkResources } from '@/api/admin'
 import type { Category } from '@/api/index'
 import { marked } from 'marked'
+import { renderMarkdown } from '@/utils/renderMarkdown'
 // marked 15.x 移除了 headerIds 选项，用自定义 renderer 生成 heading ID
 // 规则：空格→-、删标点、保留字母/数字/中文/连字符、合并连续-
 const headingRenderer = new marked.Renderer()
@@ -281,7 +282,7 @@ const networkUrlCache = reactive(new Map<number, string>())
 
 const renderedPreview = computed(() => {
   if (!form.content) return '<p style="color: var(--color-text-muted);opacity:0.5">开始写作...</p>'
-  return marked.parse(form.content, { renderer: headingRenderer })
+  return renderMarkdown(form.content, headingRenderer)
 })
 
 // 预览区内锚点跳转：拦截 # 链接点击，手动滚动 .preview-content 容器

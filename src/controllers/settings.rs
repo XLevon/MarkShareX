@@ -1,11 +1,11 @@
-use axum::{extract::State, Json};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use crate::utils::{AppState, AppError, ApiResponse};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::settings;
+use crate::utils::{ApiResponse, AppError, AppState};
+use axum::{extract::State, Json};
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
 pub struct SettingsResponse {
@@ -30,10 +30,7 @@ pub async fn get_settings(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<SettingsResponse>>, AppError> {
     let items = settings::Entity::find().all(&state.db).await?;
-    let map: HashMap<String, String> = items
-        .into_iter()
-        .map(|s| (s.key, s.value))
-        .collect();
+    let map: HashMap<String, String> = items.into_iter().map(|s| (s.key, s.value)).collect();
     Ok(Json(ApiResponse::new(SettingsResponse { settings: map })))
 }
 /// PUT /api/v1/settings — Update site settings (admin)
@@ -86,9 +83,6 @@ pub async fn update_settings(
 
     // Return updated settings
     let items = settings::Entity::find().all(&state.db).await?;
-    let map: HashMap<String, String> = items
-        .into_iter()
-        .map(|s| (s.key, s.value))
-        .collect();
+    let map: HashMap<String, String> = items.into_iter().map(|s| (s.key, s.value)).collect();
     Ok(Json(ApiResponse::new(SettingsResponse { settings: map })))
 }

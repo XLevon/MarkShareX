@@ -12,10 +12,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::AiSearchConfig;
-use crate::utils::{AppState, AppError};
+use crate::models::entity::categories;
 use crate::models::entity::news;
 use crate::models::entity::posts;
-use crate::models::entity::categories;
+use crate::utils::{AppError, AppState};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Tool trait
@@ -50,7 +50,9 @@ pub struct ToolRegistry {
 impl ToolRegistry {
     /// 创建空注册表，后续通过 register 添加工具
     pub fn new() -> Self {
-        Self { tools: HashMap::new() }
+        Self {
+            tools: HashMap::new(),
+        }
     }
 
     /// 注册一个工具
@@ -103,11 +105,15 @@ impl Default for ToolRegistry {
 // ═══════════════════════════════════════════════════════════════════════
 
 fn get_search_config(state: &AppState) -> Result<&AiSearchConfig, AppError> {
-    state.config.ai.as_ref()
+    state
+        .config
+        .ai
+        .as_ref()
         .and_then(|a| a.search.as_ref())
-        .ok_or_else(|| AppError::BadRequest("AI 搜索未配置，请在 config.toml 中设置 [ai.search]".into()))
+        .ok_or_else(|| {
+            AppError::BadRequest("AI 搜索未配置，请在 config.toml 中设置 [ai.search]".into())
+        })
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Built-in Tool: web_search
@@ -117,7 +123,9 @@ pub struct WebSearchTool;
 
 #[async_trait]
 impl AiTool for WebSearchTool {
-    fn name(&self) -> &str { "web_search" }
+    fn name(&self) -> &str {
+        "web_search"
+    }
 
     fn description(&self) -> &str {
         "搜索网络资讯，返回标题、URL 和摘要。适合查找最新新闻、技术动态等。"
@@ -190,13 +198,19 @@ impl AiTool for WebSearchTool {
 
             let resp = match req.send().await {
                 Ok(r) => r,
-                Err(e) => { last_err = e.to_string(); continue; }
+                Err(e) => {
+                    last_err = e.to_string();
+                    continue;
+                }
             };
 
             let status = resp.status().as_u16();
             let body: Value = match resp.json().await {
                 Ok(b) => b,
-                Err(e) => { last_err = e.to_string(); continue; }
+                Err(e) => {
+                    last_err = e.to_string();
+                    continue;
+                }
             };
 
             // 额度耗尽 → 降级到下一级
@@ -218,13 +232,19 @@ impl AiTool for WebSearchTool {
                 _ => vec![],
             };
 
-            let mut result = serde_json::json!({"success": true, "count": results.len(), "results": results});
-            if i > 0 { result["degraded"] = serde_json::json!(true); }
+            let mut result =
+                serde_json::json!({"success": true, "count": results.len(), "results": results});
+            if i > 0 {
+                result["degraded"] = serde_json::json!(true);
+            }
 
             return Ok(serde_json::to_string_pretty(&result).unwrap_or_default());
         }
 
-        Err(AppError::Internal(anyhow::anyhow!("所有搜索提供商均不可用: {}", last_err)))
+        Err(AppError::Internal(anyhow::anyhow!(
+            "所有搜索提供商均不可用: {}",
+            last_err
+        )))
     }
 }
 
@@ -236,7 +256,9 @@ pub struct WebExtractTool;
 
 #[async_trait]
 impl AiTool for WebExtractTool {
-    fn name(&self) -> &str { "web_extract" }
+    fn name(&self) -> &str {
+        "web_extract"
+    }
 
     fn description(&self) -> &str {
         "抓取指定 URL 的网页内容，返回 Markdown 格式正文。适合获取文章全文。"
@@ -260,7 +282,11 @@ impl AiTool for WebExtractTool {
     async fn execute(&self, args: Value, state: &AppState) -> Result<String, AppError> {
         let urls: Vec<String> = args["urls"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         if urls.is_empty() {
@@ -284,13 +310,17 @@ impl AiTool for WebExtractTool {
                                 "url": url, "content": truncate_str(&text, 15000), "fallback": true
                             }));
                         }
-                        Err(e) => results.push(serde_json::json!({"url": url, "error": e.to_string()})),
+                        Err(e) => {
+                            results.push(serde_json::json!({"url": url, "error": e.to_string()}))
+                        }
                     }
                     extracted = true;
                     break;
                 }
 
-                if key.is_empty() { continue; }
+                if key.is_empty() {
+                    continue;
+                }
 
                 let client = reqwest::Client::new();
                 let (payload, endpoint) = match *provider {
@@ -323,9 +353,15 @@ impl AiTool for WebExtractTool {
 
                 if let Ok(body) = resp.json::<Value>().await {
                     let content = match *provider {
-                        "tavily" => body["results"][0]["raw_content"].as_str().unwrap_or("").to_string(),
-                        "firecrawl" => body["data"]["markdown"].as_str()
-                            .or(body["data"]["content"].as_str()).unwrap_or("").to_string(),
+                        "tavily" => body["results"][0]["raw_content"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
+                        "firecrawl" => body["data"]["markdown"]
+                            .as_str()
+                            .or(body["data"]["content"].as_str())
+                            .unwrap_or("")
+                            .to_string(),
                         _ => String::new(),
                     };
                     if !content.is_empty() {
@@ -345,7 +381,8 @@ impl AiTool for WebExtractTool {
             "success": true,
             "count": results.len(),
             "results": results,
-        })).unwrap_or_default())
+        }))
+        .unwrap_or_default())
     }
 }
 
@@ -357,7 +394,9 @@ pub struct CreateNewsTool;
 
 #[async_trait]
 impl AiTool for CreateNewsTool {
-    fn name(&self) -> &str { "create_news" }
+    fn name(&self) -> &str {
+        "create_news"
+    }
 
     fn description(&self) -> &str {
         "创建一条资讯。需要提供 title（标题）、summary（摘要）、content（Markdown 正文）、source_url（来源链接）、topic_type（题材类型，可选）、status（draft 草稿 或 published 已发布，默认 draft）。"
@@ -416,21 +455,25 @@ impl AiTool for CreateNewsTool {
         }
 
         if status != "draft" && status != "published" {
-            return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
+            return Err(AppError::BadRequest(
+                "status 只能是 draft 或 published".into(),
+            ));
         }
 
         // ═══ 去重检查 1：source_url ═══
         if !source_url.is_empty() {
             let exists = news::Entity::find()
                 .filter(news::Column::SourceUrl.eq(&source_url))
-                .one(&state.db).await
+                .one(&state.db)
+                .await
                 .map_err(|e| AppError::Internal(anyhow::anyhow!("查询失败: {}", e)))?;
             if exists.is_some() {
                 return Ok(serde_json::to_string_pretty(&serde_json::json!({
                     "success": false,
                     "skipped": "duplicate_source_url",
                     "message": format!("跳过：来源 URL 已存在 — {}", source_url),
-                })).unwrap_or_default());
+                }))
+                .unwrap_or_default());
             }
         }
 
@@ -441,7 +484,8 @@ impl AiTool for CreateNewsTool {
             .column(news::Column::Title)
             .filter(news::Column::CreatedAt.gte(three_days_ago.and_hms_opt(0, 0, 0).unwrap()))
             .into_tuple::<String>()
-            .all(&state.db).await
+            .all(&state.db)
+            .await
             .unwrap_or_default();
 
         // 提取标题中的2+字中文词汇
@@ -449,9 +493,15 @@ impl AiTool for CreateNewsTool {
         if !title_words.is_empty() {
             for existing_title in &recent {
                 let existing_words = extract_cn_words(existing_title);
-                if existing_words.is_empty() { continue; }
-                let overlap: usize = title_words.iter().filter(|w| existing_words.contains(*w)).count();
-                let similarity = overlap as f64 / title_words.len().min(existing_words.len()) as f64;
+                if existing_words.is_empty() {
+                    continue;
+                }
+                let overlap: usize = title_words
+                    .iter()
+                    .filter(|w| existing_words.contains(*w))
+                    .count();
+                let similarity =
+                    overlap as f64 / title_words.len().min(existing_words.len()) as f64;
                 if similarity > 0.6 {
                     return Ok(serde_json::to_string_pretty(&serde_json::json!({
                         "success": false,
@@ -489,7 +539,9 @@ impl AiTool for CreateNewsTool {
             ..Default::default()
         };
 
-        let inserted = model.insert(&state.db).await
+        let inserted = model
+            .insert(&state.db)
+            .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("创建资讯失败: {}", e)))?;
 
         let status_label = if is_published { "已发布" } else { "草稿" };
@@ -515,7 +567,9 @@ pub struct CreatePostTool;
 
 #[async_trait]
 impl AiTool for CreatePostTool {
-    fn name(&self) -> &str { "create_post" }
+    fn name(&self) -> &str {
+        "create_post"
+    }
 
     fn description(&self) -> &str {
         "创建一篇知识库文章。需要提供 title（标题）、content（Markdown 正文，可用 nr:ID 引用资源库图片）、category_id（分类 ID，需先查询 categories 获取）。可选 summary、cover_image（nr:ID 或 URL）、status（draft 或 published，默认 draft）、article_type（original=原创、ai_organized=AI整理、tutorial=教程、repost=转载、translation=翻译、opinion_essay=随笔，默认 original）。"
@@ -569,23 +623,45 @@ impl AiTool for CreatePostTool {
         let cover_image = args["cover_image"].as_str().unwrap_or("").to_string();
         let status = args["status"].as_str().unwrap_or("draft").to_string();
         let category_id: i32 = args["category_id"].as_i64().unwrap_or(0) as i32;
-        let article_type = args["article_type"].as_str().unwrap_or("original").to_string();
+        let article_type = args["article_type"]
+            .as_str()
+            .unwrap_or("original")
+            .to_string();
 
-        if title.is_empty() { return Err(AppError::BadRequest("标题不能为空".into())); }
-        if content.is_empty() { return Err(AppError::BadRequest("内容不能为空".into())); }
-        if category_id <= 0 { return Err(AppError::BadRequest("category_id 无效".into())); }
-        if status != "draft" && status != "published" {
-            return Err(AppError::BadRequest("status 只能是 draft 或 published".into()));
+        if title.is_empty() {
+            return Err(AppError::BadRequest("标题不能为空".into()));
         }
-        let valid_types = ["original", "ai_organized", "tutorial", "repost", "translation", "opinion_essay"];
+        if content.is_empty() {
+            return Err(AppError::BadRequest("内容不能为空".into()));
+        }
+        if category_id <= 0 {
+            return Err(AppError::BadRequest("category_id 无效".into()));
+        }
+        if status != "draft" && status != "published" {
+            return Err(AppError::BadRequest(
+                "status 只能是 draft 或 published".into(),
+            ));
+        }
+        let valid_types = [
+            "original",
+            "ai_organized",
+            "tutorial",
+            "repost",
+            "translation",
+            "opinion_essay",
+        ];
         if !valid_types.contains(&article_type.as_str()) {
-            return Err(AppError::BadRequest(format!("article_type 无效，可选: {}", valid_types.join("、"))));
+            return Err(AppError::BadRequest(format!(
+                "article_type 无效，可选: {}",
+                valid_types.join("、")
+            )));
         }
 
         // 验证分类存在
         let cat = categories::Entity::find_by_id(category_id)
             .filter(categories::Column::DeletedAt.is_null())
-            .one(&state.db).await
+            .one(&state.db)
+            .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("查询分类失败: {}", e)))?
             .ok_or_else(|| AppError::BadRequest(format!("分类 #{} 不存在", category_id)))?;
 
@@ -614,7 +690,11 @@ impl AiTool for CreatePostTool {
             (None, None, None)
         };
 
-        let summary_opt = if summary.is_empty() { None } else { Some(summary) };
+        let summary_opt = if summary.is_empty() {
+            None
+        } else {
+            Some(summary)
+        };
 
         let model = posts::ActiveModel {
             title: Set(title.clone()),
@@ -643,7 +723,9 @@ impl AiTool for CreatePostTool {
             ..Default::default()
         };
 
-        let inserted = model.insert(&state.db).await
+        let inserted = model
+            .insert(&state.db)
+            .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("创建文章失败: {}", e)))?;
 
         let status_label = if is_published { "已发布" } else { "草稿" };
@@ -667,7 +749,9 @@ pub struct GetCurrentDatetimeTool;
 
 #[async_trait]
 impl AiTool for GetCurrentDatetimeTool {
-    fn name(&self) -> &str { "get_current_datetime" }
+    fn name(&self) -> &str {
+        "get_current_datetime"
+    }
 
     fn description(&self) -> &str {
         "获取当前日期和时间（含星期），返回服务器本地时间（CST/UTC+8）。无需参数。"
@@ -697,7 +781,9 @@ pub struct ApiRequestTool {
 
 #[async_trait]
 impl AiTool for ApiRequestTool {
-    fn name(&self) -> &str { "api_request" }
+    fn name(&self) -> &str {
+        "api_request"
+    }
 
     fn description(&self) -> &str {
         "搜索站内资源并返回超链接。常用接口：① GET /api/v1/search?q=关键词（知识文章Tantivy搜索）② GET /api/v1/news?search=关键词（资讯标题搜索，可选 topic_type/date_from/date_to）③ GET /api/v1/categories（分类列表）④ GET /api/v1/tags（标签列表）。仅支持本站 API 的相对路径。返回 JSON，自行解析整理为 Markdown 超链接。"
@@ -738,7 +824,9 @@ impl AiTool for ApiRequestTool {
         // 相对路径直接补全；其他绝对 URL 一律拒绝
         let url = if url.starts_with("http://") || url.starts_with("https://") {
             // 提取 path 部分（含查询参数）
-            let path_and_query = url.split("://").nth(1)
+            let path_and_query = url
+                .split("://")
+                .nth(1)
                 .and_then(|s| s.find('/').map(|i| &s[i..]))
                 .unwrap_or("/");
             if !path_and_query.starts_with("/api/") {
@@ -746,7 +834,10 @@ impl AiTool for ApiRequestTool {
                     "api_request 仅支持本站 API（/api/...），不允许调用外部接口。如需外部数据请使用 web_search/web_extract。".into()
                 ));
             }
-            format!("http://127.0.0.1:{}{}", state.config.server.port, path_and_query)
+            format!(
+                "http://127.0.0.1:{}{}",
+                state.config.server.port, path_and_query
+            )
         } else {
             let path = url.trim_start_matches('/');
             format!("http://127.0.0.1:{}/{}", state.config.server.port, path)
@@ -761,7 +852,10 @@ impl AiTool for ApiRequestTool {
         let mut req = match method.as_str() {
             "POST" => {
                 let body = args["body"].as_str().unwrap_or("{}").to_string();
-                client.post(&url).header("Content-Type", "application/json").body(body)
+                client
+                    .post(&url)
+                    .header("Content-Type", "application/json")
+                    .body(body)
             }
             _ => client.get(&url),
         };
@@ -773,11 +867,15 @@ impl AiTool for ApiRequestTool {
             }
         }
 
-        let resp = req.send().await
+        let resp = req
+            .send()
+            .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("API 请求失败: {}", e)))?;
 
         let status = resp.status();
-        let body = resp.text().await
+        let body = resp
+            .text()
+            .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("读取响应失败: {}", e)))?;
 
         // 截断过长响应（按字符而非字节截断，防止中文截断 panic）
@@ -792,9 +890,9 @@ impl AiTool for ApiRequestTool {
     }
 }
 
-
 /// DuckDuckGo 免费搜索：抓取 Lite 版 HTML 页面并解析结果
 async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<String, AppError> {
+    crate::utils::safe_url::validate_safe_url(base_url).await?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
@@ -806,28 +904,29 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
     } else {
         base_url
     };
-    let url = format!(
-        "{}?q={}",
-        base.trim_end_matches('/'),
-        urlencoding(query)
-    );
+    let url = format!("{}?q={}", base.trim_end_matches('/'), urlencoding(query));
 
-    let resp = client.get(&url).send().await
+    let resp = client
+        .get(&url)
+        .send()
+        .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("DuckDuckGo 搜索请求失败: {}", e)))?;
 
-    let html = resp.text().await
+    let html = resp
+        .text()
+        .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("DuckDuckGo 响应读取失败: {}", e)))?;
 
     // 解析 HTML：匹配 <a class="result-link" href="URL">TITLE</a> 和后面的描述文本
-    let link_re = Regex::new(
-        r#"<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#
-    ).map_err(|e| AppError::Internal(anyhow::anyhow!("正则编译失败: {}", e)))?;
+    let link_re =
+        Regex::new(r#"<a[^>]*class="[^"]*result-link[^"]*"[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("正则编译失败: {}", e)))?;
 
-    let snippet_re = Regex::new(
-        r#"<td[^>]*class="[^"]*result-snippet[^"]*"[^>]*>(.*?)</td>"#
-    ).map_err(|e| AppError::Internal(anyhow::anyhow!("正则编译失败: {}", e)))?;
+    let snippet_re = Regex::new(r#"<td[^>]*class="[^"]*result-snippet[^"]*"[^>]*>(.*?)</td>"#)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("正则编译失败: {}", e)))?;
 
-    let links: Vec<(String, String)> = link_re.captures_iter(&html)
+    let links: Vec<(String, String)> = link_re
+        .captures_iter(&html)
         .map(|cap| {
             let url = cap[1].to_string();
             let title = strip_html(&cap[2]);
@@ -835,18 +934,22 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
         })
         .collect();
 
-    let snippets: Vec<String> = snippet_re.captures_iter(&html)
+    let snippets: Vec<String> = snippet_re
+        .captures_iter(&html)
         .map(|cap| strip_html(&cap[1]))
         .collect();
 
-    let results: Vec<Value> = links.into_iter()
+    let results: Vec<Value> = links
+        .into_iter()
         .zip(snippets.into_iter().chain(std::iter::repeat(String::new())))
         .take(limit)
-        .map(|((url, title), desc)| serde_json::json!({
-            "title": title.trim(),
-            "url": url.trim(),
-            "description": desc.trim(),
-        }))
+        .map(|((url, title), desc)| {
+            serde_json::json!({
+                "title": title.trim(),
+                "url": url.trim(),
+                "description": desc.trim(),
+            })
+        })
         .filter(|r| !r["title"].as_str().unwrap_or("").is_empty())
         .collect();
 
@@ -855,7 +958,8 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
         "count": results.len(),
         "results": results,
         "provider": "duckduckgo",
-    })).unwrap_or_default())
+    }))
+    .unwrap_or_default())
 }
 
 /// SearXNG 自托管搜索：调用 JSON API
@@ -863,6 +967,7 @@ async fn searxng_search(query: &str, limit: usize, base_url: &str) -> Result<Str
     if base_url.is_empty() {
         return Err(AppError::Internal(anyhow::anyhow!("SearXNG 未配置地址")));
     }
+    crate::utils::safe_url::validate_safe_url(base_url).await?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
@@ -875,10 +980,15 @@ async fn searxng_search(query: &str, limit: usize, base_url: &str) -> Result<Str
         urlencoding(query)
     );
 
-    let resp = client.get(&url).send().await
+    let resp = client
+        .get(&url)
+        .send()
+        .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("SearXNG 搜索请求失败: {}", e)))?;
 
-    let body: Value = resp.json().await
+    let body: Value = resp
+        .json()
+        .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("SearXNG 响应解析失败: {}", e)))?;
 
     let results: Vec<Value> = body["results"]
@@ -886,11 +996,13 @@ async fn searxng_search(query: &str, limit: usize, base_url: &str) -> Result<Str
         .unwrap_or(&vec![])
         .iter()
         .take(limit)
-        .map(|r| serde_json::json!({
-            "title": r["title"].as_str().unwrap_or(""),
-            "url": r["url"].as_str().unwrap_or(""),
-            "description": r["content"].as_str().unwrap_or(""),
-        }))
+        .map(|r| {
+            serde_json::json!({
+                "title": r["title"].as_str().unwrap_or(""),
+                "url": r["url"].as_str().unwrap_or(""),
+                "description": r["content"].as_str().unwrap_or(""),
+            })
+        })
         .filter(|r| !r["title"].as_str().unwrap_or("").is_empty())
         .collect();
 
@@ -899,7 +1011,8 @@ async fn searxng_search(query: &str, limit: usize, base_url: &str) -> Result<Str
         "count": results.len(),
         "results": results,
         "provider": "searxng",
-    })).unwrap_or_default())
+    }))
+    .unwrap_or_default())
 }
 
 /// 检测 HTTP 状态码是否表示 API 额度耗尽
@@ -919,29 +1032,36 @@ fn provider_api_url(provider: &str) -> String {
 
 /// 对搜索关键词进行 URL 编码
 fn urlencoding(s: &str) -> String {
-    s.chars().map(|c| {
-        if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' {
-            c.to_string()
-        } else {
-            format!("%{:02X}", c as u8)
-        }
-    }).collect()
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' {
+                c.to_string()
+            } else {
+                format!("%{:02X}", c as u8)
+            }
+        })
+        .collect()
 }
-
 
 /// 辅助函数：直接抓取 URL 并提取文本
 async fn fetch_url_directly(url: &str) -> Result<String, AppError> {
+    crate::utils::safe_url::validate_safe_url(url).await?;
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
 
-    let resp = client.get(url)
+    let resp = client
+        .get(url)
         .header("User-Agent", "Mozilla/5.0 (compatible; MarkShareX/1.0)")
-        .send().await
+        .send()
+        .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("请求失败: {}", e)))?;
 
-    let html = resp.text().await
+    let html = resp
+        .text()
+        .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("读取响应失败: {}", e)))?;
 
     // 简单去 HTML 标签
@@ -955,9 +1075,17 @@ fn strip_html(html: &str) -> String {
     let mut result = String::new();
     let mut in_tag = false;
     for c in html.chars() {
-        if c == '<' { in_tag = true; continue; }
-        if c == '>' { in_tag = false; continue; }
-        if !in_tag { result.push(c); }
+        if c == '<' {
+            in_tag = true;
+            continue;
+        }
+        if c == '>' {
+            in_tag = false;
+            continue;
+        }
+        if !in_tag {
+            result.push(c);
+        }
     }
     // 压缩多余空白
     result.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -970,7 +1098,10 @@ fn truncate_str(s: &str, max_chars: usize) -> String {
         return s.to_string();
     }
     let truncated: String = s.chars().take(max_chars).collect();
-    format!("{}...\n\n(内容过长，已截断至前 {} 字符)", truncated, max_chars)
+    format!(
+        "{}...\n\n(内容过长，已截断至前 {} 字符)",
+        truncated, max_chars
+    )
 }
 
 /// 从中文文本中提取2字及以上词汇用于标题相似度去重
@@ -1015,8 +1146,12 @@ struct DbOverrideTool {
 
 #[async_trait]
 impl AiTool for DbOverrideTool {
-    fn name(&self) -> &str { self.inner.name() }
-    fn description(&self) -> &str { &self.item.description }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn description(&self) -> &str {
+        &self.item.description
+    }
     fn parameters(&self) -> Value {
         serde_json::from_str(&self.item.parameters_schema)
             .unwrap_or_else(|_| self.inner.parameters())
@@ -1033,8 +1168,12 @@ struct DbTool {
 
 #[async_trait]
 impl AiTool for DbTool {
-    fn name(&self) -> &str { &self.item.function_name }
-    fn description(&self) -> &str { &self.item.description }
+    fn name(&self) -> &str {
+        &self.item.function_name
+    }
+    fn description(&self) -> &str {
+        &self.item.description
+    }
 
     fn parameters(&self) -> Value {
         serde_json::from_str(&self.item.parameters_schema).unwrap_or(serde_json::json!({
@@ -1043,7 +1182,10 @@ impl AiTool for DbTool {
     }
 
     async fn execute(&self, _args: Value, _state: &AppState) -> Result<String, AppError> {
-        Ok(format!("工具「{}」已收到调用，但此工具为声明式定义，暂无执行逻辑。", self.item.name))
+        Ok(format!(
+            "工具「{}」已收到调用，但此工具为声明式定义，暂无执行逻辑。",
+            self.item.name
+        ))
     }
 }
 
@@ -1078,10 +1220,9 @@ pub async fn create_registry(
     let mut registry = ToolRegistry::new();
 
     // 加载所有 DB 工具（含 disabled），按 function_name 索引
-    let all_db: Vec<_> = ai_tool::Entity::find()
-        .all(db).await
-        .unwrap_or_default();
-    let db_map: HashMap<String, &ai_tool::Model> = all_db.iter()
+    let all_db: Vec<_> = ai_tool::Entity::find().all(db).await.unwrap_or_default();
+    let db_map: HashMap<String, &ai_tool::Model> = all_db
+        .iter()
         .map(|t| (t.function_name.clone(), t))
         .collect();
 
@@ -1094,14 +1235,21 @@ pub async fn create_registry(
         need_privilege: bool,
         is_privileged: bool,
     ) {
-        if need_privilege && !is_privileged { return; }
+        if need_privilege && !is_privileged {
+            return;
+        }
         // DB 中有记录且 enabled=false → 跳过
         if let Some(item) = db_map.get(name) {
-            if !item.enabled { return; }
+            if !item.enabled {
+                return;
+            }
         }
         // 无 DB 记录或用 DB 描述/参数覆盖
         let t: Arc<dyn AiTool> = if let Some(item) = db_map.get(name) {
-            Arc::new(DbOverrideTool { inner: Arc::new(tool), item: (*item).clone() })
+            Arc::new(DbOverrideTool {
+                inner: Arc::new(tool),
+                item: (*item).clone(),
+            })
         } else {
             Arc::new(tool)
         };
@@ -1109,26 +1257,68 @@ pub async fn create_registry(
     }
 
     // 基础工具（所有用户可用）
-    try_register(&mut registry, &db_map, "web_search", WebSearchTool, false, is_privileged);
-    try_register(&mut registry, &db_map, "web_extract", WebExtractTool, false, is_privileged);
-    try_register(&mut registry, &db_map, "get_current_datetime", GetCurrentDatetimeTool, false, is_privileged);
+    try_register(
+        &mut registry,
+        &db_map,
+        "web_search",
+        WebSearchTool,
+        false,
+        is_privileged,
+    );
+    try_register(
+        &mut registry,
+        &db_map,
+        "web_extract",
+        WebExtractTool,
+        false,
+        is_privileged,
+    );
+    try_register(
+        &mut registry,
+        &db_map,
+        "get_current_datetime",
+        GetCurrentDatetimeTool,
+        false,
+        is_privileged,
+    );
 
     // api_request — 需要携带用户 token 以用户身份调用
     if let Some(item) = db_map.get("api_request") {
-        if !item.enabled { /* DB 禁用，跳过 */ }
-        else {
-            let tool = ApiRequestTool { user_token: user.map(|u| u.token.clone()) };
-            let t: Arc<dyn AiTool> = Arc::new(DbOverrideTool { inner: Arc::new(tool), item: (*item).clone() });
+        if !item.enabled { /* DB 禁用，跳过 */
+        } else {
+            let tool = ApiRequestTool {
+                user_token: user.map(|u| u.token.clone()),
+            };
+            let t: Arc<dyn AiTool> = Arc::new(DbOverrideTool {
+                inner: Arc::new(tool),
+                item: (*item).clone(),
+            });
             registry.register(t);
         }
     } else {
-        let tool = ApiRequestTool { user_token: user.map(|u| u.token.clone()) };
+        let tool = ApiRequestTool {
+            user_token: user.map(|u| u.token.clone()),
+        };
         registry.register(Arc::new(tool));
     }
 
     // 特权工具（仅 admin/sub_admin）
-    try_register(&mut registry, &db_map, "create_news", CreateNewsTool, true, is_privileged);
-    try_register(&mut registry, &db_map, "create_post", CreatePostTool, true, is_privileged);
+    try_register(
+        &mut registry,
+        &db_map,
+        "create_news",
+        CreateNewsTool,
+        true,
+        is_privileged,
+    );
+    try_register(
+        &mut registry,
+        &db_map,
+        "create_post",
+        CreatePostTool,
+        true,
+        is_privileged,
+    );
 
     // 加载 DB 中的纯自定义工具（不被内置工具覆盖的，且 enabled=true）
     for item in all_db {

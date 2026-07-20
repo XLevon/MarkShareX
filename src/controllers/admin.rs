@@ -1,15 +1,17 @@
+use crate::middleware::auth::AuthUser;
+use crate::models::entity::{
+    author_applications, comments, files, login_logs, posts, read_logs, users,
+};
+use crate::services;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
 use axum::{
-    extract::{State, Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
-use crate::models::entity::{users, author_applications, posts, files, comments, login_logs, read_logs};
-use crate::middleware::auth::AuthUser;
-use crate::services;
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 #[derive(Deserialize)]
 pub struct ListUsersQuery {
@@ -96,13 +98,17 @@ pub async fn list_users(
         if pending_ids.is_empty() {
             return Ok(Json(ApiResponse::new(PaginatedUsers {
                 data: vec![],
-                pagination: Pagination { total: 0, pages: 0, page, page_size },
+                pagination: Pagination {
+                    total: 0,
+                    pages: 0,
+                    page,
+                    page_size,
+                },
             })));
         }
     }
 
-    let mut select = users::Entity::find()
-        .filter(users::Column::DeletedAt.is_null());
+    let mut select = users::Entity::find().filter(users::Column::DeletedAt.is_null());
 
     if is_pending_apply {
         select = select.filter(users::Column::Id.is_in(pending_ids.clone()));
@@ -113,8 +119,9 @@ pub async fn list_users(
     if let Some(ref search) = query.search {
         let pattern = format!("%{}%", search);
         select = select.filter(
-            users::Column::Username.like(&pattern)
-                .or(users::Column::Email.like(&pattern))
+            users::Column::Username
+                .like(&pattern)
+                .or(users::Column::Email.like(&pattern)),
         );
     }
 
@@ -177,9 +184,10 @@ pub async fn update_user_status(
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
     let valid_statuses = ["active", "muted", "banned"];
     if !valid_statuses.contains(&req.status.as_str()) {
-        return Err(AppError::BadRequest(
-            format!("无效状态，可选值: {}", valid_statuses.join(", "))
-        ));
+        return Err(AppError::BadRequest(format!(
+            "无效状态，可选值: {}",
+            valid_statuses.join(", ")
+        )));
     }
 
     let user = users::Entity::find_by_id(id)
@@ -227,9 +235,10 @@ pub async fn update_user_role(
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
     let valid_roles = ["admin", "sub_admin", "author", "visitor"];
     if !valid_roles.contains(&req.role.as_str()) {
-        return Err(AppError::BadRequest(
-            format!("无效角色，可选值: {}", valid_roles.join(", "))
-        ));
+        return Err(AppError::BadRequest(format!(
+            "无效角色，可选值: {}",
+            valid_roles.join(", ")
+        )));
     }
 
     let user = users::Entity::find_by_id(id)
@@ -292,15 +301,18 @@ pub async fn create_user(
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
     if req.username.trim().is_empty() || req.email.trim().is_empty() || req.password.len() < 8 {
-        return Err(AppError::BadRequest("用户名、邮箱不能为空，密码至少8位".into()));
+        return Err(AppError::BadRequest(
+            "用户名、邮箱不能为空，密码至少8位".into(),
+        ));
     }
 
     let role = req.role.unwrap_or_else(|| "author".to_string());
     let valid_roles = ["admin", "sub_admin", "author", "visitor"];
     if !valid_roles.contains(&role.as_str()) {
-        return Err(AppError::BadRequest(
-            format!("无效角色，可选值: {}", valid_roles.join(", "))
-        ));
+        return Err(AppError::BadRequest(format!(
+            "无效角色，可选值: {}",
+            valid_roles.join(", ")
+        )));
     }
 
     // 子管理员无权创建管理员账户
@@ -311,16 +323,18 @@ pub async fn create_user(
     let status = req.status.unwrap_or_else(|| "active".to_string());
     let valid_statuses = ["active", "muted", "banned"];
     if !valid_statuses.contains(&status.as_str()) {
-        return Err(AppError::BadRequest(
-            format!("无效状态，可选值: {}", valid_statuses.join(", "))
-        ));
+        return Err(AppError::BadRequest(format!(
+            "无效状态，可选值: {}",
+            valid_statuses.join(", ")
+        )));
     }
 
     // Check existing user
     let existing = users::Entity::find()
         .filter(
-            users::Column::Username.eq(req.username.trim())
-                .or(users::Column::Email.eq(req.email.trim()))
+            users::Column::Username
+                .eq(req.username.trim())
+                .or(users::Column::Email.eq(req.email.trim())),
         )
         .filter(users::Column::DeletedAt.is_null())
         .one(&state.db)
@@ -379,7 +393,11 @@ pub async fn update_user(
     let mut new_status = user.status.clone();
 
     if let Some(ref display_name) = req.display_name {
-        active.display_name = Set(if display_name.trim().is_empty() { None } else { Some(display_name.trim().to_string()) });
+        active.display_name = Set(if display_name.trim().is_empty() {
+            None
+        } else {
+            Some(display_name.trim().to_string())
+        });
     }
 
     if let Some(ref email) = req.email {
@@ -402,9 +420,10 @@ pub async fn update_user(
     if let Some(ref role) = req.role {
         let valid_roles = ["admin", "sub_admin", "author", "visitor"];
         if !valid_roles.contains(&role.as_str()) {
-            return Err(AppError::BadRequest(
-                format!("无效角色，可选值: {}", valid_roles.join(", "))
-            ));
+            return Err(AppError::BadRequest(format!(
+                "无效角色，可选值: {}",
+                valid_roles.join(", ")
+            )));
         }
         // 子管理员无权将用户提升为管理员
         if !auth.is_admin() && role == "admin" {
@@ -420,9 +439,10 @@ pub async fn update_user(
     if let Some(ref status) = req.status {
         let valid_statuses = ["active", "muted", "banned"];
         if !valid_statuses.contains(&status.as_str()) {
-            return Err(AppError::BadRequest(
-                format!("无效状态，可选值: {}", valid_statuses.join(", "))
-            ));
+            return Err(AppError::BadRequest(format!(
+                "无效状态，可选值: {}",
+                valid_statuses.join(", ")
+            )));
         }
         // Don't allow banning admin
         if user.role == "admin" && status == "banned" {
@@ -486,10 +506,24 @@ pub async fn delete_user(
         .collect();
 
     for post_id in &user_posts {
-        db.execute_unprepared(&format!("DELETE FROM post_tags WHERE post_id = {}", post_id)).await.ok();
-        db.execute_unprepared(&format!("DELETE FROM comments WHERE post_id = {}", post_id)).await.ok();
-        db.execute_unprepared(&format!("DELETE FROM likes WHERE post_id = {}", post_id)).await.ok();
-        db.execute_unprepared(&format!("DELETE FROM read_logs WHERE post_id = {}", post_id)).await.ok();
+        db.execute_unprepared(&format!(
+            "DELETE FROM post_tags WHERE post_id = {}",
+            post_id
+        ))
+        .await
+        .ok();
+        db.execute_unprepared(&format!("DELETE FROM comments WHERE post_id = {}", post_id))
+            .await
+            .ok();
+        db.execute_unprepared(&format!("DELETE FROM likes WHERE post_id = {}", post_id))
+            .await
+            .ok();
+        db.execute_unprepared(&format!(
+            "DELETE FROM read_logs WHERE post_id = {}",
+            post_id
+        ))
+        .await
+        .ok();
     }
 
     posts::Entity::delete_many()
@@ -510,7 +544,9 @@ pub async fn delete_user(
         .await?;
 
     // 4. 删除用户点赞记录
-    db.execute_unprepared(&format!("DELETE FROM likes WHERE user_id = {}", id)).await.ok();
+    db.execute_unprepared(&format!("DELETE FROM likes WHERE user_id = {}", id))
+        .await
+        .ok();
 
     // 5. 删除用户作者申请
     author_applications::Entity::delete_many()
@@ -519,13 +555,26 @@ pub async fn delete_user(
         .await?;
 
     // 5. 删除用户阅读日志、登录日志、刷新令牌
-    db.execute_unprepared(&format!("DELETE FROM read_logs WHERE user_id = {}", id)).await.ok();
-    db.execute_unprepared(&format!("DELETE FROM login_logs WHERE user_id = {}", id)).await.ok();
-    db.execute_unprepared(&format!("DELETE FROM refresh_tokens WHERE user_id = {}", id)).await.ok();
-    db.execute_unprepared(&format!("DELETE FROM tags WHERE user_id = {}", id)).await.ok();
+    db.execute_unprepared(&format!("DELETE FROM read_logs WHERE user_id = {}", id))
+        .await
+        .ok();
+    db.execute_unprepared(&format!("DELETE FROM login_logs WHERE user_id = {}", id))
+        .await
+        .ok();
+    db.execute_unprepared(&format!(
+        "DELETE FROM refresh_tokens WHERE user_id = {}",
+        id
+    ))
+    .await
+    .ok();
+    db.execute_unprepared(&format!("DELETE FROM tags WHERE user_id = {}", id))
+        .await
+        .ok();
 
     // 5.1 删除用户创建的分类（仅个人分类，系统分类 user_id 为 NULL 不受影响）
-    db.execute_unprepared(&format!("DELETE FROM categories WHERE user_id = {}", id)).await.ok();
+    db.execute_unprepared(&format!("DELETE FROM categories WHERE user_id = {}", id))
+        .await
+        .ok();
 
     // 6. 物理删除用户
     users::Entity::delete_by_id(id).exec(db).await?;
@@ -593,20 +642,28 @@ pub async fn list_login_logs(
         .all(&state.db)
         .await?;
 
-    let data: Vec<LoginLogResponse> = items.into_iter().map(|l| LoginLogResponse {
-        id: l.id,
-        user_id: l.user_id,
-        username: l.username,
-        ip_address: l.ip_address,
-        device_type: l.device_type,
-        login_method: l.login_method,
-        success: l.success,
-        created_at: l.created_at,
-    }).collect();
+    let data: Vec<LoginLogResponse> = items
+        .into_iter()
+        .map(|l| LoginLogResponse {
+            id: l.id,
+            user_id: l.user_id,
+            username: l.username,
+            ip_address: l.ip_address,
+            device_type: l.device_type,
+            login_method: l.login_method,
+            success: l.success,
+            created_at: l.created_at,
+        })
+        .collect();
 
     Ok(Json(ApiResponse::new(PaginatedLoginLogs {
         data,
-        pagination: Pagination { total, pages, page, page_size },
+        pagination: Pagination {
+            total,
+            pages,
+            page,
+            page_size,
+        },
     })))
 }
 
@@ -682,7 +739,10 @@ pub async fn list_read_logs(
             .filter(posts::Column::Id.is_in(post_ids.clone()))
             .all(&state.db)
             .await?;
-        posts_list.into_iter().map(|p| (p.id, p.title)).collect::<std::collections::HashMap<_, _>>()
+        posts_list
+            .into_iter()
+            .map(|p| (p.id, p.title))
+            .collect::<std::collections::HashMap<_, _>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -694,13 +754,17 @@ pub async fn list_read_logs(
             .filter(users::Column::Id.is_in(user_ids.clone()))
             .all(&state.db)
             .await?;
-        users_list.into_iter().map(|u| (u.id, u.username)).collect::<std::collections::HashMap<_, _>>()
+        users_list
+            .into_iter()
+            .map(|u| (u.id, u.username))
+            .collect::<std::collections::HashMap<_, _>>()
     } else {
         std::collections::HashMap::new()
     };
 
-    let data: Vec<ReadLogResponse> = items.into_iter().map(|r| {
-        ReadLogResponse {
+    let data: Vec<ReadLogResponse> = items
+        .into_iter()
+        .map(|r| ReadLogResponse {
             id: r.id,
             post_id: r.post_id,
             post_title: titles.get(&r.post_id).cloned(),
@@ -711,12 +775,17 @@ pub async fn list_read_logs(
             referrer: r.referrer,
             duration_seconds: r.duration_seconds,
             created_at: r.created_at,
-        }
-    }).collect();
+        })
+        .collect();
 
     Ok(Json(ApiResponse::new(PaginatedReadLogs {
         data,
-        pagination: Pagination { total, pages, page, page_size },
+        pagination: Pagination {
+            total,
+            pages,
+            page,
+            page_size,
+        },
     })))
 }
 

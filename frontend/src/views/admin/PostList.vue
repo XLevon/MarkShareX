@@ -324,6 +324,7 @@ import { fetchUsers } from '@/api/admin'
 import type { Post } from '@/api/index'
 import api from '@/api'
 import { marked } from 'marked'
+import { renderMarkdown } from '@/utils/renderMarkdown'
 import dayjs from 'dayjs'
 import { NSelect } from 'naive-ui'
 import { fetchAdminCategories } from '@/api/categories'
@@ -445,8 +446,8 @@ headingRenderer.heading = function ({ tokens, depth }: { tokens: any[]; depth: n
 
 const previewHtml = computed(() => {
   if (!previewPost.value) return ''
-  // 用 marked 客户端渲染（带 heading ID），不用后端 content_html（comrak 不生成 ID）
-  return previewPost.value.content ? marked.parse(previewPost.value.content, { renderer: headingRenderer }) : previewPost.value.content_html || ''
+  // 用 marked 客户端渲染（带 heading ID），不使用后端 content_html（comrak 不生成 ID）
+  return previewPost.value.content ? renderMarkdown(previewPost.value.content, headingRenderer) : renderMarkdown(previewPost.value.content_html || '')
 })
 
 // ── 文章设置弹窗 ──

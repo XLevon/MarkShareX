@@ -1,8 +1,11 @@
-use axum::{extract::{State, Query}, Json};
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 pub struct TrendPoint {
@@ -16,7 +19,9 @@ pub struct TrendQuery {
     pub days: u32,
 }
 
-fn default_days() -> u32 { 7 }
+fn default_days() -> u32 {
+    7
+}
 /// GET /api/v1/analytics/trend — Page view trend data
 
 #[utoipa::path(
@@ -60,7 +65,10 @@ pub async fn get_trend(
         let date = now - chrono::Duration::days(i);
         let date_str = date.format("%Y-%m-%d").to_string();
         let views = data_map.get(&date_str).copied().unwrap_or(0);
-        data.push(TrendPoint { date: date_str, views });
+        data.push(TrendPoint {
+            date: date_str,
+            views,
+        });
     }
 
     Ok(Json(ApiResponse::new(data)))
@@ -277,11 +285,11 @@ pub async fn get_post_views(
         "SELECT COUNT(*) FROM posts p WHERE p.status = 'published' AND p.deleted_at IS NULL {}",
         user_filter
     );
-    let total: i64 = db.query_one(
-        sea_orm::Statement::from_string(backend, total_sql)
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-    .unwrap_or(0);
+    let total: i64 = db
+        .query_one(sea_orm::Statement::from_string(backend, total_sql))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     let raw_sql = format!(
         "SELECT p.id, p.title, p.slug, COALESCE(u.display_name, u.username) AS author_name, \
@@ -326,7 +334,10 @@ pub async fn get_post_views(
         });
     }
 
-    Ok(Json(ApiResponse::with_pagination(posts, Pagination::new(total as u64, page, page_size))))
+    Ok(Json(ApiResponse::with_pagination(
+        posts,
+        Pagination::new(total as u64, page, page_size),
+    )))
 }
 
 // ─── Like records ───────────────────────────────────────────
@@ -338,8 +349,12 @@ pub struct LikeQuery {
     pub page_size: u64,
 }
 
-fn default_page() -> u64 { 1 }
-fn default_page_size() -> u64 { 20 }
+fn default_page() -> u64 {
+    1
+}
+fn default_page_size() -> u64 {
+    20
+}
 
 #[derive(Serialize)]
 pub struct LikeRecord {
@@ -383,11 +398,11 @@ pub async fn get_like_records(
         "SELECT COUNT(*) FROM likes l JOIN posts p ON l.post_id = p.id WHERE p.deleted_at IS NULL {}",
         user_filter
     );
-    let total: i64 = db.query_one(
-        sea_orm::Statement::from_string(backend, total_sql)
-    ).await?
-    .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-    .unwrap_or(0);
+    let total: i64 = db
+        .query_one(sea_orm::Statement::from_string(backend, total_sql))
+        .await?
+        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+        .unwrap_or(0);
 
     // Like records with JOINs
     let raw_sql = format!(
@@ -422,5 +437,8 @@ pub async fn get_like_records(
         });
     }
 
-    Ok(Json(ApiResponse::with_pagination(records, Pagination::new(total as u64, page, page_size))))
+    Ok(Json(ApiResponse::with_pagination(
+        records,
+        Pagination::new(total as u64, page, page_size),
+    )))
 }

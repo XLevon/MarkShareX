@@ -40,7 +40,9 @@ bcrypt = "0.16"
 ammonia = "4"
 
 # 文件上传校验
-magic = "0.13"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+lopdf = { version = "0.38", default-features = false }
+libc = "0.2"
 
 # 缓存
 moka = { version = "0.12", features = ["sync"] }
@@ -56,6 +58,7 @@ data-url = "0.1.1"
 aes-gcm = "0.10"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+url = "2"
 
 # 日志
 tracing = "0.1"
@@ -93,6 +96,7 @@ nanoid = "0.5.0"
 
 [dev-dependencies]
 axum-test = "16"
+futures = "0.3"
 tokio-test = "0.4"
 tempfile = "3"
 

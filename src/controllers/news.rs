@@ -1,15 +1,14 @@
-
-use axum::{
-    extract::{State, Path, Query},
-    Json,
-};
-use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
-use sea_orm::*;
-use sea_orm::sea_query::Expr;
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::news;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use sea_orm::sea_query::Expr;
+use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
 // ── Response ──
 
@@ -78,7 +77,9 @@ pub struct CreateNewsRequest {
     pub sort_order: i32,
 }
 
-fn default_status() -> String { "draft".to_string() }
+fn default_status() -> String {
+    "draft".to_string()
+}
 
 #[derive(Deserialize, IntoParams)]
 pub struct UpdateNewsRequest {
@@ -227,7 +228,10 @@ pub async fn get_news(
         return Err(AppError::NotFound("资讯不存在".into()));
     }
 
-    Ok(Json(ApiResponse { data: NewsResponse::from(item), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: NewsResponse::from(item),
+        pagination: None,
+    }))
 }
 
 // ── 题材列表（公开） ──
@@ -247,7 +251,9 @@ pub async fn list_topic_types(
     use sea_orm::{ConnectionTrait, Statement};
 
     // Build dynamic SQL
-    let mut sql = String::from("SELECT DISTINCT topic_type FROM news WHERE topic_type != '' AND status = 'published'");
+    let mut sql = String::from(
+        "SELECT DISTINCT topic_type FROM news WHERE topic_type != '' AND status = 'published'",
+    );
 
     if let Some(ref date_from) = params.date_from {
         if !date_from.is_empty() {
@@ -264,19 +270,26 @@ pub async fn list_topic_types(
         if !term.is_empty() {
             // Escape single quotes in search term
             let escaped = term.replace('\'', "''");
-            sql.push_str(&format!(" AND (title LIKE '%{}%' OR summary LIKE '%{}%')", escaped, escaped));
+            sql.push_str(&format!(
+                " AND (title LIKE '%{}%' OR summary LIKE '%{}%')",
+                escaped, escaped
+            ));
         }
     }
     sql.push_str(" ORDER BY topic_type");
 
-    let rows = state.db
+    let rows = state
+        .db
         .query_all(Statement::from_string(state.db.get_database_backend(), sql))
         .await?
         .into_iter()
         .filter_map(|row| row.try_get::<String>("", "topic_type").ok())
         .collect::<Vec<String>>();
 
-    Ok(Json(ApiResponse { data: rows, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: rows,
+        pagination: None,
+    }))
 }
 
 // ── Admin CRUD ──
@@ -294,8 +307,16 @@ pub async fn create_news(
     Json(req): Json<CreateNewsRequest>,
 ) -> Result<Json<ApiResponse<NewsResponse>>, AppError> {
     let now = crate::utils::now_local();
-    let status = if req.status.is_empty() { "draft".to_string() } else { req.status.clone() };
-    let published_at = if status == "published" { Some(now) } else { None };
+    let status = if req.status.is_empty() {
+        "draft".to_string()
+    } else {
+        req.status.clone()
+    };
+    let published_at = if status == "published" {
+        Some(now)
+    } else {
+        None
+    };
 
     let model = news::ActiveModel {
         title: Set(req.title),
@@ -312,7 +333,10 @@ pub async fn create_news(
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: NewsResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: NewsResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/news/{id} — 更新咨询
@@ -336,11 +360,21 @@ pub async fn update_news(
     let now = crate::utils::now_local();
     let mut model: news::ActiveModel = item.into();
 
-    if let Some(title) = req.title { model.title = Set(title); }
-    if let Some(summary) = req.summary { model.summary = Set(summary); }
-    if let Some(content) = req.content { model.content = Set(content); }
-    if let Some(topic_type) = req.topic_type { model.topic_type = Set(topic_type); }
-    if let Some(sort_order) = req.sort_order { model.sort_order = Set(sort_order); }
+    if let Some(title) = req.title {
+        model.title = Set(title);
+    }
+    if let Some(summary) = req.summary {
+        model.summary = Set(summary);
+    }
+    if let Some(content) = req.content {
+        model.content = Set(content);
+    }
+    if let Some(topic_type) = req.topic_type {
+        model.topic_type = Set(topic_type);
+    }
+    if let Some(sort_order) = req.sort_order {
+        model.sort_order = Set(sort_order);
+    }
     model.updated_at = Set(now);
 
     if let Some(status) = req.status {
@@ -353,7 +387,10 @@ pub async fn update_news(
     }
 
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: NewsResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: NewsResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/news/batch-delete — 批量删除咨询
@@ -375,7 +412,10 @@ pub async fn batch_delete_news(
         .exec(&state.db)
         .await?
         .rows_affected as i32;
-    Ok(Json(ApiResponse { data: count, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: count,
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/news/{id} — 删除咨询
@@ -391,5 +431,8 @@ pub async fn delete_news(
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     news::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }

@@ -1,16 +1,16 @@
 use axum::{
-    extract::{State, Path, Query},
-    Json,
+    extract::{Path, Query, State},
     response::Redirect,
+    Json,
 };
 use sea_orm::*;
-use utoipa::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::network_resources;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
 
 // ── 类型 ──────────────────────────────────────────────────────
 
@@ -40,7 +40,9 @@ pub struct CreateRequest {
     #[serde(default = "default_source_type")]
     pub source_type: String,
 }
-fn default_source_type() -> String { "image".to_string() }
+fn default_source_type() -> String {
+    "image".to_string()
+}
 
 #[derive(Deserialize)]
 pub struct UpdateRequest {
@@ -104,7 +106,11 @@ pub async fn list_resources(
     }
 
     let total = select.clone().count(&state.db).await?;
-    let _pages = if page_size > 0 { (total + page_size - 1) / page_size } else { 0 };
+    let _pages = if page_size > 0 {
+        (total + page_size - 1) / page_size
+    } else {
+        0
+    };
 
     let items = select
         .order_by_desc(network_resources::Column::Id)
@@ -229,7 +235,11 @@ pub async fn update_resource(
         active.url = Set(url.to_string());
     }
     if let Some(ref label) = req.label {
-        active.label = Set(if label.trim().is_empty() { None } else { Some(label.trim().to_string()) });
+        active.label = Set(if label.trim().is_empty() {
+            None
+        } else {
+            Some(label.trim().to_string())
+        });
     }
     if let Some(ref t) = req.source_type {
         active.source_type = Set(t.clone());
@@ -264,9 +274,10 @@ pub async fn delete_resource(
         .count(&state.db)
         .await?;
     if cat_ref > 0 {
-        return Err(AppError::BadRequest(
-            format!("该资源被 {} 个分类引用，无法删除", cat_ref)
-        ));
+        return Err(AppError::BadRequest(format!(
+            "该资源被 {} 个分类引用，无法删除",
+            cat_ref
+        )));
     }
 
     // 检查是否有文章封面引用
@@ -276,9 +287,10 @@ pub async fn delete_resource(
         .count(&state.db)
         .await?;
     if post_ref > 0 {
-        return Err(AppError::BadRequest(
-            format!("该资源被 {} 篇文章作为封面引用，无法删除", post_ref)
-        ));
+        return Err(AppError::BadRequest(format!(
+            "该资源被 {} 篇文章作为封面引用，无法删除",
+            post_ref
+        )));
     }
 
     resource.delete(&state.db).await?;
@@ -479,7 +491,10 @@ pub async fn resolve_url(db: &sea_orm::DatabaseConnection, id: Option<i32>) -> O
 /// - `http://...` / `https://...` → 查重或创建新的网络资源
 /// - 其他字符串（文件名等）→ 返回 None（本地文件）
 /// - 包含 /uploads/ 的 URL → 返回 None（本服务器资源，非网络资源）
-pub async fn ensure_url(db: &sea_orm::DatabaseConnection, url: &str) -> Result<Option<i32>, AppError> {
+pub async fn ensure_url(
+    db: &sea_orm::DatabaseConnection,
+    url: &str,
+) -> Result<Option<i32>, AppError> {
     let url = strip_fragment(url.trim());
 
     // nr:{id} 前缀 → 直接按 ID 查找已有资源
@@ -538,7 +553,9 @@ pub async fn resolve_cover_url(
 ) -> Option<String> {
     // 1. network_resource_id → 查表（外部 URL，绝对路径）
     if let Some(url) = resolve_url(db, nr_id).await {
-        if !url.is_empty() { return Some(url); }
+        if !url.is_empty() {
+            return Some(url);
+        }
     }
     // 2. image_url — 外部 URL 直接返回，本服务器 URL 转相对路径
     if let Some(val) = image_url {
@@ -559,9 +576,14 @@ pub async fn resolve_cover_url(
     let filename = image_filename
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .or_else(|| image_url.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()));
+        .or_else(|| {
+            image_url
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
     if let Some(ref f) = filename {
-        let clean = f.trim_start_matches("./uploads/")
+        let clean = f
+            .trim_start_matches("./uploads/")
             .trim_start_matches("/uploads/")
             .trim_start_matches('/');
         return Some(format!("/uploads/{}", clean));
@@ -608,10 +630,11 @@ pub async fn resolve_post_cover(
     cover_network_id: Option<i32>,
     cover_image_url: Option<&str>,
     cover_image_filename: Option<&str>,
-    cover_image: Option<&str>,  // 🔒 历史兼容
+    cover_image: Option<&str>, // 🔒 历史兼容
 ) -> Option<String> {
     // 1. 新字段：复用 resolve_cover_url（与分类封面同一套逻辑）
-    let resolved = resolve_cover_url(db, cover_network_id, cover_image_url, cover_image_filename).await;
+    let resolved =
+        resolve_cover_url(db, cover_network_id, cover_image_url, cover_image_filename).await;
     if resolved.is_some() {
         return resolved;
     }
@@ -629,10 +652,7 @@ fn strip_fragment(url: &str) -> String {
 }
 
 /// 将内容中的 nr:{id} 替换为真实 URL（用于展示/编辑时渲染图片）
-pub async fn resolve_nr_in_content(
-    db: &sea_orm::DatabaseConnection,
-    content: &str,
-) -> String {
+pub async fn resolve_nr_in_content(db: &sea_orm::DatabaseConnection, content: &str) -> String {
     let md_re = regex::Regex::new(r#"!\[([^\]]*)\]\(nr:(\d+)\)"#).unwrap();
     let html_re = regex::Regex::new(r#"src=["']nr:(\d+)["']"#).unwrap();
     let mut result = content.to_string();
@@ -664,10 +684,7 @@ pub async fn resolve_nr_in_content(
 }
 
 /// 将内容中匹配 network_resources 表的 URL 替换为 nr:{id}（保存时反向归一化）
-pub async fn normalize_nr_in_content(
-    db: &sea_orm::DatabaseConnection,
-    content: &str,
-) -> String {
+pub async fn normalize_nr_in_content(db: &sea_orm::DatabaseConnection, content: &str) -> String {
     let re = regex::Regex::new(r#"!\[([^\]]*)\]\((https?://[^)]+)\)"#).unwrap();
     let mut result = content.to_string();
     for cap in re.captures_iter(content) {

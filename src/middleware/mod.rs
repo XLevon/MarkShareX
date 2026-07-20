@@ -103,6 +103,24 @@ where
                 );
             }
 
+            // CSP Report-Only — monitor violations without breaking functionality.
+            // Upgrade to enforced CSP after a monitoring period.
+            headers.insert(
+                header::HeaderName::from_static("content-security-policy-report-only"),
+                HeaderValue::from_static(
+                    "default-src 'self'; \
+                     script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
+                     style-src 'self' 'unsafe-inline'; \
+                     img-src 'self' data: https:; \
+                     font-src 'self'; \
+                     connect-src 'self'; \
+                     frame-ancestors 'self'; \
+                     base-uri 'self'; \
+                     form-action 'self'; \
+                     report-uri /api/v1/csp-report",
+                ),
+            );
+
             Ok(response)
         })
     }

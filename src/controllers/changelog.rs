@@ -1,13 +1,13 @@
-use axum::{
-    extract::{State, Path, Query},
-    Json,
-};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use sea_orm::*;
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::changelog;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 // ── Response ──
 
@@ -89,11 +89,20 @@ pub async fn list_changelogs(
         items.insert(0, draft);
     }
 
-    let pages = if page_size > 0 { (total + page_size - 1) / page_size } else { 0 };
+    let pages = if page_size > 0 {
+        (total + page_size - 1) / page_size
+    } else {
+        0
+    };
 
     Ok(Json(ApiResponse {
         data: items,
-        pagination: Some(Pagination { page, page_size, total, pages }),
+        pagination: Some(Pagination {
+            page,
+            page_size,
+            total,
+            pages,
+        }),
     }))
 }
 
@@ -121,7 +130,9 @@ pub async fn create_changelog(
             .one(&state.db)
             .await?;
         if let Some(old) = existing {
-            changelog::Entity::delete_by_id(old.id).exec(&state.db).await?;
+            changelog::Entity::delete_by_id(old.id)
+                .exec(&state.db)
+                .await?;
         }
 
         let model = changelog::ActiveModel {
@@ -132,7 +143,10 @@ pub async fn create_changelog(
             ..Default::default()
         };
         let inserted = model.insert(&state.db).await?;
-        return Ok(Json(ApiResponse { data: ChangelogResponse::from(inserted), pagination: None }));
+        return Ok(Json(ApiResponse {
+            data: ChangelogResponse::from(inserted),
+            pagination: None,
+        }));
     }
 
     // 正式发布：查重
@@ -152,7 +166,10 @@ pub async fn create_changelog(
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: ChangelogResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: ChangelogResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/changelogs/{id} — Update changelog entry
@@ -200,7 +217,10 @@ pub async fn update_changelog(
     model.updated_at = Set(crate::utils::now_local());
 
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: ChangelogResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: ChangelogResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/changelogs/{id} — Delete changelog entry
@@ -216,7 +236,10 @@ pub async fn delete_changelog(
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     changelog::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
 
 // ── Public ──
@@ -238,7 +261,10 @@ pub async fn get_latest_version(
         .await?
         .map(ChangelogResponse::from);
 
-    Ok(Json(ApiResponse { data: latest, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: latest,
+        pagination: None,
+    }))
 }
 
 /// GET /api/v1/changelogs/public — List published changelogs (public, excludes drafts)
@@ -260,5 +286,8 @@ pub async fn list_public_changelogs(
         .map(ChangelogResponse::from)
         .collect();
 
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }

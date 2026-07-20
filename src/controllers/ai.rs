@@ -1,16 +1,19 @@
+use crate::crypto;
+use crate::middleware::auth::{AdminUser, AuthUser};
+use crate::models::entity::{
+    ai_agent_config, ai_chat_message, ai_chat_session, ai_model, ai_provider, ai_skill, ai_task,
+    ai_task_log, ai_tool,
+};
+use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     http::HeaderMap,
     Json,
 };
+use sea_orm::sea_query::Expr;
+use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use sea_orm::*;
-use sea_orm::sea_query::Expr;
-use crate::utils::{AppState, AppError, ApiResponse};
-use crate::middleware::auth::{AdminUser, AuthUser};
-use crate::models::entity::{ai_provider, ai_skill, ai_task, ai_task_log, ai_agent_config, ai_tool, ai_model, ai_chat_session, ai_chat_message};
-use crate::crypto;
 
 // ── Provider ──
 
@@ -31,11 +34,25 @@ fn mask_key_preview(key: &str) -> String {
     let len = key.chars().count();
     if len <= 10 {
         let first: String = key.chars().take(2).collect();
-        let last: String = key.chars().rev().take(1).collect::<Vec<_>>().into_iter().rev().collect();
+        let last: String = key
+            .chars()
+            .rev()
+            .take(1)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         format!("{}***{}", first, last)
     } else {
         let first: String = key.chars().take(6).collect();
-        let last: String = key.chars().rev().take(2).collect::<Vec<_>>().into_iter().rev().collect();
+        let last: String = key
+            .chars()
+            .rev()
+            .take(2)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         let middle = "*".repeat((len - 8).min(12).max(3));
         format!("{}{}{}", first, middle, last)
     }
@@ -43,11 +60,19 @@ fn mask_key_preview(key: &str) -> String {
 
 fn provider_to_response(m: ai_provider::Model) -> AiProviderResponse {
     let key = crypto::decrypt(&m.api_key_encrypted);
-    let key_preview = if key.is_empty() { None } else { Some(mask_key_preview(&key)) };
+    let key_preview = if key.is_empty() {
+        None
+    } else {
+        Some(mask_key_preview(&key))
+    };
     AiProviderResponse {
-        id: m.id, name: m.name, provider_type: m.provider_type,
+        id: m.id,
+        name: m.name,
+        provider_type: m.provider_type,
         base_url: m.base_url,
-        is_active: m.is_active, created_at: m.created_at, updated_at: m.updated_at,
+        is_active: m.is_active,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
         key_preview,
     }
 }
@@ -62,7 +87,9 @@ pub struct CreateProviderRequest {
     pub api_key: String,
 }
 
-fn default_provider_type() -> String { "openai".to_string() }
+fn default_provider_type() -> String {
+    "openai".to_string()
+}
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateProviderRequest {
@@ -90,10 +117,14 @@ pub struct AiSkillResponse {
 impl From<ai_skill::Model> for AiSkillResponse {
     fn from(m: ai_skill::Model) -> Self {
         Self {
-            id: m.id, name: m.name, description: m.description,
-            content: m.content, output_format: m.output_format,
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            content: m.content,
+            output_format: m.output_format,
             params_template: m.params_template,
-            created_at: m.created_at, updated_at: m.updated_at,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
         }
     }
 }
@@ -111,7 +142,9 @@ pub struct CreateSkillRequest {
     pub params_template: String,
 }
 
-fn default_output_format() -> String { "markdown".to_string() }
+fn default_output_format() -> String {
+    "markdown".to_string()
+}
 
 /// Parse {{variable}} placeholders from content and generate JSON template.
 /// System variables (date, datetime, time) retain their {{name}} placeholder.
@@ -131,7 +164,10 @@ fn generate_params_template(content: &str) -> String {
     let mut map = serde_json::Map::new();
     for var in vars {
         if system_vars.contains(var) {
-            map.insert(var.to_string(), serde_json::Value::String(format!("{{{{{}}}}}", var)));
+            map.insert(
+                var.to_string(),
+                serde_json::Value::String(format!("{{{{{}}}}}", var)),
+            );
         } else {
             map.insert(var.to_string(), serde_json::Value::String(String::new()));
         }
@@ -171,13 +207,20 @@ pub struct AiTaskResponse {
 impl From<ai_task::Model> for AiTaskResponse {
     fn from(m: ai_task::Model) -> Self {
         Self {
-            id: m.id, name: m.name, skill_id: m.skill_id, provider_id: m.provider_id,
+            id: m.id,
+            name: m.name,
+            skill_id: m.skill_id,
+            provider_id: m.provider_id,
             agent_config_id: m.agent_config_id,
             model_id: m.model_id,
             max_tool_rounds: m.max_tool_rounds,
-            cron_expr: m.cron_expr, params: m.params, enabled: m.enabled,
-            last_run_at: m.last_run_at, run_count: m.run_count,
-            created_at: m.created_at, updated_at: m.updated_at,
+            cron_expr: m.cron_expr,
+            params: m.params,
+            enabled: m.enabled,
+            last_run_at: m.last_run_at,
+            run_count: m.run_count,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
         }
     }
 }
@@ -228,7 +271,8 @@ pub async fn get_default_agent(
 ) -> Result<Json<ApiResponse<DefaultAgentInfo>>, AppError> {
     let config = ai_agent_config::Entity::find()
         .filter(ai_agent_config::Column::IsDefault.eq(true))
-        .one(&state.db).await?;
+        .one(&state.db)
+        .await?;
 
     Ok(Json(ApiResponse {
         data: DefaultAgentInfo {
@@ -252,9 +296,15 @@ pub async fn list_providers(
 ) -> Result<Json<ApiResponse<Vec<AiProviderResponse>>>, AppError> {
     let items: Vec<AiProviderResponse> = ai_provider::Entity::find()
         .order_by_asc(ai_provider::Column::Id)
-        .all(&state.db).await?
-        .into_iter().map(provider_to_response).collect();
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(provider_to_response)
+        .collect();
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/providers
@@ -265,16 +315,28 @@ pub async fn create_provider(
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<Json<ApiResponse<AiProviderResponse>>, AppError> {
     let now = crate::utils::now_local();
+    // SSRF validation: reject private-network provider URLs unless allowlisted
+    let allowed = state
+        .config
+        .ai
+        .as_ref()
+        .map(|a| a.allowed_provider_networks.as_slice())
+        .unwrap_or(&[]);
+    crate::utils::safe_url::validate_safe_url_with_allowlist(&req.base_url, allowed).await?;
     let model = ai_provider::ActiveModel {
         name: Set(req.name),
         provider_type: Set(req.provider_type),
         base_url: Set(req.base_url),
         api_key_encrypted: Set(crypto::encrypt(&req.api_key)),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: provider_to_response(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: provider_to_response(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/ai/providers/{id}
@@ -285,17 +347,39 @@ pub async fn update_provider(
     Path(id): Path<i32>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<Json<ApiResponse<AiProviderResponse>>, AppError> {
-    let entry = ai_provider::Entity::find_by_id(id).one(&state.db).await?
+    let entry = ai_provider::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("供应商不存在".into()))?;
     let mut model: ai_provider::ActiveModel = entry.into();
-    if let Some(v) = req.name { model.name = Set(v); }
-    if let Some(v) = req.provider_type { model.provider_type = Set(v); }
-    if let Some(v) = req.base_url { model.base_url = Set(v); }
-    if let Some(v) = req.api_key { model.api_key_encrypted = Set(crypto::encrypt(&v)); }
-    if let Some(v) = req.is_active { model.is_active = Set(v); }
+    if let Some(v) = req.name {
+        model.name = Set(v);
+    }
+    if let Some(v) = req.provider_type {
+        model.provider_type = Set(v);
+    }
+    if let Some(v) = req.base_url {
+        let allowed = state
+            .config
+            .ai
+            .as_ref()
+            .map(|a| a.allowed_provider_networks.as_slice())
+            .unwrap_or(&[]);
+        crate::utils::safe_url::validate_safe_url_with_allowlist(&v, allowed).await?;
+        model.base_url = Set(v);
+    }
+    if let Some(v) = req.api_key {
+        model.api_key_encrypted = Set(crypto::encrypt(&v));
+    }
+    if let Some(v) = req.is_active {
+        model.is_active = Set(v);
+    }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: provider_to_response(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: provider_to_response(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/ai/providers/{id}
@@ -308,19 +392,32 @@ pub async fn delete_provider(
     // 检查模型引用
     let model_count = ai_model::Entity::find()
         .filter(ai_model::Column::ProviderId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if model_count > 0 {
-        return Err(AppError::BadRequest(format!("该供应商下有 {} 个模型，无法删除", model_count)));
+        return Err(AppError::BadRequest(format!(
+            "该供应商下有 {} 个模型，无法删除",
+            model_count
+        )));
     }
     // 检查任务引用
     let task_count = ai_task::Entity::find()
         .filter(ai_task::Column::ProviderId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if task_count > 0 {
-        return Err(AppError::BadRequest(format!("该供应商被 {} 个定时任务引用，无法删除", task_count)));
+        return Err(AppError::BadRequest(format!(
+            "该供应商被 {} 个定时任务引用，无法删除",
+            task_count
+        )));
     }
-    ai_provider::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    ai_provider::Entity::delete_by_id(id)
+        .exec(&state.db)
+        .await?;
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/providers/{id}/test — 测试供应商连接
@@ -338,7 +435,9 @@ pub async fn test_provider(
     _admin: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
-    let provider = ai_provider::Entity::find_by_id(id).one(&state.db).await?
+    let provider = ai_provider::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("供应商不存在".into()))?;
 
     let api_key = crypto::decrypt(&provider.api_key_encrypted);
@@ -354,6 +453,15 @@ pub async fn test_provider(
             pagination: None,
         }));
     }
+
+    // SSRF validation: reject private-network provider URLs unless allowlisted
+    let allowed = state
+        .config
+        .ai
+        .as_ref()
+        .map(|a| a.allowed_provider_networks.as_slice())
+        .unwrap_or(&[]);
+    crate::utils::safe_url::validate_safe_url_with_allowlist(base_url, allowed).await?;
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -377,13 +485,16 @@ pub async fn test_provider(
 
 /// 测试 OpenAI 兼容供应商 (DeepSeek, SiliconFlow, Groq 等)
 async fn test_openai_compatible(
-    client: &reqwest::Client, base_url: &str, api_key: &str,
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: &str,
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
     // 1. 先测连通性：GET /models
     match client
         .get(format!("{}/models", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
-        .send().await
+        .send()
+        .await
     {
         Ok(resp) => {
             let status = resp.status();
@@ -391,7 +502,12 @@ async fn test_openai_compatible(
                 let body: serde_json::Value = resp.json().await.unwrap_or_default();
                 let models: Vec<String> = body["data"]
                     .as_array()
-                    .map(|arr| arr.iter().filter_map(|m| m["id"].as_str().map(|s| s.to_string())).take(20).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                            .take(20)
+                            .collect()
+                    })
                     .unwrap_or_default();
                 Ok(Json(ApiResponse {
                     data: ProviderTestResponse {
@@ -406,7 +522,10 @@ async fn test_openai_compatible(
                 Ok(Json(ApiResponse {
                     data: ProviderTestResponse {
                         success: false,
-                        message: format!("认证失败 (HTTP {status})：{}", &body_text[..body_text.len().min(200)]),
+                        message: format!(
+                            "认证失败 (HTTP {status})：{}",
+                            &body_text[..body_text.len().min(200)]
+                        ),
                         models: None,
                     },
                     pagination: None,
@@ -426,7 +545,9 @@ async fn test_openai_compatible(
 
 /// 测试 Anthropic 供应商 — 发一个轻量 Messages 请求验证认证
 async fn test_anthropic(
-    client: &reqwest::Client, base_url: &str, api_key: &str,
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: &str,
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
     match client
         .post(format!("{}/messages", base_url))
@@ -437,7 +558,8 @@ async fn test_anthropic(
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "hi"}]
         }))
-        .send().await
+        .send()
+        .await
     {
         Ok(resp) => {
             let status = resp.status();
@@ -477,19 +599,22 @@ async fn test_anthropic(
 
 /// 测试 Ollama 供应商 — GET /api/tags（无需认证）
 async fn test_ollama(
-    client: &reqwest::Client, base_url: &str,
+    client: &reqwest::Client,
+    base_url: &str,
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
-    match client
-        .get(format!("{}/api/tags", base_url))
-        .send().await
-    {
+    match client.get(format!("{}/api/tags", base_url)).send().await {
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
                 let body: serde_json::Value = resp.json().await.unwrap_or_default();
                 let models: Vec<String> = body["models"]
                     .as_array()
-                    .map(|arr| arr.iter().filter_map(|m| m["name"].as_str().map(|s| s.to_string())).take(20).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+                            .take(20)
+                            .collect()
+                    })
                     .unwrap_or_default();
                 Ok(Json(ApiResponse {
                     data: ProviderTestResponse {
@@ -533,9 +658,15 @@ pub async fn list_skills(
 ) -> Result<Json<ApiResponse<Vec<AiSkillResponse>>>, AppError> {
     let items: Vec<AiSkillResponse> = ai_skill::Entity::find()
         .order_by_asc(ai_skill::Column::Id)
-        .all(&state.db).await?
-        .into_iter().map(AiSkillResponse::from).collect();
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(AiSkillResponse::from)
+        .collect();
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/skills
@@ -553,15 +684,20 @@ pub async fn create_skill(
         req.params_template.clone()
     };
     let model = ai_skill::ActiveModel {
-        name: Set(req.name), description: Set(req.description),
+        name: Set(req.name),
+        description: Set(req.description),
         content: Set(req.content),
         output_format: Set(req.output_format),
         params_template: Set(params_template),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiSkillResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiSkillResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/ai/skills/{id}
@@ -572,17 +708,32 @@ pub async fn update_skill(
     Path(id): Path<i32>,
     Json(req): Json<UpdateSkillRequest>,
 ) -> Result<Json<ApiResponse<AiSkillResponse>>, AppError> {
-    let entry = ai_skill::Entity::find_by_id(id).one(&state.db).await?
+    let entry = ai_skill::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("技能不存在".into()))?;
     let mut model: ai_skill::ActiveModel = entry.into();
-    if let Some(v) = req.name { model.name = Set(v); }
-    if let Some(v) = req.description { model.description = Set(v); }
-    if let Some(v) = req.content { model.content = Set(v); }
-    if let Some(v) = req.output_format { model.output_format = Set(v); }
-    if let Some(v) = req.params_template { model.params_template = Set(v); }
+    if let Some(v) = req.name {
+        model.name = Set(v);
+    }
+    if let Some(v) = req.description {
+        model.description = Set(v);
+    }
+    if let Some(v) = req.content {
+        model.content = Set(v);
+    }
+    if let Some(v) = req.output_format {
+        model.output_format = Set(v);
+    }
+    if let Some(v) = req.params_template {
+        model.params_template = Set(v);
+    }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiSkillResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiSkillResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/ai/skills/{id}
@@ -594,12 +745,19 @@ pub async fn delete_skill(
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let task_count = ai_task::Entity::find()
         .filter(ai_task::Column::SkillId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if task_count > 0 {
-        return Err(AppError::BadRequest(format!("该技能被 {} 个定时任务引用，无法删除", task_count)));
+        return Err(AppError::BadRequest(format!(
+            "该技能被 {} 个定时任务引用，无法删除",
+            task_count
+        )));
     }
     ai_skill::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
 
 // ═══════════════════════════════════════════════════════
@@ -614,9 +772,15 @@ pub async fn list_tasks(
 ) -> Result<Json<ApiResponse<Vec<AiTaskResponse>>>, AppError> {
     let items: Vec<AiTaskResponse> = ai_task::Entity::find()
         .order_by_asc(ai_task::Column::Id)
-        .all(&state.db).await?
-        .into_iter().map(AiTaskResponse::from).collect();
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(AiTaskResponse::from)
+        .collect();
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/tasks
@@ -629,17 +793,23 @@ pub async fn create_task(
     let now = crate::utils::now_local();
     let model = ai_task::ActiveModel {
         name: Set(req.name),
-        skill_id: Set(req.skill_id), provider_id: Set(req.provider_id),
-        cron_expr: Set(req.cron_expr), params: Set(req.params),
+        skill_id: Set(req.skill_id),
+        provider_id: Set(req.provider_id),
+        cron_expr: Set(req.cron_expr),
+        params: Set(req.params),
         agent_config_id: Set(req.agent_config_id),
         model_id: Set(req.model_id),
         max_tool_rounds: Set(req.max_tool_rounds),
         enabled: Set(req.enabled),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiTaskResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiTaskResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/ai/tasks/{id}
@@ -650,21 +820,44 @@ pub async fn update_task(
     Path(id): Path<i32>,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Result<Json<ApiResponse<AiTaskResponse>>, AppError> {
-    let entry = ai_task::Entity::find_by_id(id).one(&state.db).await?
+    let entry = ai_task::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("任务不存在".into()))?;
     let mut model: ai_task::ActiveModel = entry.into();
-    if let Some(v) = req.skill_id { model.skill_id = Set(v); }
-    if let Some(v) = req.provider_id { model.provider_id = Set(v); }
-    if let Some(v) = req.cron_expr { model.cron_expr = Set(v); }
-    if let Some(v) = req.params { model.params = Set(v); }
-    if let Some(v) = req.enabled { model.enabled = Set(v); }
-    if let Some(v) = req.name { model.name = Set(v); }
-    if let Some(v) = req.agent_config_id { model.agent_config_id = Set(v); }
-    if let Some(v) = req.model_id { model.model_id = Set(v); }
-    if let Some(v) = req.max_tool_rounds { model.max_tool_rounds = Set(v); }
+    if let Some(v) = req.skill_id {
+        model.skill_id = Set(v);
+    }
+    if let Some(v) = req.provider_id {
+        model.provider_id = Set(v);
+    }
+    if let Some(v) = req.cron_expr {
+        model.cron_expr = Set(v);
+    }
+    if let Some(v) = req.params {
+        model.params = Set(v);
+    }
+    if let Some(v) = req.enabled {
+        model.enabled = Set(v);
+    }
+    if let Some(v) = req.name {
+        model.name = Set(v);
+    }
+    if let Some(v) = req.agent_config_id {
+        model.agent_config_id = Set(v);
+    }
+    if let Some(v) = req.model_id {
+        model.model_id = Set(v);
+    }
+    if let Some(v) = req.max_tool_rounds {
+        model.max_tool_rounds = Set(v);
+    }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiTaskResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiTaskResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/ai/tasks/{id}
@@ -675,7 +868,10 @@ pub async fn delete_task(
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     ai_task::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/tasks/{id}/run — 手动执行一次任务（异步启动+轮询追踪）
@@ -772,25 +968,31 @@ pub async fn list_task_logs(
         .all(&state.db)
         .await?;
 
-    let list: Vec<TaskLogListItem> = items.into_iter().map(|m| {
-        let steps: Vec<serde_json::Value> = serde_json::from_str(&m.steps).unwrap_or_default();
-        let preview: String = m.final_reply.chars().take(120).collect();
-        TaskLogListItem {
-            id: m.id,
-            task_id: m.task_id,
-            status: m.status,
-            rounds: steps.len(),
-            final_reply_preview: if preview.len() < m.final_reply.len() {
-                format!("{}...", preview)
-            } else {
-                preview
-            },
-            error: m.error,
-            created_at: m.created_at,
-        }
-    }).collect();
+    let list: Vec<TaskLogListItem> = items
+        .into_iter()
+        .map(|m| {
+            let steps: Vec<serde_json::Value> = serde_json::from_str(&m.steps).unwrap_or_default();
+            let preview: String = m.final_reply.chars().take(120).collect();
+            TaskLogListItem {
+                id: m.id,
+                task_id: m.task_id,
+                status: m.status,
+                rounds: steps.len(),
+                final_reply_preview: if preview.len() < m.final_reply.len() {
+                    format!("{}...", preview)
+                } else {
+                    preview
+                },
+                error: m.error,
+                created_at: m.created_at,
+            }
+        })
+        .collect();
 
-    Ok(Json(ApiResponse { data: list, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: list,
+        pagination: None,
+    }))
 }
 
 /// GET /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 单条日志详情
@@ -832,7 +1034,10 @@ pub async fn delete_task_log(
     if result.rows_affected == 0 {
         return Err(AppError::NotFound("日志不存在".into()));
     }
-    Ok(Json(ApiResponse { data: "已删除".to_string(), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: "已删除".to_string(),
+        pagination: None,
+    }))
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
@@ -850,10 +1055,14 @@ pub struct AgentConfigResponse {
 impl From<ai_agent_config::Model> for AgentConfigResponse {
     fn from(m: ai_agent_config::Model) -> Self {
         Self {
-            id: m.id, name: m.name,
-            system_prompt: m.system_prompt, user_prompt: m.user_prompt,
-            is_default: m.is_default, model_id: m.model_id,
-            created_at: m.created_at, updated_at: m.updated_at,
+            id: m.id,
+            name: m.name,
+            system_prompt: m.system_prompt,
+            user_prompt: m.user_prompt,
+            is_default: m.is_default,
+            model_id: m.model_id,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
         }
     }
 }
@@ -886,9 +1095,15 @@ pub async fn list_agent_configs(
 ) -> Result<Json<ApiResponse<Vec<AgentConfigResponse>>>, AppError> {
     let items: Vec<AgentConfigResponse> = ai_agent_config::Entity::find()
         .order_by_asc(ai_agent_config::Column::Id)
-        .all(&state.db).await?
-        .into_iter().map(AgentConfigResponse::from).collect();
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(AgentConfigResponse::from)
+        .collect();
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/agent-configs
@@ -904,11 +1119,15 @@ pub async fn create_agent_config(
         system_prompt: Set(req.system_prompt),
         user_prompt: Set(req.user_prompt),
         model_id: Set(req.model_id),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: AgentConfigResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AgentConfigResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/ai/agent-configs/{id}
@@ -919,12 +1138,20 @@ pub async fn update_agent_config(
     Path(id): Path<i32>,
     Json(req): Json<UpdateAgentConfigRequest>,
 ) -> Result<Json<ApiResponse<AgentConfigResponse>>, AppError> {
-    let entry = ai_agent_config::Entity::find_by_id(id).one(&state.db).await?
+    let entry = ai_agent_config::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("Agent 配置不存在".into()))?;
     let mut model: ai_agent_config::ActiveModel = entry.into();
-    if let Some(v) = req.name { model.name = Set(v); }
-    if let Some(v) = req.system_prompt { model.system_prompt = Set(v); }
-    if let Some(v) = req.user_prompt { model.user_prompt = Set(v); }
+    if let Some(v) = req.name {
+        model.name = Set(v);
+    }
+    if let Some(v) = req.system_prompt {
+        model.system_prompt = Set(v);
+    }
+    if let Some(v) = req.user_prompt {
+        model.user_prompt = Set(v);
+    }
     // model_id: frontend always sends it (null to clear), so always update
     model.model_id = Set(req.model_id);
     if let Some(v) = req.is_default {
@@ -933,13 +1160,17 @@ pub async fn update_agent_config(
             let _ = ai_agent_config::Entity::update_many()
                 .col_expr(ai_agent_config::Column::IsDefault, Expr::value(false))
                 .filter(ai_agent_config::Column::Id.ne(id))
-                .exec(&state.db).await;
+                .exec(&state.db)
+                .await;
         }
         model.is_default = Set(v);
     }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: AgentConfigResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AgentConfigResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/ai/agent-configs/{id}
@@ -952,21 +1183,33 @@ pub async fn delete_agent_config(
     // 检查任务引用
     let task_count = ai_task::Entity::find()
         .filter(ai_task::Column::AgentConfigId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if task_count > 0 {
-        return Err(AppError::BadRequest(format!("该智能体被 {} 个定时任务引用，无法删除", task_count)));
+        return Err(AppError::BadRequest(format!(
+            "该智能体被 {} 个定时任务引用，无法删除",
+            task_count
+        )));
     }
     // 检查会话引用
     let sess_count = ai_chat_session::Entity::find()
         .filter(ai_chat_session::Column::AgentConfigId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if sess_count > 0 {
-        return Err(AppError::BadRequest(format!("该智能体被 {} 个聊天会话引用，无法删除", sess_count)));
+        return Err(AppError::BadRequest(format!(
+            "该智能体被 {} 个聊天会话引用，无法删除",
+            sess_count
+        )));
     }
-    ai_agent_config::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    ai_agent_config::Entity::delete_by_id(id)
+        .exec(&state.db)
+        .await?;
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
-
 
 // ═══════════════════════════════════════════════════════
 //  Models
@@ -985,9 +1228,12 @@ pub struct AiModelResponse {
 impl From<ai_model::Model> for AiModelResponse {
     fn from(m: ai_model::Model) -> Self {
         Self {
-            id: m.id, provider_id: m.provider_id, name: m.name,
+            id: m.id,
+            provider_id: m.provider_id,
+            name: m.name,
             is_default: m.is_default,
-            created_at: m.created_at, updated_at: m.updated_at,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
         }
     }
 }
@@ -1012,13 +1258,23 @@ pub async fn list_models(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<ApiResponse<Vec<AiModelResponse>>>, AppError> {
     let mut q = ai_model::Entity::find();
-    if let Some(pid) = params.get("provider_id").and_then(|v| v.parse::<i32>().ok()) {
+    if let Some(pid) = params
+        .get("provider_id")
+        .and_then(|v| v.parse::<i32>().ok())
+    {
         q = q.filter(ai_model::Column::ProviderId.eq(pid));
     }
-    let items: Vec<AiModelResponse> = q.order_by_asc(ai_model::Column::Id)
-        .all(&state.db).await?
-        .into_iter().map(AiModelResponse::from).collect();
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+    let items: Vec<AiModelResponse> = q
+        .order_by_asc(ai_model::Column::Id)
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(AiModelResponse::from)
+        .collect();
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/models
@@ -1032,11 +1288,15 @@ pub async fn create_model(
     let model = ai_model::ActiveModel {
         provider_id: Set(req.provider_id),
         name: Set(req.name),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiModelResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiModelResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/ai/models/{id}
@@ -1047,23 +1307,31 @@ pub async fn update_model(
     Path(id): Path<i32>,
     Json(req): Json<UpdateModelRequest>,
 ) -> Result<Json<ApiResponse<AiModelResponse>>, AppError> {
-    let entry = ai_model::Entity::find_by_id(id).one(&state.db).await?
+    let entry = ai_model::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("模型不存在".into()))?;
     let mut model: ai_model::ActiveModel = entry.into();
-    if let Some(v) = req.name { model.name = Set(v); }
+    if let Some(v) = req.name {
+        model.name = Set(v);
+    }
     if let Some(v) = req.is_default {
         if v {
             let _ = ai_model::Entity::update_many()
                 .col_expr(ai_model::Column::IsDefault, Expr::value(false))
                 .filter(ai_model::Column::ProviderId.eq(model.provider_id.clone().unwrap()))
                 .filter(ai_model::Column::Id.ne(id))
-                .exec(&state.db).await;
+                .exec(&state.db)
+                .await;
         }
         model.is_default = Set(v);
     }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiModelResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiModelResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/ai/models/{id}
@@ -1076,21 +1344,31 @@ pub async fn delete_model(
     // 检查任务引用
     let task_count = ai_task::Entity::find()
         .filter(ai_task::Column::ModelId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if task_count > 0 {
-        return Err(AppError::BadRequest(format!("该模型被 {} 个定时任务引用，无法删除", task_count)));
+        return Err(AppError::BadRequest(format!(
+            "该模型被 {} 个定时任务引用，无法删除",
+            task_count
+        )));
     }
     // 检查 Agent 引用
     let agent_count = ai_agent_config::Entity::find()
         .filter(ai_agent_config::Column::ModelId.eq(id))
-        .count(&state.db).await?;
+        .count(&state.db)
+        .await?;
     if agent_count > 0 {
-        return Err(AppError::BadRequest(format!("该模型被 {} 个智能体引用，无法删除", agent_count)));
+        return Err(AppError::BadRequest(format!(
+            "该模型被 {} 个智能体引用，无法删除",
+            agent_count
+        )));
     }
     ai_model::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
-
 
 // ═══════════════════════════════════════════════════════
 //  Chat Sessions
@@ -1144,22 +1422,30 @@ pub async fn list_sessions(
     let sessions = ai_chat_session::Entity::find()
         .filter(ai_chat_session::Column::UserId.eq(auth.user_id))
         .order_by_desc(ai_chat_session::Column::UpdatedAt)
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
 
     let mut result = Vec::new();
     for s in sessions {
         let count = ai_chat_message::Entity::find()
             .filter(ai_chat_message::Column::SessionId.eq(s.id))
-            .count(&state.db).await?;
+            .count(&state.db)
+            .await?;
         result.push(ChatSessionResponse {
-            id: s.id, title: s.title, user_id: s.user_id,
+            id: s.id,
+            title: s.title,
+            user_id: s.user_id,
             agent_config_id: s.agent_config_id,
             msg_count: count as usize,
-            created_at: s.created_at, updated_at: s.updated_at,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
         });
     }
 
-    Ok(Json(ApiResponse { data: result, pagination: None }))
+    Ok(Json(ApiResponse {
+        data: result,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/sessions
@@ -1175,16 +1461,20 @@ pub async fn create_session(
         user_id: Set(auth.user_id),
         title: Set(title),
         agent_config_id: Set(req.agent_config_id),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
     Ok(Json(ApiResponse {
         data: ChatSessionResponse {
-            id: inserted.id, title: inserted.title,
-            user_id: inserted.user_id, agent_config_id: inserted.agent_config_id,
+            id: inserted.id,
+            title: inserted.title,
+            user_id: inserted.user_id,
+            agent_config_id: inserted.agent_config_id,
             msg_count: 0,
-            created_at: inserted.created_at, updated_at: inserted.updated_at,
+            created_at: inserted.created_at,
+            updated_at: inserted.updated_at,
         },
         pagination: None,
     }))
@@ -1197,26 +1487,36 @@ pub async fn get_session(
     auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<ChatSessionDetail>>, AppError> {
-    let session = ai_chat_session::Entity::find_by_id(id).one(&state.db).await?
+    let session = ai_chat_session::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
     authorize_session_access(&auth, session.user_id)?;
 
     let messages: Vec<ChatMessageResponse> = ai_chat_message::Entity::find()
         .filter(ai_chat_message::Column::SessionId.eq(id))
         .order_by_asc(ai_chat_message::Column::CreatedAt)
-        .all(&state.db).await?
-        .into_iter().map(|m| ChatMessageResponse {
-            id: m.id, role: m.role, content: m.content,
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|m| ChatMessageResponse {
+            id: m.id,
+            role: m.role,
+            content: m.content,
             tool_calls: m.tool_calls,
             created_at: m.created_at,
-        }).collect();
+        })
+        .collect();
 
     Ok(Json(ApiResponse {
         data: ChatSessionDetail {
-            id: session.id, title: session.title,
-            user_id: session.user_id, agent_config_id: session.agent_config_id,
+            id: session.id,
+            title: session.title,
+            user_id: session.user_id,
+            agent_config_id: session.agent_config_id,
             messages,
-            created_at: session.created_at, updated_at: session.updated_at,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
         },
         pagination: None,
     }))
@@ -1229,11 +1529,18 @@ pub async fn delete_session(
     auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    let session = ai_chat_session::Entity::find_by_id(id).one(&state.db).await?
+    let session = ai_chat_session::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
     authorize_session_access(&auth, session.user_id)?;
-    ai_chat_session::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    ai_chat_session::Entity::delete_by_id(id)
+        .exec(&state.db)
+        .await?;
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -1260,7 +1567,7 @@ pub struct ChatRequest {
 
 #[derive(Serialize, Deserialize, ToSchema, Clone)]
 pub struct ChatMessage {
-    pub role: String,  // "user" | "assistant"
+    pub role: String, // "user" | "assistant"
     pub content: String,
 }
 
@@ -1278,7 +1585,7 @@ pub async fn chat(
     auth: AuthUser,
     Json(req): Json<ChatRequest>,
 ) -> Result<Json<ApiResponse<ChatResponse>>, AppError> {
-    use crate::services::{ai_tools, ai_chat};
+    use crate::services::{ai_chat, ai_tools};
 
     let now = crate::utils::now_local();
     let user_msg = req.message.trim().to_string();
@@ -1290,7 +1597,9 @@ pub async fn chat(
 
     // ── 1. 获取或创建 Session ──
     let session_id = if let Some(sid) = req.session_id {
-        let session = ai_chat_session::Entity::find_by_id(sid).one(&state.db).await?
+        let session = ai_chat_session::Entity::find_by_id(sid)
+            .one(&state.db)
+            .await?
             .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
         authorize_session_access(&auth, session.user_id)?;
         sid
@@ -1305,7 +1614,8 @@ pub async fn chat(
             user_id: Set(auth.user_id),
             title: Set(title),
             agent_config_id: Set(req.agent_config_id),
-            created_at: Set(now), updated_at: Set(now),
+            created_at: Set(now),
+            updated_at: Set(now),
             ..Default::default()
         };
         model.insert(&state.db).await?.id
@@ -1323,16 +1633,23 @@ pub async fn chat(
 
     // ── 3. 获取 Agent 配置 ──
     let agent_cfg = if let Some(cfg_id) = req.agent_config_id {
-        ai_agent_config::Entity::find_by_id(cfg_id).one(&state.db).await?
+        ai_agent_config::Entity::find_by_id(cfg_id)
+            .one(&state.db)
+            .await?
     } else {
         // 查找默认配置
         ai_agent_config::Entity::find()
             .filter(ai_agent_config::Column::IsDefault.eq(true))
-            .one(&state.db).await?
-    }.unwrap_or(ai_agent_config::Model {
-        id: 0, name: String::new(),
-        system_prompt: String::new(), user_prompt: String::new(),
-        is_default: false, model_id: None,
+            .one(&state.db)
+            .await?
+    }
+    .unwrap_or(ai_agent_config::Model {
+        id: 0,
+        name: String::new(),
+        system_prompt: String::new(),
+        user_prompt: String::new(),
+        is_default: false,
+        model_id: None,
         created_at: chrono::NaiveDateTime::MIN,
         updated_at: chrono::NaiveDateTime::MIN,
     });
@@ -1347,34 +1664,58 @@ pub async fn chat(
     // ── 5. 获取历史消息（从 DB 加载） ──
     let history_msgs: Vec<ai_chat_message::Model> = ai_chat_message::Entity::find()
         .filter(ai_chat_message::Column::SessionId.eq(session_id))
-        .filter(ai_chat_message::Column::Id.ne(
-            ai_chat_message::Entity::find()
+        .filter(
+            ai_chat_message::Column::Id.ne(ai_chat_message::Entity::find()
                 .filter(ai_chat_message::Column::SessionId.eq(session_id))
                 .order_by_desc(ai_chat_message::Column::Id)
-                .one(&state.db).await?.map(|m| m.id).unwrap_or(0)
-        ))
+                .one(&state.db)
+                .await?
+                .map(|m| m.id)
+                .unwrap_or(0)),
+        )
         .order_by_asc(ai_chat_message::Column::CreatedAt)
-        .all(&state.db).await?;
+        .all(&state.db)
+        .await?;
 
-    let history: Vec<ai_chat::ChatMessage> = history_msgs.iter().map(|h| {
-        ai_chat::ChatMessage { role: h.role.clone(), content: h.content.clone() }
-    }).collect();
+    let history: Vec<ai_chat::ChatMessage> = history_msgs
+        .iter()
+        .map(|h| ai_chat::ChatMessage {
+            role: h.role.clone(),
+            content: h.content.clone(),
+        })
+        .collect();
 
     // ── 6. 获取模型名 ──
     let model_name = if let Some(mid) = agent_cfg.model_id {
-        ai_model::Entity::find_by_id(mid).one(&state.db).await?.map(|m| m.name)
-    } else { None };
+        ai_model::Entity::find_by_id(mid)
+            .one(&state.db)
+            .await?
+            .map(|m| m.name)
+    } else {
+        None
+    };
 
     // ── 执行 AI ──
-    let user_ctx = headers.get("authorization")
+    let user_ctx = headers
+        .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|token| ai_tools::UserContext { token: token.to_string() });
-    let registry = ai_tools::create_registry(&state.db, auth.is_privileged(), user_ctx.as_ref()).await;
+        .map(|token| ai_tools::UserContext {
+            token: token.to_string(),
+        });
+    let registry =
+        ai_tools::create_registry(&state.db, auth.is_privileged(), user_ctx.as_ref()).await;
     let reply = ai_chat::run_function_calling(
-        &state, &registry, &agent_cfg.system_prompt,
-        &user_content, &history, None, model_name, None,
-    ).await?;
+        &state,
+        &registry,
+        &agent_cfg.system_prompt,
+        &user_content,
+        &history,
+        None,
+        model_name,
+        None,
+    )
+    .await?;
 
     // ── 8. 保存 assistant 回复 ──
     let now2 = crate::utils::now_local();
@@ -1388,7 +1729,9 @@ pub async fn chat(
     assistant_msg.insert(&state.db).await?;
 
     // ── 9. 更新 session 时间 ──
-    let session = ai_chat_session::Entity::find_by_id(session_id).one(&state.db).await?
+    let session = ai_chat_session::Entity::find_by_id(session_id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
     let mut s_model: ai_chat_session::ActiveModel = session.into();
     s_model.updated_at = Set(now2);
@@ -1412,7 +1755,9 @@ async fn handle_slash_command(
     let command = parts[0].to_lowercase();
 
     if let Some(session_id) = req.session_id {
-        let session = ai_chat_session::Entity::find_by_id(session_id).one(&state.db).await?
+        let session = ai_chat_session::Entity::find_by_id(session_id)
+            .one(&state.db)
+            .await?
             .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
         authorize_session_access(auth, session.user_id)?;
     }
@@ -1425,7 +1770,8 @@ async fn handle_slash_command(
                 user_id: Set(auth.user_id),
                 title: Set(title.clone()),
                 agent_config_id: Set(req.agent_config_id),
-                created_at: Set(now), updated_at: Set(now),
+                created_at: Set(now),
+                updated_at: Set(now),
                 ..Default::default()
             };
             let session = model.insert(&state.db).await?;
@@ -1435,26 +1781,34 @@ async fn handle_slash_command(
             let models = ai_model::Entity::find()
                 .order_by_asc(ai_model::Column::ProviderId)
                 .order_by_asc(ai_model::Column::Name)
-                .all(&state.db).await?;
+                .all(&state.db)
+                .await?;
             if models.is_empty() {
                 "📭 暂无可用模型。请在管理后台添加模型。".to_string()
             } else {
                 let mut out = "📋 可用模型：\n\n".to_string();
                 for m in &models {
-                    let provider = ai_provider::Entity::find_by_id(m.provider_id).one(&state.db).await?;
-                    let pname = provider.map(|p| p.name).unwrap_or_else(|| "未知".to_string());
-                    out.push_str(&format!("  • {} ({})  {}\n", m.name, pname,
-                        if m.is_default { "⭐默认" } else { "" }));
+                    let provider = ai_provider::Entity::find_by_id(m.provider_id)
+                        .one(&state.db)
+                        .await?;
+                    let pname = provider
+                        .map(|p| p.name)
+                        .unwrap_or_else(|| "未知".to_string());
+                    out.push_str(&format!(
+                        "  • {} ({})  {}\n",
+                        m.name,
+                        pname,
+                        if m.is_default { "⭐默认" } else { "" }
+                    ));
                 }
                 out
             }
         }
-        "/help" => {
-            "可用命令：\n\
+        "/help" => "可用命令：\n\
              • /new [标题] — 新建会话\n\
              • /model — 查看可用模型\n\
-             • /help — 显示帮助".to_string()
-        }
+             • /help — 显示帮助"
+            .to_string(),
         _ => {
             format!("❓ 未知命令「{}」。输入 /help 查看可用命令。", command)
         }
@@ -1477,7 +1831,8 @@ async fn handle_slash_command(
             user_id: Set(auth.user_id),
             title: Set("命令".to_string()),
             agent_config_id: Set(req.agent_config_id),
-            created_at: Set(now), updated_at: Set(now),
+            created_at: Set(now),
+            updated_at: Set(now),
             ..Default::default()
         };
         model.insert(&state.db).await?.id
@@ -1508,10 +1863,14 @@ pub struct AiToolResponse {
 impl From<ai_tool::Model> for AiToolResponse {
     fn from(m: ai_tool::Model) -> Self {
         Self {
-            id: m.id, name: m.name, description: m.description,
-            function_name: m.function_name, parameters_schema: m.parameters_schema,
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            function_name: m.function_name,
+            parameters_schema: m.parameters_schema,
             enabled: m.enabled,
-            created_at: m.created_at, updated_at: m.updated_at,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
         }
     }
 }
@@ -1545,9 +1904,15 @@ pub async fn list_tools(
 ) -> Result<Json<ApiResponse<Vec<AiToolResponse>>>, AppError> {
     let items: Vec<AiToolResponse> = ai_tool::Entity::find()
         .order_by_asc(ai_tool::Column::Id)
-        .all(&state.db).await?
-        .into_iter().map(AiToolResponse::from).collect();
-    Ok(Json(ApiResponse { data: items, pagination: None }))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(AiToolResponse::from)
+        .collect();
+    Ok(Json(ApiResponse {
+        data: items,
+        pagination: None,
+    }))
 }
 
 /// POST /api/v1/admin/ai/tools
@@ -1559,14 +1924,20 @@ pub async fn create_tool(
 ) -> Result<Json<ApiResponse<AiToolResponse>>, AppError> {
     let now = crate::utils::now_local();
     let model = ai_tool::ActiveModel {
-        name: Set(req.name), description: Set(req.description),
-        function_name: Set(req.function_name), parameters_schema: Set(req.parameters_schema),
+        name: Set(req.name),
+        description: Set(req.description),
+        function_name: Set(req.function_name),
+        parameters_schema: Set(req.parameters_schema),
         enabled: Set(req.enabled),
-        created_at: Set(now), updated_at: Set(now),
+        created_at: Set(now),
+        updated_at: Set(now),
         ..Default::default()
     };
     let inserted = model.insert(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiToolResponse::from(inserted), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiToolResponse::from(inserted),
+        pagination: None,
+    }))
 }
 
 /// PUT /api/v1/admin/ai/tools/{id}
@@ -1577,17 +1948,32 @@ pub async fn update_tool(
     Path(id): Path<i32>,
     Json(req): Json<UpdateToolRequest>,
 ) -> Result<Json<ApiResponse<AiToolResponse>>, AppError> {
-    let entry = ai_tool::Entity::find_by_id(id).one(&state.db).await?
+    let entry = ai_tool::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
         .ok_or_else(|| AppError::NotFound("工具不存在".into()))?;
     let mut model: ai_tool::ActiveModel = entry.into();
-    if let Some(v) = req.name { model.name = Set(v); }
-    if let Some(v) = req.description { model.description = Set(v); }
-    if let Some(v) = req.function_name { model.function_name = Set(v); }
-    if let Some(v) = req.parameters_schema { model.parameters_schema = Set(v); }
-    if let Some(v) = req.enabled { model.enabled = Set(v); }
+    if let Some(v) = req.name {
+        model.name = Set(v);
+    }
+    if let Some(v) = req.description {
+        model.description = Set(v);
+    }
+    if let Some(v) = req.function_name {
+        model.function_name = Set(v);
+    }
+    if let Some(v) = req.parameters_schema {
+        model.parameters_schema = Set(v);
+    }
+    if let Some(v) = req.enabled {
+        model.enabled = Set(v);
+    }
     model.updated_at = Set(crate::utils::now_local());
     let updated = model.update(&state.db).await?;
-    Ok(Json(ApiResponse { data: AiToolResponse::from(updated), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: AiToolResponse::from(updated),
+        pagination: None,
+    }))
 }
 
 /// DELETE /api/v1/admin/ai/tools/{id}
@@ -1598,7 +1984,10 @@ pub async fn delete_tool(
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     ai_tool::Entity::delete_by_id(id).exec(&state.db).await?;
-    Ok(Json(ApiResponse { data: (), pagination: None }))
+    Ok(Json(ApiResponse {
+        data: (),
+        pagination: None,
+    }))
 }
 
 #[cfg(test)]
@@ -1619,8 +2008,17 @@ mod authorization_tests {
     #[test]
     fn ai_sessions_are_limited_to_the_owner_for_every_role() {
         assert!(authorize_session_access(&auth_user(1, "author"), 1).is_ok());
-        assert!(matches!(authorize_session_access(&auth_user(1, "author"), 2), Err(AppError::NotFound(_))));
-        assert!(matches!(authorize_session_access(&auth_user(9, "admin"), 2), Err(AppError::NotFound(_))));
-        assert!(matches!(authorize_session_access(&auth_user(9, "sub_admin"), 2), Err(AppError::NotFound(_))));
+        assert!(matches!(
+            authorize_session_access(&auth_user(1, "author"), 2),
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            authorize_session_access(&auth_user(9, "admin"), 2),
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            authorize_session_access(&auth_user(9, "sub_admin"), 2),
+            Err(AppError::NotFound(_))
+        ));
     }
 }

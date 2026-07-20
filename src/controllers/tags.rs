@@ -1,10 +1,13 @@
-use axum::{extract::{State, Path}, Json};
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::tags;
+use crate::utils::{ApiResponse, AppError, AppState};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
 pub struct TagResponse {
@@ -68,7 +71,10 @@ pub async fn list_tags(
         let stmt = sea_orm::Statement::from_sql_and_values(
             state.db.get_database_backend(),
             &raw_sql,
-            tag_ids.iter().map(|&id| id.into()).collect::<Vec<sea_orm::Value>>(),
+            tag_ids
+                .iter()
+                .map(|&id| id.into())
+                .collect::<Vec<sea_orm::Value>>(),
         );
         let results = state.db.query_all(stmt).await?;
         let mut map = std::collections::HashMap::new();

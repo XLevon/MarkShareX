@@ -1,11 +1,14 @@
-use std::collections::HashMap;
-use axum::{extract::{State, Path, Query}, Json};
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse, Pagination};
 use crate::middleware::auth::AuthUser;
 use crate::models::entity::{guestbook, users};
-use sea_orm::*;
+use crate::utils::{ApiResponse, AppError, AppState, Pagination};
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
 use sea_orm::sea_query::Expr;
+use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 pub struct GuestbookEntry {
@@ -96,7 +99,10 @@ pub async fn create_entry(
     };
 
     let saved = entry.insert(&state.db).await?;
-    Ok(Json(ApiResponse::new(model_to_entry(saved, &HashMap::new()))))
+    Ok(Json(ApiResponse::new(model_to_entry(
+        saved,
+        &HashMap::new(),
+    ))))
 }
 
 /// GET /api/v1/guestbook — 留言列表（公开，支持搜索）
@@ -107,8 +113,7 @@ pub async fn list_entries(
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
 
-    let mut condition = Condition::all()
-        .add(guestbook::Column::DeletedAt.is_null());
+    let mut condition = Condition::all().add(guestbook::Column::DeletedAt.is_null());
 
     if let Some(ref q) = query.search {
         if !q.trim().is_empty() {
@@ -116,7 +121,7 @@ pub async fn list_entries(
             condition = condition.add(
                 Condition::any()
                     .add(Expr::col(guestbook::Column::Nickname).like(&like))
-                    .add(Expr::col(guestbook::Column::Content).like(&like))
+                    .add(Expr::col(guestbook::Column::Content).like(&like)),
             );
         }
     }
@@ -148,8 +153,14 @@ pub async fn list_entries(
         HashMap::new()
     };
 
-    let data: Vec<GuestbookEntry> = items.into_iter().map(|e| model_to_entry(e, &username_map)).collect();
-    Ok(Json(ApiResponse::with_pagination(data, Pagination::new(total, page, page_size))))
+    let data: Vec<GuestbookEntry> = items
+        .into_iter()
+        .map(|e| model_to_entry(e, &username_map))
+        .collect();
+    Ok(Json(ApiResponse::with_pagination(
+        data,
+        Pagination::new(total, page, page_size),
+    )))
 }
 
 /// PUT /api/v1/admin/guestbook/{id}/reply — 管理员回复
@@ -173,7 +184,10 @@ pub async fn reply_entry(
     active.updated_at = Set(crate::utils::now_local());
     let updated = active.update(&state.db).await?;
 
-    Ok(Json(ApiResponse::new(model_to_entry(updated, &HashMap::new()))))
+    Ok(Json(ApiResponse::new(model_to_entry(
+        updated,
+        &HashMap::new(),
+    ))))
 }
 
 /// DELETE /api/v1/admin/guestbook/{id} — 管理员删除（软删除）

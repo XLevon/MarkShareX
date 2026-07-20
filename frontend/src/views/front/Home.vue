@@ -229,7 +229,7 @@
             <!-- Expanded content -->
             <div v-if="expandedNewsId === item.id" class="mt-4 pt-4 border-t" :style="{ borderColor: 'var(--color-border)' }">
               <div v-if="newsLoadingId === item.id" class="text-center py-4 text-sm" :style="{ color: 'var(--color-text-muted)' }">加载中...</div>
-              <div v-else class="text-sm leading-relaxed markdown-body p-4 rounded-lg border-l-2" :style="{ color: 'var(--color-text)', backgroundColor: isDark ? '#1e293b' : '#f1f5f9', borderLeftColor: isDark ? '#6366f1' : '#818cf8', maxWidth: 'none' }" v-html="item.content_html || item.content" @click="onNewsContentClick"></div>
+              <div v-else class="text-sm leading-relaxed markdown-body p-4 rounded-lg border-l-2" :style="{ color: 'var(--color-text)', backgroundColor: isDark ? '#1e293b' : '#f1f5f9', borderLeftColor: isDark ? '#6366f1' : '#818cf8', maxWidth: 'none' }" v-html="item.content_html || renderMarkdown(item.content || '')" @click="onNewsContentClick"></div>
             </div>
           </article>
         </div>
@@ -295,6 +295,7 @@ import { fetchPosts } from '@/api/posts'
 import { fetchCategories } from '@/api/categories'
 import { fetchTags } from '@/api/tags'
 import { fetchNews, fetchNewsItem, fetchTopicTypes, type NewsItem } from '@/api/news'
+import { renderMarkdown } from '@/utils/renderMarkdown'
 import GuestbookFormModal from '@/components/shared/GuestbookFormModal.vue'
 import { navSearchVisible } from '@/composables/useSearchVisibility'
 import { useHeroVisibility } from '@/composables/useHeroVisibility'

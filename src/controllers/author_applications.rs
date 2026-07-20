@@ -1,13 +1,13 @@
+use crate::middleware::auth::AuthUser;
+use crate::models::entity::{author_applications, users};
+use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     Json,
 };
-use utoipa::ToSchema;
-use serde::{Deserialize, Serialize};
-use crate::utils::{AppState, AppError, ApiResponse};
-use crate::models::entity::{author_applications, users};
-use crate::middleware::auth::AuthUser;
 use sea_orm::*;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 // ── Request/Response types ──
 
@@ -63,7 +63,9 @@ pub async fn submit_application(
 
     if let Some(app) = existing {
         if app.status == "pending" {
-            return Err(AppError::BadRequest("你已有待审申请，请等待管理员审核".into()));
+            return Err(AppError::BadRequest(
+                "你已有待审申请，请等待管理员审核".into(),
+            ));
         }
         // If previously rejected, delete old record to allow re-application
         author_applications::Entity::delete_by_id(app.id)

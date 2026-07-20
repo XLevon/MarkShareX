@@ -1,13 +1,13 @@
-use axum::extract::FromRequestParts;
+use crate::models::entity::users;
+use crate::services::auth;
+use crate::utils::AppError;
+use crate::utils::AppState;
 use axum::extract::ConnectInfo;
+use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::HeaderMap;
-use std::net::SocketAddr;
-use crate::utils::AppState;
-use crate::utils::AppError;
-use crate::services::auth;
-use crate::models::entity::users;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use std::net::SocketAddr;
 
 async fn current_active_role(state: &AppState, user_id: i32) -> Result<String, AppError> {
     users::Entity::find_by_id(user_id)
@@ -54,7 +54,10 @@ impl TryFrom<AuthUser> for AdminUser {
 impl FromRequestParts<AppState> for AdminUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let user = AuthUser::from_request_parts(parts, state).await?;
         if current_active_role(state, user.user_id).await? == "admin" {
             Ok(Self)
@@ -84,7 +87,10 @@ impl TryFrom<AuthUser> for PrivilegedUser {
 impl FromRequestParts<AppState> for PrivilegedUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let user = AuthUser::from_request_parts(parts, state).await?;
         match current_active_role(state, user.user_id).await?.as_str() {
             "admin" | "sub_admin" => Ok(Self),
@@ -103,8 +109,12 @@ pub struct OptionalAuthUser(pub Option<AuthUser>);
 impl FromRequestParts<AppState> for OptionalAuthUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let has_api_key = parts.headers
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let has_api_key = parts
+            .headers
             .get("X-API-Key")
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| !value.is_empty());
@@ -124,9 +134,15 @@ impl FromRequestParts<AppState> for OptionalAuthUser {
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AppError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         // 从 extensions 获取客户端 socket 地址
-        let socket_addr = parts.extensions.get::<ConnectInfo<SocketAddr>>().map(|ci| ci.0);
+        let socket_addr = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ci| ci.0);
 
         // ── 优先检查 X-API-Key ──
         if let Some(api_key) = parts.headers.get("X-API-Key").and_then(|v| v.to_str().ok()) {
@@ -160,22 +176,31 @@ impl FromRequestParts<AppState> for AuthUser {
 
 impl AuthUser {
     /// 通过 X-API-Key 认证：在 users 表中查找匹配 api_key 的用户，并记录登录日志
-    async fn from_api_key(key: &str, state: &AppState, headers: &HeaderMap, socket_addr: Option<SocketAddr>) -> Result<Self, AppError> {
-        use crate::models::entity::{users, login_logs};
+    async fn from_api_key(
+        key: &str,
+        state: &AppState,
+        headers: &HeaderMap,
+        socket_addr: Option<SocketAddr>,
+    ) -> Result<Self, AppError> {
+        use crate::models::entity::{login_logs, users};
         use crate::utils::client_info;
-        use sea_orm::{ColumnTrait, QueryFilter, ActiveModelTrait, Set};
+        use sea_orm::{ActiveModelTrait, ColumnTrait, QueryFilter, Set};
 
         let ip = client_info::extract_client_ip(headers, socket_addr);
-        let user_agent = headers.get("user-agent")
+        let user_agent = headers
+            .get("user-agent")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
-        let device_type = user_agent.as_deref()
+        let device_type = user_agent
+            .as_deref()
             .map(|ua| client_info::device_label(Some(ua), "api_key"));
         let now = crate::utils::now_local();
 
         let user = users::Entity::find()
             .filter(users::Column::ApiKey.eq(key))
             .filter(users::Column::Status.eq("active"))
+            .filter(users::Column::IsActive.eq(true))
+            .filter(users::Column::DeletedAt.is_null())
             .one(&state.db)
             .await
             .map_err(|e| {
@@ -250,15 +275,17 @@ pub async fn require_admin_middleware(
     request: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Result<axum::response::Response, AppError> {
-    let token = request.headers()
+    let token = request
+        .headers()
         .get("cookie")
         .and_then(|v| v.to_str().ok())
         .and_then(|cookies| {
-            cookies.split(';')
+            cookies
+                .split(';')
                 .find(|c| c.trim().starts_with("scalar_token="))
                 .map(|c| c.trim()["scalar_token=".len()..].to_string())
         });
-    
+
     if let Some(token) = token {
         let claims = crate::services::auth::verify_token(&token, &state.config.auth.jwt_secret)?;
         if claims.role != "admin" {
@@ -266,16 +293,20 @@ pub async fn require_admin_middleware(
         }
     } else {
         // Fall back to Bearer header (API calls)
-        let auth_header = request.headers().get("Authorization")
+        let auth_header = request
+            .headers()
+            .get("Authorization")
             .and_then(|v| v.to_str().ok())
             .ok_or(AppError::Unauthorized)?;
-        let token = auth_header.strip_prefix("Bearer ").ok_or(AppError::Unauthorized)?;
+        let token = auth_header
+            .strip_prefix("Bearer ")
+            .ok_or(AppError::Unauthorized)?;
         let claims = crate::services::auth::verify_token(token, &state.config.auth.jwt_secret)?;
         if claims.role != "admin" {
             return Err(AppError::Forbidden);
         }
     }
-    
+
     Ok(next.run(request).await)
 }
 
