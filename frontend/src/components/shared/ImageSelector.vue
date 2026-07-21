@@ -96,7 +96,7 @@
               placeholder="输入图片 URL（https://...）"
               class="summary-input"
               style="width:100%"
-              @keyup.enter="confirmUrl"
+              @keyup.enter="confirmSelection"
             />
             <div v-if="urlPreview" style="margin-top:12px;text-align:center">
               <img :src="urlPreview" style="max-width:200px;max-height:120px;border-radius:8px;object-fit:cover" referrerpolicy="no-referrer" />

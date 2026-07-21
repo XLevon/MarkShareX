@@ -12,6 +12,10 @@ data_dir = "./data"
 [server]
 host = "0.0.0.0"
 port = 5023
+# 仅支持精确代理 IP（不支持 CIDR）；应用从 X-Forwarded-For 右向左剥离可信代理跳点。
+# Nginx 应使用：proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+# X-Real-IP 不作为访问控制来源。Nginx 与应用同机时通常配置为 ["127.0.0.1"]；直连部署保持空数组。
+trusted_proxies = []
 
 # ------------------------------ 数据库配置 ------------------------------
 [database]
@@ -69,6 +73,10 @@ fallback_api_key = ""
 # 默认: 留空不使用
 searxng_url = ""
 
+# 仅允许上述 SearXNG/DDG 配置地址连接的明确内网 IP/CIDR。
+# 不影响用户提供的 web_extract URL，也不复用 AI provider allowlist。
+allowed_search_networks = []
+
 # 终极兜底: DuckDuckGo 免费搜索，无需 API Key
 # 国内服务器需通过代理访问（nginx 反代 lite.duckduckgo.com）
 duckduckgo_url = ""
@@ -78,7 +86,7 @@ duckduckgo_url = ""
 # 工具调用最大轮次（资讯采集等复杂任务建议 12-15）
 max_tool_rounds = 8
 
-# 允许提供商连接的内网地址（用于本地 Ollama 等场景）
-# 示例: allowed_provider_networks = ["192.168.1.100", "10.0.0.50"]
-# 留空则拒绝所有内网地址
+# 允许提供商连接的明确内网 IP/CIDR（用于本地 Ollama 等场景）
+# 示例: allowed_provider_networks = ["192.168.1.100", "10.0.0.0/24"]
+# 留空则拒绝所有内网地址；0.0.0.0 不具有通配语义
 allowed_provider_networks = []

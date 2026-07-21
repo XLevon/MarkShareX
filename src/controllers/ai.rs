@@ -2,7 +2,7 @@ use crate::crypto;
 use crate::middleware::auth::{AdminUser, AuthUser};
 use crate::models::entity::{
     ai_agent_config, ai_chat_message, ai_chat_session, ai_model, ai_provider, ai_skill, ai_task,
-    ai_task_log, ai_tool,
+    ai_task_log, ai_tool, users,
 };
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
@@ -463,15 +463,10 @@ pub async fn test_provider(
         .unwrap_or(&[]);
     crate::utils::safe_url::validate_safe_url_with_allowlist(base_url, allowed).await?;
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
-
     match provider.provider_type.as_str() {
-        "openai" => test_openai_compatible(&client, base_url, &api_key).await,
-        "anthropic" => test_anthropic(&client, base_url, &api_key).await,
-        "ollama" => test_ollama(&client, base_url).await,
+        "openai" => test_openai_compatible(base_url, &api_key, allowed).await,
+        "anthropic" => test_anthropic(base_url, &api_key, allowed).await,
+        "ollama" => test_ollama(base_url, allowed).await,
         other => Ok(Json(ApiResponse {
             data: ProviderTestResponse {
                 success: false,
@@ -485,16 +480,24 @@ pub async fn test_provider(
 
 /// 测试 OpenAI 兼容供应商 (DeepSeek, SiliconFlow, Groq 等)
 async fn test_openai_compatible(
-    client: &reqwest::Client,
     base_url: &str,
     api_key: &str,
+    allowed: &[String],
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
     // 1. 先测连通性：GET /models
-    match client
-        .get(format!("{}/models", base_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await
+    let endpoint = format!("{}/models", base_url);
+    match crate::utils::safe_url::send_safe_request(
+        &endpoint,
+        allowed,
+        std::time::Duration::from_secs(15),
+        None,
+        |client, url| {
+            client
+                .get(url.clone())
+                .header("Authorization", format!("Bearer {}", api_key))
+        },
+    )
+    .await
     {
         Ok(resp) => {
             let status = resp.status();
@@ -545,21 +548,30 @@ async fn test_openai_compatible(
 
 /// 测试 Anthropic 供应商 — 发一个轻量 Messages 请求验证认证
 async fn test_anthropic(
-    client: &reqwest::Client,
     base_url: &str,
     api_key: &str,
+    allowed: &[String],
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
-    match client
-        .post(format!("{}/messages", base_url))
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .json(&serde_json::json!({
-            "model": "claude-3-haiku-20240307",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "hi"}]
-        }))
-        .send()
-        .await
+    let endpoint = format!("{}/messages", base_url);
+    let payload = serde_json::json!({
+        "model": "claude-3-haiku-20240307",
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    match crate::utils::safe_url::send_safe_request(
+        &endpoint,
+        allowed,
+        std::time::Duration::from_secs(15),
+        None,
+        |client, url| {
+            client
+                .post(url.clone())
+                .header("x-api-key", api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&payload)
+        },
+    )
+    .await
     {
         Ok(resp) => {
             let status = resp.status();
@@ -599,10 +611,19 @@ async fn test_anthropic(
 
 /// 测试 Ollama 供应商 — GET /api/tags（无需认证）
 async fn test_ollama(
-    client: &reqwest::Client,
     base_url: &str,
+    allowed: &[String],
 ) -> Result<Json<ApiResponse<ProviderTestResponse>>, AppError> {
-    match client.get(format!("{}/api/tags", base_url)).send().await {
+    let endpoint = format!("{}/api/tags", base_url);
+    match crate::utils::safe_url::send_safe_request(
+        &endpoint,
+        allowed,
+        std::time::Duration::from_secs(15),
+        None,
+        |client, url| client.get(url.clone()),
+    )
+    .await
+    {
         Ok(resp) => {
             let status = resp.status();
             if status.is_success() {
@@ -1414,14 +1435,28 @@ fn authorize_session_access(auth: &AuthUser, owner_id: i32) -> Result<(), AppErr
     }
 }
 
+async fn authorize_session_read_or_delete(
+    state: &AppState,
+    auth: &AuthUser,
+    owner_id: i32,
+) -> Result<(), AppError> {
+    if auth.user_id == owner_id
+        || crate::middleware::auth::current_active_role(state, auth.user_id).await? == "admin"
+    {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("会话不存在".into()))
+    }
+}
+
 /// GET /api/v1/admin/ai/sessions
 #[utoipa::path(get, path = "/api/v1/admin/ai/sessions", responses((status = 200)), tag = "AI")]
 pub async fn list_sessions(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<ApiResponse<Vec<ChatSessionResponse>>>, AppError> {
-    use crate::models::entity::users;
-    let is_admin = auth.role == "admin";
+    let is_admin =
+        crate::middleware::auth::current_active_role(&state, auth.user_id).await? == "admin";
 
     let sessions = if is_admin {
         ai_chat_session::Entity::find()
@@ -1442,10 +1477,14 @@ pub async fn list_sessions(
             .filter(ai_chat_message::Column::SessionId.eq(s.id))
             .count(&state.db)
             .await?;
-        let user_display_name = users::Entity::find_by_id(s.user_id)
-            .one(&state.db)
-            .await?
-            .and_then(|u| u.display_name.or(Some(u.username)));
+        let user_display_name = if is_admin {
+            users::Entity::find_by_id(s.user_id)
+                .one(&state.db)
+                .await?
+                .and_then(|u| u.display_name.or(Some(u.username)))
+        } else {
+            None
+        };
         result.push(ChatSessionResponse {
             id: s.id,
             title: s.title,
@@ -1508,7 +1547,7 @@ pub async fn get_session(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
-    authorize_session_access(&auth, session.user_id)?;
+    authorize_session_read_or_delete(&state, &auth, session.user_id).await?;
 
     let messages: Vec<ChatMessageResponse> = ai_chat_message::Entity::find()
         .filter(ai_chat_message::Column::SessionId.eq(id))
@@ -1550,7 +1589,7 @@ pub async fn delete_session(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
-    authorize_session_access(&auth, session.user_id)?;
+    authorize_session_read_or_delete(&state, &auth, session.user_id).await?;
     ai_chat_session::Entity::delete_by_id(id)
         .exec(&state.db)
         .await?;
@@ -1720,8 +1759,14 @@ pub async fn chat(
         .map(|token| ai_tools::UserContext {
             token: token.to_string(),
         });
+    let is_currently_privileged = matches!(
+        crate::middleware::auth::current_active_role(&state, auth.user_id)
+            .await?
+            .as_str(),
+        "admin" | "sub_admin"
+    );
     let registry =
-        ai_tools::create_registry(&state.db, auth.is_privileged(), user_ctx.as_ref()).await;
+        ai_tools::create_registry(&state.db, is_currently_privileged, user_ctx.as_ref()).await;
     let reply = ai_chat::run_function_calling(
         &state,
         &registry,
@@ -1779,6 +1824,7 @@ async fn handle_slash_command(
         authorize_session_access(auth, session.user_id)?;
     }
 
+    let mut created_session_id = None;
     let reply = match command.as_str() {
         "/new" => {
             // 创建新会话
@@ -1792,6 +1838,7 @@ async fn handle_slash_command(
                 ..Default::default()
             };
             let session = model.insert(&state.db).await?;
+            created_session_id = Some(session.id);
             format!("✅ 已创建新会话「{}」(ID: {})", title, session.id)
         }
         "/model" => {
@@ -1831,16 +1878,9 @@ async fn handle_slash_command(
         }
     };
 
-    // 命令结果也保存为一个 system 消息（不参与 AI 对话）
-    let session_id = if let Some(sid) = req.session_id {
-        let msg = ai_chat_message::ActiveModel {
-            session_id: Set(sid),
-            role: Set("system".to_string()),
-            content: Set(format!("用户执行命令: {}", cmd)),
-            created_at: Set(now),
-            ..Default::default()
-        };
-        msg.insert(&state.db).await?;
+    let session_id = if let Some(sid) = created_session_id {
+        sid
+    } else if let Some(sid) = req.session_id {
         sid
     } else {
         // 没有会话，创建临时会话来保存
@@ -1854,6 +1894,16 @@ async fn handle_slash_command(
         };
         model.insert(&state.db).await?.id
     };
+
+    // 命令结果保存到实际返回的会话；/new 必须写入新会话，而不是旧会话。
+    let msg = ai_chat_message::ActiveModel {
+        session_id: Set(session_id),
+        role: Set("system".to_string()),
+        content: Set(format!("用户执行命令: {}", cmd)),
+        created_at: Set(now),
+        ..Default::default()
+    };
+    msg.insert(&state.db).await?;
 
     Ok(Json(ApiResponse {
         data: ChatResponse { reply, session_id },

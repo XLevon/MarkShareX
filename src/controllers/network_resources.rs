@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
 
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::PrivilegedUser;
 use crate::models::entity::network_resources;
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
 
@@ -82,7 +82,7 @@ fn to_response(m: network_resources::Model, referenced: bool) -> NetworkResource
 )]
 pub async fn list_resources(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ApiResponse<Vec<NetworkResourceResponse>>>, AppError> {
     let page = query.page.unwrap_or(1).max(1);
@@ -175,7 +175,7 @@ pub async fn list_resources(
 )]
 pub async fn create_resource(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<CreateRequest>,
 ) -> Result<Json<ApiResponse<NetworkResourceResponse>>, AppError> {
     let url = strip_fragment(req.url.trim());
@@ -216,7 +216,7 @@ pub async fn create_resource(
 )]
 pub async fn update_resource(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateRequest>,
 ) -> Result<Json<ApiResponse<NetworkResourceResponse>>, AppError> {
@@ -259,7 +259,7 @@ pub async fn update_resource(
 )]
 pub async fn delete_resource(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let resource = network_resources::Entity::find_by_id(id)
@@ -317,7 +317,7 @@ pub struct ReferenceItem {
 )]
 pub async fn get_references(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<Vec<ReferenceItem>>>, AppError> {
     // 确认资源存在并获取 URL（用于后续正文扫描）
@@ -413,7 +413,7 @@ pub async fn resolve_resource(
 )]
 pub async fn ensure_resource(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<EnsureRequest>,
 ) -> Result<Json<ApiResponse<NetworkResourceResponse>>, AppError> {
     let url = req.url.trim().to_string();

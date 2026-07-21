@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::AdminUser;
 use crate::models::entity::settings;
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{extract::State, Json};
@@ -43,17 +43,19 @@ pub async fn get_settings(
 )]
 pub async fn update_settings(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: AdminUser,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<ApiResponse<SettingsResponse>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
-
     let settings_map = match req {
         UpdateSettingsRequest::Nested { settings } => settings,
         UpdateSettingsRequest::Flat(map) => map,
     };
+    let updates_ip_guard = settings_map.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            "ip_blacklist_enabled" | "ip_blacklist" | "ip_whitelist_enabled" | "ip_whitelist"
+        )
+    });
 
     let now = crate::utils::now_local();
 
@@ -79,6 +81,10 @@ pub async fn update_settings(
                 model.insert(&state.db).await?;
             }
         }
+    }
+
+    if updates_ip_guard {
+        state.invalidate_ip_guard_rules_cache().await;
     }
 
     // Return updated settings

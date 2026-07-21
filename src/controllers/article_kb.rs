@@ -4,7 +4,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::PrivilegedUser;
 use crate::models::entity::{article_statuses, article_types, posts};
 use crate::utils::{ApiResponse, AppError, AppState};
 use sea_orm::*;
@@ -106,7 +106,7 @@ pub async fn list_article_types(
 /// GET /api/v1/admin/article-types — admin list (all, with post_count)
 pub async fn list_admin_article_types(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
 ) -> Result<Json<ApiResponse<Vec<ArticleTypeWithCount>>>, AppError> {
     let items = article_types::Entity::find()
         .order_by_asc(article_types::Column::SortOrder)
@@ -125,7 +125,7 @@ pub async fn list_admin_article_types(
 /// POST /api/v1/admin/article-types — create
 pub async fn create_article_type(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(body): Json<CreateArticleType>,
 ) -> Result<Json<ApiResponse<article_types::Model>>, AppError> {
     let now = crate::utils::now_local();
@@ -149,7 +149,7 @@ pub async fn create_article_type(
 /// PUT /api/v1/admin/article-types/:id
 pub async fn update_article_type(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(body): Json<UpdateArticleType>,
 ) -> Result<Json<ApiResponse<article_types::Model>>, AppError> {
@@ -184,7 +184,7 @@ pub async fn update_article_type(
 /// DELETE /api/v1/admin/article-types/:id — only when post_count == 0
 pub async fn delete_article_type(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let item = article_types::Entity::find_by_id(id)
@@ -210,7 +210,7 @@ pub async fn delete_article_type(
 /// POST /api/v1/admin/article-types/reorder
 pub async fn reorder_article_types(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<ReorderRequest>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     for (index, id) in req.ids.iter().enumerate() {
@@ -253,7 +253,7 @@ pub async fn list_article_statuses(
 /// GET /api/v1/admin/article-statuses — admin list (all, with post_count)
 pub async fn list_admin_article_statuses(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
 ) -> Result<Json<ApiResponse<Vec<ArticleStatusWithCount>>>, AppError> {
     let items = article_statuses::Entity::find()
         .order_by_asc(article_statuses::Column::SortOrder)
@@ -272,7 +272,7 @@ pub async fn list_admin_article_statuses(
 /// POST /api/v1/admin/article-statuses — create
 pub async fn create_article_status(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(body): Json<CreateArticleStatus>,
 ) -> Result<Json<ApiResponse<article_statuses::Model>>, AppError> {
     let now = crate::utils::now_local();
@@ -296,7 +296,7 @@ pub async fn create_article_status(
 /// PUT /api/v1/admin/article-statuses/:id
 pub async fn update_article_status(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(body): Json<UpdateArticleStatus>,
 ) -> Result<Json<ApiResponse<article_statuses::Model>>, AppError> {
@@ -331,7 +331,7 @@ pub async fn update_article_status(
 /// DELETE /api/v1/admin/article-statuses/:id — only when post_count == 0
 pub async fn delete_article_status(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     let item = article_statuses::Entity::find_by_id(id)
@@ -357,7 +357,7 @@ pub async fn delete_article_status(
 /// POST /api/v1/admin/article-statuses/reorder
 pub async fn reorder_article_statuses(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<ReorderRequest>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     for (index, id) in req.ids.iter().enumerate() {

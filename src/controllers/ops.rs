@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::AdminUser;
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{extract::State, Json};
 use sea_orm::ConnectionTrait;
@@ -38,11 +38,9 @@ pub struct LogQuery {
 )]
 pub async fn get_logs(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _admin: AdminUser,
     axum::extract::Query(query): axum::extract::Query<LogQuery>,
 ) -> Result<Json<ApiResponse<LogQueryResponse>>, AppError> {
-    require_admin(&auth)?;
-
     let limit = query.limit.unwrap_or(100).min(1000);
     let logs = state
         .log_buffer
@@ -96,10 +94,8 @@ pub struct SystemHealth {
 )]
 pub async fn get_health(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<HealthResponse>>, AppError> {
-    require_admin(&auth)?;
-
     // ── DB ping ──
     let db_ok = state.db.execute_unprepared("SELECT 1").await.is_ok();
 
@@ -168,10 +164,8 @@ pub struct StatsResponse {
 )]
 pub async fn get_stats(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _admin: AdminUser,
 ) -> Result<Json<ApiResponse<StatsResponse>>, AppError> {
-    require_admin(&auth)?;
-
     let recent_errors = state.log_buffer.recent_errors(10);
 
     Ok(Json(ApiResponse::new(StatsResponse {
@@ -182,13 +176,6 @@ pub async fn get_stats(
 }
 
 // ── Helpers ──
-
-fn require_admin(auth: &AuthUser) -> Result<(), AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
-    Ok(())
-}
 
 fn get_disk_info() -> (f64, f64, f64) {
     // Use data dir's filesystem — parse df output

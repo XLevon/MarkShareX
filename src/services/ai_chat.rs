@@ -2,11 +2,11 @@
 //!
 //! 供 HTTP controller 和 cron 调度器共用。
 
+use crate::crypto;
+use crate::services::ai_tools::ToolRegistry;
+use crate::utils::{AppError, AppState};
 use sea_orm::*;
 use serde_json::Value;
-use crate::utils::{AppState, AppError};
-use crate::services::ai_tools::ToolRegistry;
-use crate::crypto;
 
 /// 一次对话轮次的追踪记录
 #[derive(Clone, serde::Serialize)]
@@ -49,11 +49,15 @@ pub async fn run_function_calling_traced(
     use crate::models::entity::ai_provider;
 
     let provider = if let Some(pid) = provider_id {
-        ai_provider::Entity::find_by_id(pid).one(&state.db).await?
+        ai_provider::Entity::find_by_id(pid)
+            .one(&state.db)
+            .await?
             .ok_or_else(|| AppError::BadRequest(format!("供应商 #{} 不存在", pid)))?
     } else {
-        ai_provider::Entity::find().filter(ai_provider::Column::IsActive.eq(true))
-            .one(&state.db).await?
+        ai_provider::Entity::find()
+            .filter(ai_provider::Column::IsActive.eq(true))
+            .one(&state.db)
+            .await?
             .ok_or_else(|| AppError::BadRequest("没有可用的 AI 供应商".into()))?
     };
 
@@ -67,8 +71,12 @@ pub async fn run_function_calling_traced(
         ai_model::Entity::find()
             .filter(ai_model::Column::ProviderId.eq(provider.id))
             .filter(ai_model::Column::IsDefault.eq(true))
-            .one(&state.db).await.ok().flatten()
-            .map(|m| m.name).unwrap_or_else(|| "gpt-3.5-turbo".to_string())
+            .one(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .map(|m| m.name)
+            .unwrap_or_else(|| "gpt-3.5-turbo".to_string())
     };
 
     let mut messages: Vec<Value> = Vec::new();
@@ -82,37 +90,50 @@ pub async fn run_function_calling_traced(
 
     let tools = registry.to_openai_tools();
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
+    let allowed = state
+        .config
+        .ai
+        .as_ref()
+        .map(|config| config.allowed_provider_networks.as_slice())
+        .unwrap_or(&[]);
+    let endpoint = format!("{}/chat/completions", base_url);
     let max_rounds: u32 = resolve_max_rounds(max_rounds_override, state);
 
     let mut trace_steps: Vec<TraceStep> = Vec::new();
     let mut consecutive_empty: u32 = 0; // 连续空响应计数
 
     for round in 0..max_rounds {
-        let resp = client
-            .post(format!("{}/chat/completions", base_url))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&serde_json::json!({
-                "model": model,
-                "messages": messages,
-                "tools": tools,
-                "tool_choice": "auto",
-                "temperature": 0.7,
-            }))
-            .send().await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("LLM 请求失败: {}", e)))?;
+        let payload = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto",
+            "temperature": 0.7,
+        });
+        let resp = crate::utils::safe_url::send_safe_request(
+            &endpoint,
+            allowed,
+            std::time::Duration::from_secs(120),
+            None,
+            |client, url| {
+                client
+                    .post(url.clone())
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .json(&payload)
+            },
+        )
+        .await?;
 
         let status = resp.status();
         let resp_text = resp.text().await.unwrap_or_default();
-        let body: Value = serde_json::from_str(&resp_text)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!(
+        let body: Value = serde_json::from_str(&resp_text).map_err(|e| {
+            AppError::Internal(anyhow::anyhow!(
                 "LLM 响应解析失败 (HTTP {}): {} — body: {}",
-                status.as_u16(), e,
+                status.as_u16(),
+                e,
                 &resp_text[..resp_text.len().min(500)]
-            )))?;
+            ))
+        })?;
 
         let choice = &body["choices"][0];
         let msg = &choice["message"];
@@ -123,7 +144,10 @@ pub async fn run_function_calling_traced(
             // 有文本内容 → LLM 正常结束
             if let Some(ref t) = llm_text {
                 if !t.trim().is_empty() {
-                    return Ok(TraceResult { steps: trace_steps, final_reply: t.clone() });
+                    return Ok(TraceResult {
+                        steps: trace_steps,
+                        final_reply: t.clone(),
+                    });
                 }
             }
 
@@ -132,10 +156,17 @@ pub async fn run_function_calling_traced(
             if consecutive_empty >= 2 {
                 // 连续两次空响应 → 确实无法继续
                 let total_rounds = trace_steps.len();
-                tracing::warn!("LLM 连续 {} 次返回空内容，强制终止 (round={})", consecutive_empty, round + 1);
+                tracing::warn!(
+                    "LLM 连续 {} 次返回空内容，强制终止 (round={})",
+                    consecutive_empty,
+                    round + 1
+                );
                 return Ok(TraceResult {
                     steps: trace_steps,
-                    final_reply: format!("任务已终止（LLM 连续返回空内容，共 {} 轮工具调用）", total_rounds),
+                    final_reply: format!(
+                        "任务已终止（LLM 连续返回空内容，共 {} 轮工具调用）",
+                        total_rounds
+                    ),
                 });
             }
 
@@ -171,7 +202,11 @@ pub async fn run_function_calling_traced(
             step_tools.push(TraceToolCall {
                 function_name: fn_name.to_string(),
                 arguments: args,
-                result_preview: if result.len() > 500 { format!("{}...", preview) } else { preview },
+                result_preview: if result.len() > 500 {
+                    format!("{}...", preview)
+                } else {
+                    preview
+                },
             });
 
             messages.push(serde_json::json!({
@@ -209,7 +244,18 @@ pub async fn run_function_calling(
     model_name: Option<String>,
     max_rounds_override: Option<i32>,
 ) -> Result<String, AppError> {
-    let result = run_function_calling_traced(state, registry, system_prompt, user_message, history, provider_id, model_name, None, max_rounds_override).await?;
+    let result = run_function_calling_traced(
+        state,
+        registry,
+        system_prompt,
+        user_message,
+        history,
+        provider_id,
+        model_name,
+        None,
+        max_rounds_override,
+    )
+    .await?;
     Ok(result.final_reply)
 }
 
@@ -223,7 +269,10 @@ fn resolve_max_rounds(override_val: Option<i32>, state: &AppState) -> u32 {
         }
     }
     // 2. 全局配置（0 视为未设置，用默认）
-    let config_val = state.config.ai.as_ref()
+    let config_val = state
+        .config
+        .ai
+        .as_ref()
         .map(|c| c.max_tool_rounds)
         .unwrap_or(0);
     if config_val > 0 {

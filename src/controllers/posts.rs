@@ -1280,7 +1280,9 @@ pub async fn batch_publish_posts(
             active.published_at = Set(Some(now));
             active.updated_at = Set(now);
             active.update(&state.db).await?;
-            let _ = state.search_engine.index_document(*id as u64, &title, &content);
+            let _ = state
+                .search_engine
+                .index_document(*id as u64, &title, &content);
             count += 1;
         }
     }
@@ -1641,7 +1643,9 @@ async fn is_ip_whitelisted(state: &AppState, ip: &str) -> bool {
         return false;
     }
     match get("ip_whitelist") {
-        Some(json) => ip_utils::parse_valid_ips(json).contains(&ip.to_string()),
+        Some(json) => ip_utils::parse_valid_ips(json)
+            .iter()
+            .any(|rule| ip_utils::ip_matches_rule(rule, ip)),
         None => false,
     }
 }
@@ -1657,14 +1661,20 @@ pub async fn record_read_log(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     ConnectInfo(socket_addr): ConnectInfo<SocketAddr>,
-    auth: Option<crate::middleware::auth::AuthUser>,
+    auth: OptionalAuthUser,
     Json(req): Json<RecordReadLogRequest>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     use crate::models::entity::read_logs;
     use crate::utils::client_info;
 
     require_published_post(&state.db, req.post_id).await?;
-    let ip = client_info::extract_client_ip(&headers, Some(socket_addr));
+    let ip = client_info::extract_client_ip(
+        &headers,
+        Some(socket_addr),
+        &state.config.server.trusted_proxies,
+    )
+    .ok()
+    .flatten();
 
     // 检查是否在白名单中 — 白名单 IP 不记录阅读日志
     if let Some(ref ip_str) = ip {
@@ -1697,7 +1707,7 @@ pub async fn record_read_log(
     let now = crate::utils::now_local();
     let log = read_logs::ActiveModel {
         post_id: Set(req.post_id),
-        user_id: Set(auth.as_ref().map(|a| a.user_id)),
+        user_id: Set(auth.0.as_ref().map(|a| a.user_id)),
         ip_address: Set(ip),
         user_agent: Set(user_agent),
         device_type: Set(device_type),

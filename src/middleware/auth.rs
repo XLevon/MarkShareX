@@ -9,14 +9,24 @@ use axum::http::HeaderMap;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use std::net::SocketAddr;
 
-async fn current_active_role(state: &AppState, user_id: i32) -> Result<String, AppError> {
+pub(crate) async fn current_active_user(
+    state: &AppState,
+    user_id: i32,
+) -> Result<users::Model, AppError> {
     users::Entity::find_by_id(user_id)
         .filter(users::Column::Status.eq("active"))
+        .filter(users::Column::IsActive.eq(true))
         .filter(users::Column::DeletedAt.is_null())
         .one(&state.db)
         .await?
-        .map(|user| user.role)
         .ok_or(AppError::Forbidden)
+}
+
+pub(crate) async fn current_active_role(
+    state: &AppState,
+    user_id: i32,
+) -> Result<String, AppError> {
+    Ok(current_active_user(state, user_id).await?.role)
 }
 
 #[derive(Debug, Clone)]
@@ -35,15 +45,15 @@ pub struct AuthUser {
 
 /// Authenticated administrator. Using this extractor makes admin-only handlers
 /// fail closed for JWT and API-key authentication alike.
-#[derive(Debug, Clone, Copy)]
-pub struct AdminUser;
+#[derive(Debug, Clone)]
+pub struct AdminUser(pub AuthUser);
 
 impl TryFrom<AuthUser> for AdminUser {
     type Error = AppError;
 
     fn try_from(user: AuthUser) -> Result<Self, Self::Error> {
         if user.is_admin() {
-            Ok(Self)
+            Ok(Self(user))
         } else {
             Err(AppError::Forbidden)
         }
@@ -58,25 +68,20 @@ impl FromRequestParts<AppState> for AdminUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let user = AuthUser::from_request_parts(parts, state).await?;
-        if current_active_role(state, user.user_id).await? == "admin" {
-            Ok(Self)
-        } else {
-            Err(AppError::Forbidden)
-        }
+        AdminUser::try_from(AuthUser::from_request_parts(parts, state).await?)
     }
 }
 
 /// Authenticated administrator or sub-administrator for global content actions.
-#[derive(Debug, Clone, Copy)]
-pub struct PrivilegedUser;
+#[derive(Debug, Clone)]
+pub struct PrivilegedUser(pub AuthUser);
 
 impl TryFrom<AuthUser> for PrivilegedUser {
     type Error = AppError;
 
     fn try_from(user: AuthUser) -> Result<Self, Self::Error> {
         if user.is_privileged() {
-            Ok(Self)
+            Ok(Self(user))
         } else {
             Err(AppError::Forbidden)
         }
@@ -91,11 +96,7 @@ impl FromRequestParts<AppState> for PrivilegedUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let user = AuthUser::from_request_parts(parts, state).await?;
-        match current_active_role(state, user.user_id).await?.as_str() {
-            "admin" | "sub_admin" => Ok(Self),
-            _ => Err(AppError::Forbidden),
-        }
+        PrivilegedUser::try_from(AuthUser::from_request_parts(parts, state).await?)
     }
 }
 
@@ -163,12 +164,13 @@ impl FromRequestParts<AppState> for AuthUser {
             .ok_or(AppError::Unauthorized)?;
 
         let claims = auth::verify_token(token, &state.config.auth.jwt_secret)?;
+        let user = current_active_user(state, claims.user_id).await?;
         Ok(AuthUser {
-            user_id: claims.user_id,
-            username: claims.username,
-            display_name: claims.display_name,
-            role: claims.role,
-            status: claims.status,
+            user_id: user.id,
+            username: user.username,
+            display_name: user.display_name,
+            role: user.role,
+            status: user.status,
             auth_source: "jwt".to_string(),
         })
     }
@@ -186,7 +188,13 @@ impl AuthUser {
         use crate::utils::client_info;
         use sea_orm::{ActiveModelTrait, ColumnTrait, QueryFilter, Set};
 
-        let ip = client_info::extract_client_ip(headers, socket_addr);
+        let ip = client_info::extract_client_ip(
+            headers,
+            socket_addr,
+            &state.config.server.trusted_proxies,
+        )
+        .ok()
+        .flatten();
         let user_agent = headers
             .get("user-agent")
             .and_then(|v| v.to_str().ok())
@@ -286,11 +294,8 @@ pub async fn require_admin_middleware(
                 .map(|c| c.trim()["scalar_token=".len()..].to_string())
         });
 
-    if let Some(token) = token {
-        let claims = crate::services::auth::verify_token(&token, &state.config.auth.jwt_secret)?;
-        if claims.role != "admin" {
-            return Err(AppError::Forbidden);
-        }
+    let token = if let Some(token) = token {
+        token
     } else {
         // Fall back to Bearer header (API calls)
         let auth_header = request
@@ -298,13 +303,15 @@ pub async fn require_admin_middleware(
             .get("Authorization")
             .and_then(|v| v.to_str().ok())
             .ok_or(AppError::Unauthorized)?;
-        let token = auth_header
+        auth_header
             .strip_prefix("Bearer ")
-            .ok_or(AppError::Unauthorized)?;
-        let claims = crate::services::auth::verify_token(token, &state.config.auth.jwt_secret)?;
-        if claims.role != "admin" {
-            return Err(AppError::Forbidden);
-        }
+            .ok_or(AppError::Unauthorized)?
+            .to_string()
+    };
+
+    let claims = crate::services::auth::verify_token(&token, &state.config.auth.jwt_secret)?;
+    if current_active_role(&state, claims.user_id).await? != "admin" {
+        return Err(AppError::Forbidden);
     }
 
     Ok(next.run(request).await)

@@ -406,6 +406,10 @@ pub async fn import_markdown(
     auth: AuthUser,
     Json(req): Json<ImportRequest>,
 ) -> Result<Json<ApiResponse<ImportResult>>, AppError> {
+    if !matches!(auth.role.as_str(), "author" | "sub_admin" | "admin") {
+        return Err(AppError::Forbidden);
+    }
+
     let mut results = ImportResult {
         success: true,
         message: "".to_string(),
@@ -747,7 +751,16 @@ async fn create_post_from_import(
     cover_url: Option<&str>,
 ) -> Result<posts::Model, AppError> {
     crate::services::import_export::create_post_from_import(
-        state, user_id, title, content, summary, category_name,
-        status, tags, explicit_slug, cover_url,
-    ).await
+        state,
+        user_id,
+        title,
+        content,
+        summary,
+        category_name,
+        status,
+        tags,
+        explicit_slug,
+        cover_url,
+    )
+    .await
 }

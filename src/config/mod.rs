@@ -15,9 +15,9 @@ pub struct AiConfig {
     #[serde(default = "default_max_tool_rounds")]
     pub max_tool_rounds: u32,
     pub search: Option<AiSearchConfig>,
-    /// Allowlist of IPs/networks that providers may connect to despite
-    /// being private addresses.  Useful for local Ollama instances.
-    /// Example: ["192.168.1.100", "10.0.0.50"]
+    /// Explicit IP/CIDR allowlist that providers may connect to despite
+    /// being private addresses. Useful for local Ollama instances.
+    /// Example: ["192.168.1.100", "10.0.0.0/24"]. `0.0.0.0` is not a wildcard.
     #[serde(default)]
     pub allowed_provider_networks: Vec<String>,
 }
@@ -47,6 +47,10 @@ pub struct AiSearchConfig {
     /// DuckDuckGo 搜索地址（默认 lite.duckduckgo.com，可改为代理地址）
     #[serde(default = "default_duckduckgo_url")]
     pub duckduckgo_url: String,
+    /// 仅供配置的 SearXNG/DuckDuckGo 搜索服务使用的明确内网 IP/CIDR。
+    /// 不应用于用户提供的 web_extract URL，也不复用 provider allowlist。
+    #[serde(default)]
+    pub allowed_search_networks: Vec<String>,
 }
 
 fn default_search_provider() -> String {
@@ -84,6 +88,8 @@ impl AiSearchConfig {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    #[serde(default)]
+    pub trusted_proxies: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

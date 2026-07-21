@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AdminUser, AuthUser};
 use crate::models::entity::files;
 use crate::services::files as file_service;
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
@@ -89,13 +89,9 @@ pub struct UploadQuery {
 pub async fn upload_file(
     State(state): State<AppState>,
     Query(query): Query<UploadQuery>,
-    auth: AuthUser,
+    auth: AdminUser,
     mut multipart: Multipart,
 ) -> Result<Json<ApiResponse<FileResponse>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
-
     while let Ok(Some(field)) = multipart.next_field().await {
         let content_type = field
             .content_type()
@@ -126,7 +122,7 @@ pub async fn upload_file(
 
         let file = crate::services::files::upload_file(
             &state.db,
-            auth.user_id,
+            auth.0.user_id,
             &original_name,
             &content_type,
             &data,
@@ -185,12 +181,9 @@ pub async fn list_files(
 )]
 pub async fn delete_file(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: AdminUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
     crate::services::files::delete_file(&state.db, id, &state.config.storage.upload_dir).await?;
     Ok(Json(ApiResponse::new(())))
 }
@@ -215,12 +208,9 @@ pub struct BatchDeleteResult {
 )]
 pub async fn batch_delete_files(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: AdminUser,
     Json(req): Json<BatchDeleteRequest>,
 ) -> Result<Json<ApiResponse<BatchDeleteResult>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
     let deleted = crate::services::files::batch_delete_files(
         &state.db,
         &req.ids,
@@ -253,7 +243,7 @@ pub struct Md5CheckResult {
 )]
 pub async fn check_md5_exists(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: AdminUser,
     Json(body): Json<CheckMd5Request>,
 ) -> Result<Json<ApiResponse<Vec<Md5CheckResult>>>, AppError> {
     let mut results: Vec<Md5CheckResult> = Vec::new();
@@ -308,13 +298,9 @@ pub struct BatchUploadResult {
 )]
 pub async fn batch_upload(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: AdminUser,
     mut multipart: Multipart,
 ) -> Result<Json<ApiResponse<Vec<BatchUploadResult>>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
-
     let mut results: Vec<BatchUploadResult> = Vec::new();
 
     while let Ok(Some(field)) = multipart.next_field().await {
@@ -368,7 +354,7 @@ pub async fn batch_upload(
             // 上传文件（已集成 MD5 去重）
             match crate::services::files::upload_file(
                 &state.db,
-                auth.user_id,
+                auth.0.user_id,
                 &original_name,
                 &content_type,
                 &data,
@@ -415,12 +401,8 @@ pub async fn batch_upload(
 )]
 pub async fn list_unreferenced_files(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: AdminUser,
 ) -> Result<Json<ApiResponse<Vec<FileResponse>>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
-
     let unreferenced_files = file_service::get_unreferenced_files(&state.db).await?;
 
     let response = unreferenced_files

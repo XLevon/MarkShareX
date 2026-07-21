@@ -1,4 +1,5 @@
 import api from './index'
+import type { ApiResponse } from './index'
 
 export interface AdminUser {
   id: number
@@ -29,7 +30,7 @@ export function fetchUsers(params?: {
   status?: string
   search?: string
 }) {
-  return api.get<PaginatedUsers>('/admin/users', { params })
+  return api.get<ApiResponse<PaginatedUsers>>('/admin/users', { params })
 }
 
 export function updateUserStatus(id: number, status: string) {
@@ -242,7 +243,7 @@ export interface PaginatedLoginLogs {
 export function fetchLoginLogs(params?: {
   page?: number; page_size?: number; user_id?: number; success?: boolean
 }) {
-  return api.get<PaginatedLoginLogs>('/admin/login-logs', { params })
+  return api.get<ApiResponse<PaginatedLoginLogs>>('/admin/login-logs', { params })
 }
 
 // ── Read Logs ──
@@ -268,7 +269,7 @@ export interface PaginatedReadLogs {
 export function fetchReadLogs(params?: {
   page?: number; page_size?: number; post_id?: number; user_id?: number
 }) {
-  return api.get<PaginatedReadLogs>('/admin/read-logs', { params })
+  return api.get<ApiResponse<PaginatedReadLogs>>('/admin/read-logs', { params })
 }
 
 export function recordReadLog(data: { post_id: number; duration_seconds?: number; referrer?: string }) {
@@ -303,21 +304,21 @@ export interface ArticleStatus {
 
 // Public
 export function fetchArticleTypes() {
-  return api.get<ArticleType[]>('/article-types')
+  return api.get<ApiResponse<ArticleType[]>>('/article-types')
 }
 export function fetchArticleStatuses() {
-  return api.get<ArticleStatus[]>('/article-statuses')
+  return api.get<ApiResponse<ArticleStatus[]>>('/article-statuses')
 }
 
 // Admin
 export function fetchAdminArticleTypes() {
-  return api.get<ArticleType[]>('/admin/article-types')
+  return api.get<ApiResponse<ArticleType[]>>('/admin/article-types')
 }
 export function createArticleType(data: { code: string; display_name: string; color?: string; sort_order?: number }) {
-  return api.post<ArticleType>('/admin/article-types', data)
+  return api.post<ApiResponse<ArticleType>>('/admin/article-types', data)
 }
 export function updateArticleType(id: number, data: Partial<ArticleType>) {
-  return api.put<ArticleType>(`/admin/article-types/${id}`, data)
+  return api.put<ApiResponse<ArticleType>>(`/admin/article-types/${id}`, data)
 }
 export function deleteArticleType(id: number) {
   return api.delete(`/admin/article-types/${id}`)
@@ -326,13 +327,13 @@ export function reorderArticleTypes(ids: number[]) {
   return api.post('/admin/article-types/reorder', { ids })
 }
 export function fetchAdminArticleStatuses() {
-  return api.get<ArticleStatus[]>('/admin/article-statuses')
+  return api.get<ApiResponse<ArticleStatus[]>>('/admin/article-statuses')
 }
 export function createArticleStatus(data: { code: string; display_name: string; color?: string; sort_order?: number }) {
-  return api.post<ArticleStatus>('/admin/article-statuses', data)
+  return api.post<ApiResponse<ArticleStatus>>('/admin/article-statuses', data)
 }
 export function updateArticleStatus(id: number, data: Partial<ArticleStatus>) {
-  return api.put<ArticleStatus>(`/admin/article-statuses/${id}`, data)
+  return api.put<ApiResponse<ArticleStatus>>(`/admin/article-statuses/${id}`, data)
 }
 export function deleteArticleStatus(id: number) {
   return api.delete(`/admin/article-statuses/${id}`)

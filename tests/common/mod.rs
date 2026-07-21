@@ -8,14 +8,15 @@ use marksharex::{
     config::{AiConfig, AppConfig, AuthConfig, DatabaseConfig, ServerConfig, StorageConfig},
     migrations, models,
     models::entity::{
-        ai_chat_session, categories, comments, files, posts, read_logs, settings, users,
+        ai_chat_message, ai_chat_session, categories, comments, files, posts, read_logs, settings,
+        users,
     },
     services,
     utils::AppState,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    IntoActiveModel, NotSet, PaginatorTrait, QueryFilter, Set, Statement,
+    IntoActiveModel, NotSet, PaginatorTrait, QueryFilter, QueryOrder, Set, Statement,
 };
 use serde_json::{json, Value};
 use tempfile::TempDir;
@@ -40,12 +41,17 @@ pub struct PostChildCounts {
 pub struct TestApp {
     pub server: TestServer,
     pub db: DatabaseConnection,
+    pub state: AppState,
     config: AppConfig,
     _temp: TempDir,
 }
 
 impl TestApp {
     pub async fn new() -> anyhow::Result<Self> {
+        Self::new_with_trusted_proxies(vec!["127.0.0.1".to_string()]).await
+    }
+
+    pub async fn new_with_trusted_proxies(trusted_proxies: Vec<String>) -> anyhow::Result<Self> {
         let temp = tempfile::tempdir()?;
         let data_dir = temp.path().join("data");
         let upload_dir = temp.path().join("uploads");
@@ -58,6 +64,7 @@ impl TestApp {
             server: ServerConfig {
                 host: "127.0.0.1".to_string(),
                 port: 0,
+                trusted_proxies,
             },
             database: DatabaseConfig {
                 url: format!("sqlite://{}?mode=rwc", database_path.display()),
@@ -85,12 +92,13 @@ impl TestApp {
         let search_engine = services::search::init_index(&config.data_dir)?;
         let log_buffer = services::logs::LogBuffer::new(100);
         let state = AppState::new(db.clone(), config.clone(), search_engine, log_buffer);
-        let app = build_router(state);
+        let app = build_router(state.clone());
         let server = TestServer::new(app.into_make_service_with_connect_info::<SocketAddr>())?;
 
         Ok(Self {
             server,
             db,
+            state,
             config,
             _temp: temp,
         })
@@ -106,7 +114,11 @@ impl TestApp {
         let database_path = temp.path().join("marksharex-test.db");
         let config = AppConfig {
             data_dir: data_dir.to_string_lossy().into_owned(),
-            server: ServerConfig { host: "127.0.0.1".to_string(), port: 0 },
+            server: ServerConfig {
+                host: "127.0.0.1".to_string(),
+                port: 0,
+                trusted_proxies: vec!["127.0.0.1".to_string()],
+            },
             database: DatabaseConfig {
                 url: format!("sqlite://{}?mode=rwc", database_path.display()),
                 max_connections: 1,
@@ -137,10 +149,16 @@ impl TestApp {
         let search_engine = services::search::init_index(&config.data_dir)?;
         let log_buffer = services::logs::LogBuffer::new(100);
         let state = AppState::new(db.clone(), config.clone(), search_engine, log_buffer);
-        let app = build_router(state);
+        let app = build_router(state.clone());
         let server = TestServer::new(app.into_make_service_with_connect_info::<SocketAddr>())?;
 
-        Ok(Self { server, db, config, _temp: temp })
+        Ok(Self {
+            server,
+            db,
+            state,
+            config,
+            _temp: temp,
+        })
     }
 
     pub fn upload_dir(&self) -> &std::path::Path {
@@ -210,11 +228,22 @@ impl TestApp {
         title: &str,
         status: &str,
     ) -> anyhow::Result<TestPost> {
+        self.create_post_with_content(user, title, None, status)
+            .await
+    }
+
+    pub async fn create_post_with_content(
+        &self,
+        user: &TestUser,
+        title: &str,
+        content: Option<&str>,
+        status: &str,
+    ) -> anyhow::Result<TestPost> {
         let response = self
             .server
             .post("/api/v1/posts")
             .authorization_bearer(&user.token)
-            .json(&json!({"title": title, "status": status}))
+            .json(&json!({"title": title, "content": content, "status": status}))
             .await;
         response.assert_status_ok();
         let body = response.json::<Value>();
@@ -231,6 +260,15 @@ impl TestApp {
                 .expect("post response should contain a slug")
                 .to_string(),
         })
+    }
+
+    pub async fn set_post_deleted(&self, post_id: i32) -> anyhow::Result<()> {
+        let post = self.get_post_row(post_id).await?;
+        let mut active = post.into_active_model();
+        active.deleted_at = Set(Some(marksharex::utils::now_local()));
+        active.updated_at = Set(marksharex::utils::now_local());
+        active.update(&self.db).await?;
+        Ok(())
     }
 
     pub async fn db_counts_for_post(&self, post_id: i32) -> anyhow::Result<PostChildCounts> {
@@ -287,6 +325,41 @@ impl TestApp {
             .one(&self.db)
             .await?
             .is_some())
+    }
+
+    pub async fn ai_session_message_count(&self, session_id: i32) -> anyhow::Result<u64> {
+        Ok(ai_chat_message::Entity::find()
+            .filter(ai_chat_message::Column::SessionId.eq(session_id))
+            .count(&self.db)
+            .await?)
+    }
+
+    pub async fn ai_session_row(
+        &self,
+        session_id: i32,
+    ) -> anyhow::Result<Option<ai_chat_session::Model>> {
+        Ok(ai_chat_session::Entity::find_by_id(session_id)
+            .one(&self.db)
+            .await?)
+    }
+
+    pub async fn ai_session_messages(
+        &self,
+        session_id: i32,
+    ) -> anyhow::Result<Vec<ai_chat_message::Model>> {
+        Ok(ai_chat_message::Entity::find()
+            .filter(ai_chat_message::Column::SessionId.eq(session_id))
+            .order_by_asc(ai_chat_message::Column::Id)
+            .all(&self.db)
+            .await?)
+    }
+
+    pub async fn ai_session_count(&self) -> anyhow::Result<u64> {
+        Ok(ai_chat_session::Entity::find().count(&self.db).await?)
+    }
+
+    pub async fn ai_message_count(&self) -> anyhow::Result<u64> {
+        Ok(ai_chat_message::Entity::find().count(&self.db).await?)
     }
 
     pub async fn set_user_api_key(

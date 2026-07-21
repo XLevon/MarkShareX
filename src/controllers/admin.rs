@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AdminUser, PrivilegedUser};
 use crate::models::entity::{
     author_applications, comments, files, login_logs, posts, read_logs, users,
 };
@@ -76,6 +76,7 @@ pub struct UpdateUserStatusRequest {
 )]
 pub async fn list_users(
     State(state): State<AppState>,
+    _auth: PrivilegedUser,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<ApiResponse<PaginatedUsers>>, AppError> {
     let page = query.page.unwrap_or(1);
@@ -178,10 +179,11 @@ pub async fn list_users(
 )]
 pub async fn update_user_status(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateUserStatusRequest>,
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
+    let auth = &auth.0;
     let valid_statuses = ["active", "muted", "banned"];
     if !valid_statuses.contains(&req.status.as_str()) {
         return Err(AppError::BadRequest(format!(
@@ -229,10 +231,11 @@ pub struct UpdateUserRoleRequest {
 )]
 pub async fn update_user_role(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateUserRoleRequest>,
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
+    let auth = &auth.0;
     let valid_roles = ["admin", "sub_admin", "author", "visitor"];
     if !valid_roles.contains(&req.role.as_str()) {
         return Err(AppError::BadRequest(format!(
@@ -278,13 +281,10 @@ pub struct ResetPasswordRequest {
 
 pub async fn reset_user_password(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: AdminUser,
     Path(id): Path<i32>,
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
-    if !auth.is_admin() {
-        return Err(AppError::Forbidden);
-    }
     if req.password.len() < 8 {
         return Err(AppError::BadRequest("密码至少8位".into()));
     }
@@ -333,9 +333,10 @@ pub struct UpdateUserRequest {
 )]
 pub async fn create_user(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Json(req): Json<CreateUserRequest>,
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
+    let auth = &auth.0;
     if req.username.trim().is_empty() || req.email.trim().is_empty() || req.password.len() < 8 {
         return Err(AppError::BadRequest(
             "用户名、邮箱不能为空，密码至少8位".into(),
@@ -409,10 +410,11 @@ pub async fn create_user(
 )]
 pub async fn update_user(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<ApiResponse<AdminUserResponse>>, AppError> {
+    let auth = &auth.0;
     let user = users::Entity::find_by_id(id)
         .filter(users::Column::DeletedAt.is_null())
         .one(&state.db)
@@ -508,13 +510,10 @@ pub async fn update_user(
 )]
 pub async fn delete_user(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
-    // 权限检查：只有管理员和子管理员可以删除用户
-    if !auth.is_privileged() {
-        return Err(AppError::Forbidden);
-    }
+    let auth = &auth.0;
 
     // 防止删除自己
     if id == auth.user_id {
@@ -655,7 +654,7 @@ pub struct PaginatedLoginLogs {
 /// GET /api/v1/admin/login-logs
 pub async fn list_login_logs(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Query(query): Query<LoginLogsQuery>,
 ) -> Result<Json<ApiResponse<PaginatedLoginLogs>>, AppError> {
     let page = query.page.unwrap_or(1);
@@ -742,12 +741,9 @@ pub struct PaginatedReadLogs {
 /// GET /api/v1/admin/read-logs
 pub async fn list_read_logs(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: PrivilegedUser,
     Query(query): Query<ReadLogsQuery>,
 ) -> Result<Json<ApiResponse<PaginatedReadLogs>>, AppError> {
-    if !auth.is_privileged() {
-        return Err(AppError::Forbidden);
-    }
     let page = query.page.unwrap_or(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
 

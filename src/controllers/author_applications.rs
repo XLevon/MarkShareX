@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AuthUser, PrivilegedUser};
 use crate::models::entity::{author_applications, users};
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
@@ -154,7 +154,7 @@ pub async fn get_application_status(
 )]
 pub async fn approve_application(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<ApplicationResponse>>, AppError> {
     let app = author_applications::Entity::find_by_id(id)
@@ -171,7 +171,7 @@ pub async fn approve_application(
     // Update application status
     let mut active_app: author_applications::ActiveModel = app.clone().into();
     active_app.status = Set("approved".to_string());
-    active_app.reviewed_by = Set(Some(auth.user_id));
+    active_app.reviewed_by = Set(Some(auth.0.user_id));
     active_app.reviewed_at = Set(Some(now));
     active_app.updated_at = Set(now);
     let updated_app = active_app.update(&state.db).await?;
@@ -210,7 +210,7 @@ pub async fn approve_application(
 )]
 pub async fn reject_application(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<RejectRequest>,
 ) -> Result<Json<ApiResponse<ApplicationResponse>>, AppError> {
@@ -228,7 +228,7 @@ pub async fn reject_application(
     let mut active_app: author_applications::ActiveModel = app.clone().into();
     active_app.status = Set("rejected".to_string());
     active_app.admin_remark = Set(req.remark.filter(|r| !r.trim().is_empty()));
-    active_app.reviewed_by = Set(Some(auth.user_id));
+    active_app.reviewed_by = Set(Some(auth.0.user_id));
     active_app.reviewed_at = Set(Some(now));
     active_app.updated_at = Set(now);
     let updated_app = active_app.update(&state.db).await?;
@@ -261,6 +261,7 @@ pub async fn reject_application(
 )]
 pub async fn get_pending_count(
     State(state): State<AppState>,
+    _auth: PrivilegedUser,
 ) -> Result<Json<ApiResponse<u64>>, AppError> {
     let count = author_applications::Entity::find()
         .filter(author_applications::Column::Status.eq("pending"))

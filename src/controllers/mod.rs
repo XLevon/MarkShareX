@@ -726,7 +726,10 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
             put(admin::update_user_status),
         )
         .route("/api/v1/admin/users/:id/role", put(admin::update_user_role))
-        .route("/api/v1/admin/users/:id/reset-password", put(admin::reset_user_password))
+        .route(
+            "/api/v1/admin/users/:id/reset-password",
+            put(admin::reset_user_password),
+        )
         .route(
             "/api/v1/admin/users/:id",
             put(admin::update_user).delete(admin::delete_user),
@@ -849,7 +852,7 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         )
         .route(
             "/api/v1/admin/news/:id",
-            get(news::get_news)
+            get(news::get_admin_news)
                 .put(news::update_news)
                 .delete(news::delete_news),
         )

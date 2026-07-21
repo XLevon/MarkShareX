@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{OptionalAuthUser, PrivilegedUser};
 use crate::models::entity::news;
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
 use axum::{
@@ -182,9 +182,10 @@ async fn list_news_internal(
 )]
 pub async fn list_news(
     State(state): State<AppState>,
-    Query(query): Query<NewsQuery>,
+    Query(mut query): Query<NewsQuery>,
 ) -> Result<Json<ApiResponse<Vec<NewsResponse>>>, AppError> {
-    list_news_internal(&state, query, Some("published")).await
+    query.status = Some("published".to_string());
+    list_news_internal(&state, query, None).await
 }
 
 /// GET /api/v1/admin/news — 管理端列表（含草稿）
@@ -197,16 +198,15 @@ pub async fn list_news(
 )]
 pub async fn list_admin_news(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Query(query): Query<NewsQuery>,
 ) -> Result<Json<ApiResponse<Vec<NewsResponse>>>, AppError> {
     list_news_internal(&state, query, None).await
 }
 
-// ── 单条（公开 + 管理共用） ──
+// ── 单条 ──
 
-/// GET /api/v1/news/{id} 或 /api/v1/admin/news/{id}
-/// 有 AuthUser → 管理端（不过滤状态），无 AuthUser → 公开（仅 published）
+/// GET /api/v1/news/{id} — 公开详情（仅 published）
 #[utoipa::path(
     get,
     path = "/api/v1/news/{id}",
@@ -216,17 +216,33 @@ pub async fn list_admin_news(
 pub async fn get_news(
     State(state): State<AppState>,
     Path(id): Path<i32>,
-    auth: Option<AuthUser>,
+    _auth: OptionalAuthUser,
 ) -> Result<Json<ApiResponse<NewsResponse>>, AppError> {
     let item = news::Entity::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound("资讯不存在".into()))?;
 
-    // Admin → 不过滤；public → 仅 published
-    if auth.is_none() && item.status != "published" {
+    if item.status != "published" {
         return Err(AppError::NotFound("资讯不存在".into()));
     }
+
+    Ok(Json(ApiResponse {
+        data: NewsResponse::from(item),
+        pagination: None,
+    }))
+}
+
+/// GET /api/v1/admin/news/{id} — 管理详情（包含草稿）
+pub async fn get_admin_news(
+    State(state): State<AppState>,
+    Path(id): Path<i32>,
+    _auth: PrivilegedUser,
+) -> Result<Json<ApiResponse<NewsResponse>>, AppError> {
+    let item = news::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("资讯不存在".into()))?;
 
     Ok(Json(ApiResponse {
         data: NewsResponse::from(item),
@@ -303,7 +319,7 @@ pub async fn list_topic_types(
 )]
 pub async fn create_news(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<CreateNewsRequest>,
 ) -> Result<Json<ApiResponse<NewsResponse>>, AppError> {
     let now = crate::utils::now_local();
@@ -327,7 +343,7 @@ pub async fn create_news(
         topic_type: Set(req.topic_type),
         sort_order: Set(req.sort_order),
         published_at: Set(published_at),
-        user_id: Set(Some(_auth.user_id)),
+        user_id: Set(Some(_auth.0.user_id)),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
@@ -348,7 +364,7 @@ pub async fn create_news(
 )]
 pub async fn update_news(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateNewsRequest>,
 ) -> Result<Json<ApiResponse<NewsResponse>>, AppError> {
@@ -401,12 +417,9 @@ pub struct BatchDeleteRequest {
 
 pub async fn batch_delete_news(
     State(state): State<AppState>,
-    auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<BatchDeleteRequest>,
 ) -> Result<Json<ApiResponse<i32>>, AppError> {
-    if !auth.is_privileged() {
-        return Err(AppError::Forbidden);
-    }
     let count = news::Entity::delete_many()
         .filter(news::Column::Id.is_in(req.ids))
         .exec(&state.db)
@@ -427,7 +440,7 @@ pub async fn batch_delete_news(
 )]
 pub async fn delete_news(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     news::Entity::delete_by_id(id).exec(&state.db).await?;

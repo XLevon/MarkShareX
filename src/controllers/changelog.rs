@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::PrivilegedUser;
 use crate::models::entity::changelog;
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
 use axum::{
@@ -65,7 +65,7 @@ pub struct UpdateChangelogRequest {
 )]
 pub async fn list_changelogs(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Query(query): Query<ChangelogQuery>,
 ) -> Result<Json<ApiResponse<Vec<ChangelogResponse>>>, AppError> {
     let page = query.page.unwrap_or(1).max(1);
@@ -117,7 +117,7 @@ pub async fn list_changelogs(
 )]
 pub async fn create_changelog(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<CreateChangelogRequest>,
 ) -> Result<Json<ApiResponse<ChangelogResponse>>, AppError> {
     let version = req.version.as_deref().unwrap_or("").trim().to_string();
@@ -182,7 +182,7 @@ pub async fn create_changelog(
 )]
 pub async fn update_changelog(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateChangelogRequest>,
 ) -> Result<Json<ApiResponse<ChangelogResponse>>, AppError> {
@@ -232,7 +232,7 @@ pub async fn update_changelog(
 )]
 pub async fn delete_changelog(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     changelog::Entity::delete_by_id(id).exec(&state.db).await?;

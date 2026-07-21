@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AuthUser, OptionalAuthUser, PrivilegedUser};
 use crate::models::entity::comments;
 use crate::models::entity::users;
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
@@ -95,8 +95,9 @@ pub async fn list_post_comments(
     State(state): State<AppState>,
     Path(post_id): Path<i32>,
     Query(query): Query<PostCommentsQuery>,
-    auth: Option<AuthUser>,
+    auth: OptionalAuthUser,
 ) -> Result<Json<ApiResponse<Vec<CommentResponse>>>, AppError> {
+    let auth = auth.0;
     let is_admin_view = query.admin.as_deref() == Some("1")
         && auth
             .as_ref()
@@ -150,9 +151,10 @@ pub async fn list_post_comments(
 pub async fn create_comment(
     State(state): State<AppState>,
     Path(post_id): Path<i32>,
-    auth: Option<AuthUser>,
+    auth: OptionalAuthUser,
     Json(req): Json<CreateCommentRequest>,
 ) -> Result<Json<ApiResponse<CommentResponse>>, AppError> {
+    let auth = auth.0;
     super::posts::require_published_post(&state.db, post_id).await?;
     let content = req.content.trim().to_string();
     if content.is_empty() {
@@ -352,7 +354,7 @@ pub async fn list_all_comments(
 )]
 pub async fn update_comment_status(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Path(id): Path<i32>,
     Json(req): Json<UpdateCommentStatusRequest>,
 ) -> Result<Json<ApiResponse<CommentResponse>>, AppError> {
@@ -424,29 +426,12 @@ pub struct PendingCountQuery {
 )]
 pub async fn pending_count(
     State(state): State<AppState>,
-    auth: Option<AuthUser>,
-    Query(query): Query<PendingCountQuery>,
+    _auth: PrivilegedUser,
+    Query(_query): Query<PendingCountQuery>,
 ) -> Result<Json<ApiResponse<u64>>, AppError> {
-    let mut select = comments::Entity::find()
+    let select = comments::Entity::find()
         .filter(comments::Column::Status.eq("pending"))
         .filter(comments::Column::DeletedAt.is_null());
-
-    // scope=mine: only count pending comments on the authenticated user's posts
-    if query.scope.as_deref() == Some("mine") {
-        if let Some(ref a) = auth {
-            use crate::models::entity::posts;
-            // admin/sub_admin: return all pending (they can manage everything)
-            if !matches!(a.role.as_str(), "admin" | "sub_admin") {
-                let subquery = posts::Entity::find()
-                    .select_only()
-                    .column(posts::Column::Id)
-                    .filter(posts::Column::UserId.eq(a.user_id))
-                    .filter(posts::Column::DeletedAt.is_null())
-                    .into_query();
-                select = select.filter(Expr::col(comments::Column::PostId).in_subquery(subquery));
-            }
-        }
-    }
 
     let count = select.count(&state.db).await?;
     Ok(Json(ApiResponse::new(count)))

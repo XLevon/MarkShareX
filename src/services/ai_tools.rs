@@ -165,12 +165,24 @@ impl AiTool for WebSearchTool {
             // searxng 自托管搜索（跳过 key 检查）
             if *provider == "searxng" {
                 tracing::info!("搜索降级到 SearXNG (自托管)");
-                return searxng_search(&query, limit, &cfg.searxng_url).await;
+                return searxng_search(
+                    &query,
+                    limit,
+                    &cfg.searxng_url,
+                    &cfg.allowed_search_networks,
+                )
+                .await;
             }
             // duckduckgo 终极兜底
             if *provider == "duckduckgo" {
                 tracing::info!("搜索降级到 DuckDuckGo (兜底)");
-                return duckduckgo_search(&query, limit, &cfg.duckduckgo_url).await;
+                return duckduckgo_search(
+                    &query,
+                    limit,
+                    &cfg.duckduckgo_url,
+                    &cfg.allowed_search_networks,
+                )
+                .await;
             }
 
             if key.is_empty() {
@@ -178,7 +190,6 @@ impl AiTool for WebSearchTool {
                 continue;
             }
 
-            let client = reqwest::Client::new();
             let (payload, endpoint) = match *provider {
                 "tavily" => (
                     serde_json::json!({"api_key": key, "query": query, "max_results": limit, "include_raw_content": false, "include_images": false}),
@@ -191,12 +202,22 @@ impl AiTool for WebSearchTool {
                 _ => continue,
             };
 
-            let mut req = client.post(&endpoint).json(&payload);
-            if *provider == "firecrawl" {
-                req = req.header("Authorization", format!("Bearer {}", key));
-            }
-
-            let resp = match req.send().await {
+            let resp = match crate::utils::safe_url::send_safe_request(
+                &endpoint,
+                &[],
+                std::time::Duration::from_secs(30),
+                None,
+                |client, url| {
+                    let req = client.post(url.clone()).json(&payload);
+                    if *provider == "firecrawl" {
+                        req.header("Authorization", format!("Bearer {}", key))
+                    } else {
+                        req
+                    }
+                },
+            )
+            .await
+            {
                 Ok(r) => r,
                 Err(e) => {
                     last_err = e.to_string();
@@ -322,7 +343,6 @@ impl AiTool for WebExtractTool {
                     continue;
                 }
 
-                let client = reqwest::Client::new();
                 let (payload, endpoint) = match *provider {
                     "tavily" => (
                         serde_json::json!({"api_key": key, "urls": [url], "include_images": false}),
@@ -335,12 +355,22 @@ impl AiTool for WebExtractTool {
                     _ => continue,
                 };
 
-                let mut req = client.post(&endpoint).json(&payload);
-                if *provider == "firecrawl" {
-                    req = req.header("Authorization", format!("Bearer {}", key));
-                }
-
-                let resp = match req.send().await {
+                let resp = match crate::utils::safe_url::send_safe_request(
+                    &endpoint,
+                    &[],
+                    std::time::Duration::from_secs(30),
+                    None,
+                    |client, endpoint_url| {
+                        let req = client.post(endpoint_url.clone()).json(&payload);
+                        if *provider == "firecrawl" {
+                            req.header("Authorization", format!("Bearer {}", key))
+                        } else {
+                            req
+                        }
+                    },
+                )
+                .await
+                {
                     Ok(r) => r,
                     Err(_) => continue,
                 };
@@ -774,6 +804,88 @@ impl AiTool for GetCurrentDatetimeTool {
 //  Built-in Tool: api_request
 // ═══════════════════════════════════════════════════════════════════════
 
+fn normalize_local_api_url(input: &str, port: u16) -> Result<String, AppError> {
+    if input.contains('\\') {
+        return Err(AppError::BadRequest(
+            "api_request URL 不允许包含反斜杠".into(),
+        ));
+    }
+
+    let base = url::Url::parse(&format!("http://127.0.0.1:{port}/"))
+        .map_err(|_| AppError::BadRequest("无效的本站 API URL".into()))?;
+
+    let path_and_query = if input.starts_with("http://") || input.starts_with("https://") {
+        let parsed = url::Url::parse(input)
+            .map_err(|_| AppError::BadRequest("无效的本站 API URL".into()))?;
+        if parsed.fragment().is_some() {
+            return Err(AppError::BadRequest(
+                "api_request URL 不允许包含 fragment".into(),
+            ));
+        }
+        let mut value = parsed.path().to_string();
+        if let Some(query) = parsed.query() {
+            value.push('?');
+            value.push_str(query);
+        }
+        value
+    } else {
+        format!("/{}", input.trim_start_matches('/'))
+    };
+
+    let normalized = base
+        .join(&path_and_query)
+        .map_err(|_| AppError::BadRequest("无效的本站 API URL".into()))?;
+    let exact_local_origin = normalized.scheme() == "http"
+        && normalized.host_str() == Some("127.0.0.1")
+        && normalized.port_or_known_default() == Some(port);
+    if !exact_local_origin
+        || normalized.fragment().is_some()
+        || !normalized.path().starts_with("/api/")
+    {
+        return Err(AppError::BadRequest(
+            "api_request 仅支持本站 API（/api/...），不允许调用外部接口。如需外部数据请使用 web_search/web_extract。".into(),
+        ));
+    }
+
+    Ok(normalized.to_string())
+}
+
+#[cfg(test)]
+mod api_request_security_tests {
+    use super::normalize_local_api_url;
+
+    #[test]
+    fn local_api_url_accepts_only_normalized_api_paths() {
+        assert_eq!(
+            normalize_local_api_url("api/v1/search?q=rust", 5023).unwrap(),
+            "http://127.0.0.1:5023/api/v1/search?q=rust"
+        );
+        assert_eq!(
+            normalize_local_api_url("https://evil.example/api/v1/tags?x=1", 5023).unwrap(),
+            "http://127.0.0.1:5023/api/v1/tags?x=1"
+        );
+
+        for input in [
+            "admin/users",
+            "/scalar",
+            "/api/../admin/users",
+            "https://evil.example/api/../admin/users",
+            r"\evil.example\api\v1\search",
+            r"\169.254.169.254\latest\meta-data\",
+            r"\127.0.0.1:8080\api\v1\search",
+            r"/\127.0.0.1:8080\api\v1\search",
+            r"\evil.example\api\x?q=test",
+            "api/v1/search#fragment",
+            "https://example.com/api/v1/search#fragment",
+        ] {
+            assert!(
+                normalize_local_api_url(input, 5023).is_err(),
+                "non-API path must be rejected after normalization: {input}"
+            );
+        }
+    }
+}
+
 pub struct ApiRequestTool {
     /// 当前登录用户的 token，用于以用户身份调用 API。cron 调度时为 None。
     user_token: Option<String>,
@@ -820,57 +932,33 @@ impl AiTool for ApiRequestTool {
             return Err(AppError::BadRequest("URL 不能为空".into()));
         }
 
-        // URL 解析：绝对 URL 且 path 以 /api/ 开头 → 认定本站请求，扒掉域名走本地
-        // 相对路径直接补全；其他绝对 URL 一律拒绝
-        let url = if url.starts_with("http://") || url.starts_with("https://") {
-            // 提取 path 部分（含查询参数）
-            let path_and_query = url
-                .split("://")
-                .nth(1)
-                .and_then(|s| s.find('/').map(|i| &s[i..]))
-                .unwrap_or("/");
-            if !path_and_query.starts_with("/api/") {
-                return Err(AppError::BadRequest(
-                    "api_request 仅支持本站 API（/api/...），不允许调用外部接口。如需外部数据请使用 web_search/web_extract。".into()
-                ));
-            }
-            format!(
-                "http://127.0.0.1:{}{}",
-                state.config.server.port, path_and_query
-            )
-        } else {
-            let path = url.trim_start_matches('/');
-            format!("http://127.0.0.1:{}/{}", state.config.server.port, path)
-        };
+        // 任何输入都只保留路径/查询参数，使用 URL parser 归一化后再强制 /api/ 边界。
+        let url = normalize_local_api_url(&url, state.config.server.port)?;
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .danger_accept_invalid_certs(false)
-            .build()
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
-
-        let mut req = match method.as_str() {
-            "POST" => {
-                let body = args["body"].as_str().unwrap_or("{}").to_string();
-                client
-                    .post(&url)
-                    .header("Content-Type", "application/json")
-                    .body(body)
-            }
-            _ => client.get(&url),
-        };
-
-        // 仅本站 API 注入当前用户 token；外部请求由调用者从上下文推断认证方式
-        if let Some(ref token) = self.user_token {
-            if is_local_service_url(&url, &state.config.server.host, state.config.server.port) {
-                req = req.header("Authorization", format!("Bearer {}", token));
-            }
-        }
-
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("API 请求失败: {}", e)))?;
+        let body = args["body"].as_str().unwrap_or("{}").to_string();
+        let token = self.user_token.clone();
+        let local_allowlist = ["127.0.0.1".to_string()];
+        let resp = crate::utils::safe_url::send_safe_request(
+            &url,
+            &local_allowlist,
+            std::time::Duration::from_secs(30),
+            None,
+            move |client, resolved_url| {
+                let mut request = match method.as_str() {
+                    "POST" => client
+                        .post(resolved_url.clone())
+                        .header("Content-Type", "application/json")
+                        .body(body),
+                    _ => client.get(resolved_url.clone()),
+                };
+                if let Some(token) = token {
+                    request = request.header("Authorization", format!("Bearer {token}"));
+                }
+                request
+            },
+        )
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("API 请求失败: {}", e)))?;
 
         let status = resp.status();
         let body = resp
@@ -891,14 +979,12 @@ impl AiTool for ApiRequestTool {
 }
 
 /// DuckDuckGo 免费搜索：抓取 Lite 版 HTML 页面并解析结果
-async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<String, AppError> {
-    crate::utils::safe_url::validate_safe_url(base_url).await?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
-        .build()
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
-
+async fn duckduckgo_search(
+    query: &str,
+    limit: usize,
+    base_url: &str,
+    allowed_networks: &[String],
+) -> Result<String, AppError> {
     let base = if base_url.is_empty() {
         "https://lite.duckduckgo.com/lite/"
     } else {
@@ -906,11 +992,14 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
     };
     let url = format!("{}?q={}", base.trim_end_matches('/'), urlencoding(query));
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("DuckDuckGo 搜索请求失败: {}", e)))?;
+    let resp = crate::utils::safe_url::safe_get_follow_redirects(
+        &url,
+        allowed_networks,
+        std::time::Duration::from_secs(15),
+        Some("Mozilla/5.0 (compatible; MarkShareX/1.0)"),
+    )
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("DuckDuckGo 搜索请求失败: {}", e)))?;
 
     let html = resp
         .text()
@@ -963,28 +1052,29 @@ async fn duckduckgo_search(query: &str, limit: usize, base_url: &str) -> Result<
 }
 
 /// SearXNG 自托管搜索：调用 JSON API
-async fn searxng_search(query: &str, limit: usize, base_url: &str) -> Result<String, AppError> {
+async fn searxng_search(
+    query: &str,
+    limit: usize,
+    base_url: &str,
+    allowed_networks: &[String],
+) -> Result<String, AppError> {
     if base_url.is_empty() {
         return Err(AppError::Internal(anyhow::anyhow!("SearXNG 未配置地址")));
     }
-    crate::utils::safe_url::validate_safe_url(base_url).await?;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (compatible; MarkShareX/1.0)")
-        .build()
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
-
     let url = format!(
         "{}/search?q={}&format=json&language=zh-CN",
         base_url.trim_end_matches('/'),
         urlencoding(query)
     );
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("SearXNG 搜索请求失败: {}", e)))?;
+    let resp = crate::utils::safe_url::safe_get_follow_redirects(
+        &url,
+        allowed_networks,
+        std::time::Duration::from_secs(15),
+        Some("Mozilla/5.0 (compatible; MarkShareX/1.0)"),
+    )
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("SearXNG 搜索请求失败: {}", e)))?;
 
     let body: Value = resp
         .json()
@@ -1045,19 +1135,14 @@ fn urlencoding(s: &str) -> String {
 
 /// 辅助函数：直接抓取 URL 并提取文本
 async fn fetch_url_directly(url: &str) -> Result<String, AppError> {
-    crate::utils::safe_url::validate_safe_url(url).await?;
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败: {}", e)))?;
-
-    let resp = client
-        .get(url)
-        .header("User-Agent", "Mozilla/5.0 (compatible; MarkShareX/1.0)")
-        .send()
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("请求失败: {}", e)))?;
+    let resp = crate::utils::safe_url::safe_get_follow_redirects(
+        url,
+        &[],
+        std::time::Duration::from_secs(15),
+        Some("Mozilla/5.0 (compatible; MarkShareX/1.0)"),
+    )
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("请求失败: {}", e)))?;
 
     let html = resp
         .text()
@@ -1117,24 +1202,6 @@ fn extract_cn_words(title: &str) -> Vec<String> {
         }
     }
     words
-}
-
-/// 判断 URL 是否指向本服务（用于 api_request 安全注入 token）
-fn is_local_service_url(url: &str, config_host: &str, config_port: u16) -> bool {
-    // 相对路径始终算本站
-    if url.starts_with('/') {
-        return true;
-    }
-    // 匹配本机可能的访问方式
-    let port_str = config_port.to_string();
-    [
-        format!("http://{}:{}", config_host, port_str),
-        format!("https://{}:{}", config_host, port_str),
-        format!("http://127.0.0.1:{}", port_str),
-        format!("http://localhost:{}", port_str),
-    ]
-    .iter()
-    .any(|prefix| url.starts_with(prefix))
 }
 
 /// 包裹一个内置工具，仅覆盖 description() 和 parameters() 为 DB 中的值。

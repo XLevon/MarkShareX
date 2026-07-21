@@ -78,15 +78,18 @@
               </div>
             </div>
             <div class="ai-chat-input">
+              <div v-if="!canContinueCurrentSession" class="ai-chat-readonly">
+                只读会话：管理员可以查看和删除，但不能继续其他用户的聊天
+              </div>
               <input
                 ref="inputField"
                 v-model="input"
                 @keydown.enter="onInputEnter"
-                placeholder="输入消息..."
-                :disabled="loading"
+                :placeholder="canContinueCurrentSession ? '输入消息...' : '该会话为只读'"
+                :disabled="loading || !canContinueCurrentSession"
                 class="ai-chat-input-field"
               />
-              <button @click="send" :disabled="loading || !input.trim()" class="ai-chat-send">
+              <button @click="send" :disabled="loading || !input.trim() || !canContinueCurrentSession" class="ai-chat-send">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
               </button>
             </div>
@@ -104,6 +107,7 @@ import { sendChatMessage, fetchSessions, getSession, deleteSession, type ChatMes
 import { marked } from 'marked'
 import { renderMarkdown } from '@/utils/renderMarkdown'
 import { useAuthStore } from '@/stores/auth'
+import { canContinueAiSession, createLatestRequestGate } from '@/utils/aiSessionAccess'
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -123,8 +127,13 @@ const messages = ref<ChatMessage[]>([])
 const msgContainer = ref<HTMLElement | null>(null)
 const inputField = ref<HTMLInputElement | null>(null)
 const sessionId = ref<number | null>(null)
+const sessionOwnerId = ref<number | null>(null)
 const sessions = ref<ChatSession[]>([])
 const showSessions = ref(false)
+const sessionLoadGate = createLatestRequestGate()
+const canContinueCurrentSession = computed(() =>
+  canContinueAiSession(sessionId.value, sessionOwnerId.value, authStore.user?.id ?? null)
+)
 
 // ── Drag state ──
 const fabDrag = ref({ x: 0, y: 0 })
@@ -205,6 +214,7 @@ watch(open, (val) => {
 
 // Ensure scroll lock is released on unmount
 onUnmounted(() => {
+  sessionLoadGate.invalidate()
   document.body.style.overflow = ''
 })
 
@@ -216,23 +226,27 @@ async function loadSessions() {
 }
 
 async function switchSession(sid: number) {
+  const requestId = sessionLoadGate.begin()
   sessionId.value = sid
+  sessionOwnerId.value = null
   showSessions.value = false
   messages.value = []
   loading.value = true
   try {
     const resp = await getSession(sid)
+    if (!sessionLoadGate.isLatest(requestId)) return
     const detail = resp.data.data
+    sessionOwnerId.value = detail.user_id
     messages.value = detail.messages.map(m => ({
       role: m.role,
       content: m.content,
     }))
     await nextTick()
-    scrollBottom()
+    if (sessionLoadGate.isLatest(requestId)) scrollBottom()
   } catch {
-    messages.value = []
+    if (sessionLoadGate.isLatest(requestId)) messages.value = []
   } finally {
-    loading.value = false
+    if (sessionLoadGate.isLatest(requestId)) loading.value = false
   }
 }
 
@@ -241,8 +255,11 @@ async function deleteSessionHandler(sid: number) {
   try {
     await deleteSession(sid)
     if (sessionId.value === sid) {
+      sessionLoadGate.invalidate()
       sessionId.value = null
+      sessionOwnerId.value = null
       messages.value = []
+      loading.value = false
     }
     loadSessions()
   } catch {}
@@ -254,8 +271,11 @@ function toggleSessions() {
 }
 
 async function newSession() {
+  sessionLoadGate.invalidate()
   sessionId.value = null
+  sessionOwnerId.value = null
   messages.value = []
+  loading.value = false
   showSessions.value = false
 }
 
@@ -309,7 +329,7 @@ function onInputEnter(e: KeyboardEvent) {
 
 async function send() {
   const text = input.value.trim()
-  if (!text || loading.value) return
+  if (!text || loading.value || !canContinueCurrentSession.value) return
   input.value = ''
   messages.value.push({ role: 'user', content: text })
   loading.value = true
@@ -328,6 +348,7 @@ async function send() {
     // 更新 session ID
     if (!sessionId.value) {
       sessionId.value = data.session_id
+      sessionOwnerId.value = authStore.user?.id ?? null
       loadSessions()
     }
   } catch (err: any) {
@@ -363,9 +384,12 @@ watch(open, async (val) => {
 watch(() => authStore.token, (newToken) => {
   if (!newToken) {
     // 登出：清空会话和消息
+    sessionLoadGate.invalidate()
     sessionId.value = null
+    sessionOwnerId.value = null
     messages.value = []
     sessions.value = []
+    loading.value = false
   } else {
     // 登录：重新加载会话列表
     loadSessions()
@@ -540,9 +564,16 @@ onMounted(() => {
 
 .ai-chat-input {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--color-border, #e5e7eb);
+}
+.ai-chat-readonly {
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-muted, #6b7280);
 }
 .ai-chat-input-field {
   flex: 1;

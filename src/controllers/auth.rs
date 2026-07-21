@@ -172,7 +172,13 @@ pub async fn login(
     ConnectInfo(socket_addr): ConnectInfo<SocketAddr>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<LoginResponse>>, AppError> {
-    let ip = client_info::extract_client_ip(&headers, Some(socket_addr));
+    let ip = client_info::extract_client_ip(
+        &headers,
+        Some(socket_addr),
+        &state.config.server.trusted_proxies,
+    )
+    .ok()
+    .flatten();
     let user_agent = headers
         .get("user-agent")
         .and_then(|v| v.to_str().ok())

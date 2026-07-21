@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AuthUser, PrivilegedUser};
 use crate::models::entity::categories;
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
@@ -88,6 +88,7 @@ pub struct UpdateCategoryRequest {
 )]
 pub async fn list_admin_categories(
     State(state): State<AppState>,
+    _auth: PrivilegedUser,
 ) -> Result<Json<ApiResponse<Vec<CategoryResponse>>>, AppError> {
     let items = categories::Entity::find()
         .filter(categories::Column::DeletedAt.is_null())
@@ -361,7 +362,7 @@ pub struct ReorderRequest {
 )]
 pub async fn reorder_categories(
     State(state): State<AppState>,
-    _auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<ReorderRequest>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     for (index, id) in req.ids.iter().enumerate() {

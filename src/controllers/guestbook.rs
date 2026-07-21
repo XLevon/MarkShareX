@@ -1,4 +1,4 @@
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{OptionalAuthUser, PrivilegedUser};
 use crate::models::entity::{guestbook, users};
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
 use axum::{
@@ -65,9 +65,10 @@ pub struct GuestbookQuery {
 /// POST /api/v1/guestbook — 提交留言（公开）
 pub async fn create_entry(
     State(state): State<AppState>,
-    auth: Option<AuthUser>,
+    auth: OptionalAuthUser,
     Json(req): Json<CreateGuestbookRequest>,
 ) -> Result<Json<ApiResponse<GuestbookEntry>>, AppError> {
+    let auth = auth.0;
     let nickname = req.nickname.trim().to_string();
     let email = req.email.trim().to_string();
 
@@ -167,12 +168,9 @@ pub async fn list_entries(
 pub async fn reply_entry(
     State(state): State<AppState>,
     Path(id): Path<i32>,
-    auth: AuthUser,
+    _auth: PrivilegedUser,
     Json(req): Json<ReplyGuestbookRequest>,
 ) -> Result<Json<ApiResponse<GuestbookEntry>>, AppError> {
-    if !auth.is_privileged() {
-        return Err(AppError::Forbidden);
-    }
     let entry = guestbook::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -194,11 +192,8 @@ pub async fn reply_entry(
 pub async fn delete_entry(
     State(state): State<AppState>,
     Path(id): Path<i32>,
-    auth: AuthUser,
+    _auth: PrivilegedUser,
 ) -> Result<Json<ApiResponse<String>>, AppError> {
-    if !auth.is_privileged() {
-        return Err(AppError::Forbidden);
-    }
     let entry = guestbook::Entity::find_by_id(id)
         .one(&state.db)
         .await?

@@ -19,6 +19,8 @@ use crate::services::logs::LogBuffer;
 use crate::services::search::SearchEngine;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,6 +29,7 @@ pub struct AppState {
     pub search_engine: SearchEngine,
     pub tera: Arc<tera::Tera>,
     pub log_buffer: Arc<LogBuffer>,
+    pub ip_guard_rules_cache: Arc<RwLock<IpGuardRulesCache>>,
 }
 
 /// Parsed IP guard configuration, cacheable.
@@ -36,6 +39,35 @@ pub struct IpGuardRules {
     pub blacklist: Vec<String>,
     pub whitelist_enabled: bool,
     pub whitelist: Vec<String>,
+}
+
+#[derive(Default)]
+pub struct IpGuardRulesCache {
+    generation: u64,
+    entry: Option<(Instant, IpGuardRules)>,
+}
+
+impl IpGuardRulesCache {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn entry(&self) -> Option<&(Instant, IpGuardRules)> {
+        self.entry.as_ref()
+    }
+
+    pub fn invalidate(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.entry = None;
+    }
+
+    pub fn store_if_current(&mut self, generation: u64, rules: IpGuardRules) -> bool {
+        if self.generation != generation {
+            return false;
+        }
+        self.entry = Some((Instant::now(), rules));
+        true
+    }
 }
 
 impl AppState {
@@ -64,6 +96,32 @@ impl AppState {
             search_engine,
             tera: Arc::new(tera),
             log_buffer,
+            ip_guard_rules_cache: Arc::new(RwLock::new(IpGuardRulesCache::default())),
         }
+    }
+
+    pub async fn invalidate_ip_guard_rules_cache(&self) {
+        self.ip_guard_rules_cache.write().await.invalidate();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalidation_generation_rejects_stale_ip_guard_cache_fill() {
+        let mut cache = IpGuardRulesCache::default();
+        let stale_generation = cache.generation();
+        cache.invalidate();
+
+        assert!(!cache.store_if_current(
+            stale_generation,
+            IpGuardRules {
+                blacklist_enabled: true,
+                ..Default::default()
+            }
+        ));
+        assert!(cache.entry().is_none());
     }
 }
