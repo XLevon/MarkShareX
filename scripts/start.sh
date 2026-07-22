@@ -17,7 +17,7 @@ set -e
 #   3. 都没有 → 从 Docker Hub 完整构建
 # ==============================================================================
 
-PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+PROJECT_DIR="${MARKSHAREX_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$PROJECT_DIR"
 
 IMAGE_NAME="${IMAGE_NAME:-marksharex}"
@@ -53,22 +53,71 @@ for arg in "$@"; do
 done
 
 # ═══════════════════════════════════════════════════
+# 配置初始化
+# ═══════════════════════════════════════════════════
+
+ensure_env_secret() {
+    local key="$1"
+    local generated=""
+    local line
+    local found=false
+    local tmp
+
+    [ -f .env ] || die ".env 不存在，且未找到 .env.example"
+    tmp=$(mktemp "${TMPDIR:-/tmp}/marksharex-env.XXXXXX")
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" == "${key}="* ]]; then
+            local value="${line#*=}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+                command -v openssl &>/dev/null || die "${key} 为空，且未安装 openssl，无法生成安全随机值"
+                [ -n "$generated" ] || generated=$(openssl rand -hex 32)
+                printf '%s=%s\n' "$key" "$generated" >> "$tmp"
+            else
+                printf '%s\n' "$line" >> "$tmp"
+            fi
+            found=true
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < .env
+
+    if ! $found; then
+        command -v openssl &>/dev/null || die "未配置 ${key}，且未安装 openssl，无法生成安全随机值"
+        generated=$(openssl rand -hex 32)
+        printf '%s=%s\n' "$key" "$generated" >> "$tmp"
+    fi
+
+    mv "$tmp" .env
+    [ -z "$generated" ] || info "已生成并持久化 ${key}"
+}
+
+if ! $BASE_ONLY; then
+    if [ ! -f .env ] && [ -f .env.example ]; then
+        info "首次运行，从 .env.example 创建 .env"
+        cp .env.example .env
+        success ".env 已创建"
+    fi
+
+    ensure_env_secret "MARKSHAREX_AUTH_JWT_SECRET"
+    ensure_env_secret "MARKSHAREX_AUTH_ENCRYPT_KEY"
+    chmod 600 .env
+fi
+
+# 仅供配置契约测试和自动化初始化使用；不会访问 Docker daemon。
+if [ "${MARKSHAREX_INIT_ENV_ONLY:-0}" = "1" ]; then
+    exit 0
+fi
+
+# ═══════════════════════════════════════════════════
 # 预检
 # ═══════════════════════════════════════════════════
 
-command -v docker &>/dev/null     || die "Docker 未安装"
+command -v docker &>/dev/null       || die "Docker 未安装"
 docker compose version &>/dev/null || die "Docker Compose 未安装"
 
 if [ "$ENV" = "prod" ]; then
     info "生产环境模式"
-    [ -z "$MARKSHAREX_SERVER_BASE_URL" ] && die "请设置 MARKSHAREX_SERVER_BASE_URL"
-    success "BASE_URL = $MARKSHAREX_SERVER_BASE_URL"
-fi
-
-if [ ! -f .env ] && [ -f .env.example ]; then
-    info "首次运行，从 .env.example 创建 .env"
-    cp .env.example .env
-    success ".env 已创建"
 fi
 
 # ═══════════════════════════════════════════════════

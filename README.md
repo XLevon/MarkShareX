@@ -250,14 +250,13 @@ npm run dev
 [server]
 host = "0.0.0.0"
 port = 5023
-base_url = "http://0.0.0.0:5023"
 
 [database]
 url = "sqlite://./data/marksharex.db?mode=rwc"
 
 [auth]
-jwt_secret = "marksharex-dev-secret-key-2026"
-encrypt_key = ""  # AES-256-GCM 密钥，部署时生成随机值
+jwt_secret = ""  # 必填；部署时生成独立随机值
+encrypt_key = "" # 必填；部署后必须长期固定
 
 [ai.search]
 provider = "tavily"         # 主搜索: tavily | firecrawl
@@ -274,10 +273,12 @@ max_tool_rounds = 8         # AI 工具调用最大轮次
 ```bash
 export MARKSHAREX_SERVER_PORT=8080
 export MARKSHAREX_AI_MAX_TOOL_ROUNDS=15
-export MARKSHAREX_ENCRYPT_KEY=your-32-byte-key
+export MARKSHAREX_AUTH_JWT_SECRET="$(openssl rand -base64 64)"
+export MARKSHAREX_AUTH_ENCRYPT_KEY="$(openssl rand -base64 32)"
 ```
 
-完整配置项见 `.env.example` 和 `config.example.toml`。
+完整字段、全部环境变量、覆盖优先级和校验规则见
+[`docs/CONFIG.md`](docs/CONFIG.md)、`.env.example` 和 `config.example.toml`。
 
 ---
 

@@ -30,9 +30,10 @@ min_connections = 1
 
 # ------------------------------ 认证配置 ------------------------------
 [auth]
-# JWT 签名密钥 — 任意长度字符串，越长越安全。部署时务必修改！
+# JWT 签名密钥。示例故意留空；启动前必须通过本文件或
+# MARKSHAREX_AUTH_JWT_SECRET 设置独立随机值。
 # 生成: openssl rand -base64 64
-jwt_secret = "marksharex-dev-secret-key-2026"
+jwt_secret = ""
 
 # JWT 过期时间（秒）
 jwt_expire_seconds = 3600       # Access Token: 1 小时
@@ -41,8 +42,8 @@ refresh_expire_seconds = 604800  # Refresh Token: 7 天
 # AES-256-GCM 加密密钥 — 用于加密 AI API Key 等敏感数据
 # 格式: 任意字符串，取前 32 字节作为密钥（不足补零，超出截断）
 # ⚠️ 部署时务必生成并固定，切勿修改！修改后已加密的 API Key 将无法解密，需重新输入
-# 下方为示例值，生产环境请用 `openssl rand -base64 32` 生成替换
-encrypt_key = "change-me-32byte-encrypt-key!!"
+# 示例故意留空；启动前请用 `openssl rand -base64 32` 生成并固定。
+encrypt_key = ""
 
 # ------------------------------ 存储配置 ------------------------------
 [storage]
@@ -57,7 +58,7 @@ allowed_types = [
 
 # ------------------------------ AI 搜索配置 ------------------------------
 [ai.search]
-# 搜索提供商: tavily | firecrawl
+# 搜索提供商: tavily | firecrawl | searxng | duckduckgo
 # Tavily 申请: https://app.tavily.com → API Keys → 复制 tvly-xxx
 # Firecrawl 申请: https://firecrawl.dev → API Keys → 复制 fc-xxx
 # Tavily 默认: https://api.tavily.com
@@ -67,8 +68,6 @@ allowed_types = [
 # 主搜索
 provider = "tavily"
 api_key = ""
-# API 地址（留空用默认）
-api_url = ""
 
 # 降级搜索（主搜索不可用时自动切换）
 fallback_provider = "firecrawl"

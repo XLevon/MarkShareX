@@ -78,10 +78,9 @@ async fn main() -> anyhow::Result<()> {
     let config = AppConfig::load()?;
     tracing::info!("MarkShareX v{} 启动", env!("CARGO_PKG_VERSION"));
 
-    // 从 config.toml 注入加密密钥到环境变量（crypto.rs 通过 env var 读取）
-    if !config.auth.encrypt_key.is_empty() && std::env::var("MARKSHAREX_ENCRYPT_KEY").is_err() {
-        std::env::set_var("MARKSHAREX_ENCRYPT_KEY", &config.auth.encrypt_key);
-    }
+    // AppConfig 已处理 TOML、规范环境变量和旧别名的优先级；crypto.rs 仍通过
+    // 内部兼容变量读取，因此必须无条件写入最终配置值，避免旧别名反向覆盖新名称。
+    std::env::set_var("MARKSHAREX_ENCRYPT_KEY", &config.auth.encrypt_key);
 
     // 配置值详情 — 仅 debug 模式
     #[cfg(debug_assertions)]

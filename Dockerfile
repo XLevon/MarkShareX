@@ -78,7 +78,7 @@ RUN useradd -m marksharex
 # 复制构建产物
 COPY --from=backend-builder /app/target/release/marksharex ./marksharex
 COPY --from=frontend-builder /app/dist ./static/frontend
-COPY config.toml ./
+COPY config.example.toml ./config.toml
 
 # 设置权限
 RUN chown -R marksharex:marksharex /app

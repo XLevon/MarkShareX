@@ -1,0 +1,19 @@
+# Local secrets and machine-specific runtime configuration
+.env*
+!.env.example
+config.toml
+
+# Runtime and local state
+data/
+logs/
+
+# Build and dependency caches
+target/
+frontend/node_modules/
+frontend/dist/
+static/frontend/
+
+# Repository/editor metadata
+.git/
+.hermes/
+.DS_Store

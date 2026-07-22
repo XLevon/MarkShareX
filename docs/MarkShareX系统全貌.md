@@ -823,26 +823,21 @@ searxng_url = ""
 duckduckgo_url = ""
 ```
 
-### 12.2 当前源码明确支持的环境变量覆盖
+### 12.2 环境变量覆盖契约
 
-- `MARKSHAREX_DATA_DIR`
-- `MARKSHAREX_STORAGE_UPLOAD_DIR`
-- `MARKSHAREX_SERVER_HOST`
-- `MARKSHAREX_SERVER_PORT`
-- `MARKSHAREX_DATABASE_URL`
-- `MARKSHAREX_DATABASE_MAX_CONNECTIONS`
-- `MARKSHAREX_DATABASE_MIN_CONNECTIONS`
-- `MARKSHAREX_AI_MAX_TOOL_ROUNDS`
-- `MARKSHAREX_ENCRYPT_KEY` 由加解密模块读取；配置中的 `auth.encrypt_key` 也会在启动时注入
+配置优先级为“环境变量 > `config.toml`”。源码中的 `ENVIRONMENT_BINDINGS`、
+`.env.example` 和 `docs/CONFIG.md` 由自动化测试要求精确一致；整数解析失败、未知或废弃
+TOML 字段都会阻止启动，不再静默退回默认值。列表变量使用英文逗号分隔。
 
-旧 `docs/CONFIG.md` 声称任意配置项都可按通用命名规则覆盖，但当前 `AppConfig::load()` 实际采用显式覆盖列表。新增环境变量时应同步修改加载代码，而不能只修改文档。
-
-`config.example.toml` 中仍存在 `[server].base_url`，但当前 `ServerConfig` 只反序列化 `host` 和 `port`；页面绝对 URL 主要从请求 Host 推导。该字段目前不应作为已生效配置宣传。
+完整的 25 个环境变量、字段映射、类型、校验和兼容别名见
+[`docs/CONFIG.md`](CONFIG.md)。新部署使用 `MARKSHAREX_AUTH_ENCRYPT_KEY`；
+旧 `MARKSHAREX_ENCRYPT_KEY` 仅作为兼容别名保留。已删除的 `server.base_url` 不再出现在
+公开示例或启动脚本中。
 
 ### 12.3 生产安全要求
 
-- 必须更换开发用 JWT secret。
-- 必须设置并长期保存固定的加密密钥。
+- 示例不提供固定 JWT secret；启动前必须生成独立随机值。
+- 必须设置并长期保存固定的加密密钥；空 secret/key 会直接阻止启动。
 - 不要将真实 API Key、数据库凭据或 Token 提交到仓库。
 - SQLite 数据库、上传目录和搜索索引都应置于持久卷或可靠数据目录。
 - 搜索索引可以重建；数据库和上传文件必须纳入备份。
