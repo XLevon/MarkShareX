@@ -1,8 +1,8 @@
+use serde::Serialize;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
-use serde::Serialize;
 use tracing::field::{Field, Visit};
 use tracing::Subscriber;
 use tracing_subscriber::Layer;
@@ -16,10 +16,7 @@ pub fn mark_started() {
 
 /// 返回进程启动后的秒数
 pub fn uptime_seconds() -> u64 {
-    START_TIME
-        .get()
-        .map(|t| t.elapsed().as_secs())
-        .unwrap_or(0)
+    START_TIME.get().map(|t| t.elapsed().as_secs()).unwrap_or(0)
 }
 
 /// 单条日志记录

@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import { login as apiLogin } from '@/api/auth'
+import {
+  AUTH_STORAGE_KEYS,
+  clearAuthSession,
+  readAuthSession,
+  writeAuthSession,
+} from '@/utils/authStorage'
 
 interface UserInfo {
   id: number
@@ -12,58 +18,83 @@ interface UserInfo {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  function readToken(key: string): string {
-    return localStorage.getItem(key) || sessionStorage.getItem(key) || ''
-  }
-
-  const token = ref(readToken('marksharex_token'))
-  const refreshTokenVal = ref(readToken('marksharex_refresh_token'))
-  const user = ref<UserInfo | null>(null)
-
-  try {
-    const saved = readToken('marksharex_user')
-    if (saved) user.value = JSON.parse(saved)
-  } catch {}
+  const stored = readAuthSession<UserInfo>()
+  const token = ref(stored?.accessToken ?? '')
+  const refreshTokenVal = ref(stored?.refreshToken ?? '')
+  const user = ref<UserInfo | null>(stored?.user ?? null)
+  let authGeneration = 0
 
   const isAuthenticated = computed(() => !!token.value)
 
-  function setTokens(accessToken: string, refreshToken: string, userInfo?: UserInfo, rememberMe = false) {
-    const storage = rememberMe ? localStorage : sessionStorage
+  function applyTokens(
+    accessToken: string,
+    refreshToken: string,
+    userInfo: UserInfo,
+    rememberMe: boolean,
+  ) {
+    writeAuthSession({ accessToken, refreshToken, user: userInfo }, rememberMe)
     token.value = accessToken
     refreshTokenVal.value = refreshToken
-    if (userInfo) {
-      user.value = userInfo
-      storage.setItem('marksharex_user', JSON.stringify(userInfo))
-    }
-    storage.setItem('marksharex_token', accessToken)
-    storage.setItem('marksharex_refresh_token', refreshToken)
+    user.value = userInfo
+  }
+
+  function setTokens(
+    accessToken: string,
+    refreshToken: string,
+    userInfo: UserInfo,
+    rememberMe = false,
+  ) {
+    authGeneration += 1
+    applyTokens(accessToken, refreshToken, userInfo, rememberMe)
+  }
+
+  function synchronizeFromStorage() {
+    const current = readAuthSession<UserInfo>()
+    token.value = current?.accessToken ?? ''
+    refreshTokenVal.value = current?.refreshToken ?? ''
+    user.value = current?.user ?? null
   }
 
   async function login(username: string, password: string, rememberMe = false) {
+    const generation = ++authGeneration
     const { data: resp } = await apiLogin(username, password, rememberMe)
+    if (generation !== authGeneration) throw new Error('Stale login response')
+
     const d = resp.data
-    setTokens(d.access_token, d.refresh_token, d.user, rememberMe)
+    if (!d.user) throw new Error('Login response is missing user data')
+    applyTokens(d.access_token, d.refresh_token, d.user, rememberMe)
   }
 
   function logout() {
+    authGeneration += 1
     token.value = ''
     refreshTokenVal.value = ''
     user.value = null
-    for (const key of ['marksharex_token', 'marksharex_refresh_token', 'marksharex_user']) {
-      localStorage.removeItem(key)
-      sessionStorage.removeItem(key)
+    clearAuthSession()
+    if (typeof document !== 'undefined') {
+      document.cookie = 'scalar_token=; path=/scalar; max-age=0'
     }
-    document.cookie = 'scalar_token=; path=/scalar; max-age=0'
   }
 
-  // 监听 interceptor 刷新成功事件，同步响应式 ref
   if (typeof window !== 'undefined') {
-    window.addEventListener('auth:refreshed', ((e: CustomEvent) => {
-      const { token: newToken, refreshToken: newRefresh, user: newUser } = e.detail
-      token.value = newToken
-      refreshTokenVal.value = newRefresh
-      if (newUser) user.value = newUser
-    }) as EventListener)
+    const onRefreshed = () => synchronizeFromStorage()
+    const onExpired = () => synchronizeFromStorage()
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && !AUTH_STORAGE_KEYS.includes(event.key as typeof AUTH_STORAGE_KEYS[number])) {
+        return
+      }
+      authGeneration += 1
+      synchronizeFromStorage()
+    }
+
+    window.addEventListener('auth:refreshed', onRefreshed)
+    window.addEventListener('auth:expired', onExpired)
+    window.addEventListener('storage', onStorage)
+    onScopeDispose(() => {
+      window.removeEventListener('auth:refreshed', onRefreshed)
+      window.removeEventListener('auth:expired', onExpired)
+      window.removeEventListener('storage', onStorage)
+    })
   }
 
   return { token, refreshTokenVal, user, isAuthenticated, login, logout, setTokens }

@@ -100,7 +100,6 @@ const page = ref(1)
 const total = ref(0)
 const hasMore = ref(false)
 const batchSize = computed(() => Number(settingsStore.settings.batch_load_size) || 5)
-const scrollSize = computed(() => Number(settingsStore.settings.scroll_load_size) || 3)
 const sentinelRef = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
 
@@ -124,97 +123,156 @@ useDocumentTitle(documentPageTitle)
 interface MetaItem { code: string; display_name: string; color: string; post_count: number }
 const metaList = ref<MetaItem[]>([])
 
-async function loadMeta() {
-  loading.value = true
-  try {
-    if (props.filterType === 'type') {
-      const res = await fetchArticleTypes()
-      metaList.value = (res.data?.data ?? []).map((t: any) => ({
-        code: t.code, display_name: t.display_name, color: t.color, post_count: t.post_count
-      }))
-      for (const t of metaList.value) typeMap.value[t.code] = t.display_name
-    } else {
-      const res = await fetchArticleStatuses()
-      metaList.value = (res.data?.data ?? []).map((s: any) => ({
-        code: s.code, display_name: s.display_name, color: s.color, post_count: s.post_count
-      }))
-      for (const s of metaList.value) statusMap.value[s.code] = s.display_name
-    }
-  } catch { metaList.value = [] }
-  loading.value = false
+interface RequestContext {
+  generation: number
+  filterType: 'type' | 'status'
+  code: string
+  pageSize: number
 }
 
-async function loadPosts() {
-  if (!filterValue.value) return
+let mounted = false
+let requestGeneration = 0
+
+function isCurrentRequest(context: RequestContext) {
+  return mounted
+    && context.generation === requestGeneration
+    && context.filterType === props.filterType
+    && context.code === filterValue.value
+}
+
+function currentRequestContext(): RequestContext {
+  return {
+    generation: ++requestGeneration,
+    filterType: props.filterType,
+    code: filterValue.value,
+    // The backend uses page-number pagination, so every page in one list
+    // generation must use the same size or offsets will overlap/skip rows.
+    pageSize: batchSize.value,
+  }
+}
+
+async function reloadForCurrentRoute() {
+  const context = currentRequestContext()
+  observer?.disconnect()
+  observer = null
   page.value = 1
   loading.value = true
-  try {
-    const params: PostsParams = { page: 1, page_size: batchSize.value }
-    if (props.filterType === 'type') params.article_type = filterValue.value
-    else params.article_status = filterValue.value
+  loadingMore.value = false
 
-    const res = await fetchPosts(params)
-    posts.value = res.data?.data ?? []
-    total.value = res.data?.pagination?.total ?? 0
-    hasMore.value = posts.value.length < total.value
-  } catch { posts.value = [] }
+  try {
+    if (context.filterType === 'type') {
+      const res = await fetchArticleTypes()
+      if (!isCurrentRequest(context)) return
+      const items = (res.data?.data ?? []).map((item: ArticleType) => ({
+        code: item.code,
+        display_name: item.display_name,
+        color: item.color,
+        post_count: item.post_count,
+      }))
+      metaList.value = items
+      typeMap.value = Object.fromEntries(items.map((item) => [item.code, item.display_name]))
+    } else {
+      const res = await fetchArticleStatuses()
+      if (!isCurrentRequest(context)) return
+      const items = (res.data?.data ?? []).map((item: ArticleStatus) => ({
+        code: item.code,
+        display_name: item.display_name,
+        color: item.color,
+        post_count: item.post_count,
+      }))
+      metaList.value = items
+      statusMap.value = Object.fromEntries(items.map((item) => [item.code, item.display_name]))
+    }
+  } catch {
+    if (!isCurrentRequest(context)) return
+    metaList.value = []
+    if (context.filterType === 'type') typeMap.value = {}
+    else statusMap.value = {}
+  }
+
+  if (!isCurrentRequest(context)) return
+
+  if (!context.code) {
+    posts.value = []
+    total.value = 0
+    hasMore.value = false
+  } else {
+    try {
+      const params: PostsParams = { page: 1, page_size: context.pageSize }
+      if (context.filterType === 'type') params.article_type = context.code
+      else params.article_status = context.code
+
+      const res = await fetchPosts(params)
+      if (!isCurrentRequest(context)) return
+      posts.value = res.data?.data ?? []
+      total.value = res.data?.pagination?.total ?? 0
+      hasMore.value = posts.value.length < total.value
+    } catch {
+      if (!isCurrentRequest(context)) return
+      posts.value = []
+      total.value = 0
+      hasMore.value = false
+    }
+  }
+
+  if (!isCurrentRequest(context)) return
   loading.value = false
+  await nextTick()
+  if (context.code && isCurrentRequest(context)) setupObserver(context)
 }
 
-async function loadMorePosts() {
-  if (!hasMore.value || loadingMore.value) return
+async function loadMorePosts(context: RequestContext) {
+  if (!isCurrentRequest(context) || !hasMore.value || loadingMore.value) return
   loadingMore.value = true
-  page.value++
+  const nextPage = page.value + 1
   try {
-    const params: PostsParams = { page: page.value, page_size: scrollSize.value }
-    if (props.filterType === 'type') params.article_type = filterValue.value
-    else params.article_status = filterValue.value
+    const params: PostsParams = { page: nextPage, page_size: context.pageSize }
+    if (context.filterType === 'type') params.article_type = context.code
+    else params.article_status = context.code
 
     const res = await fetchPosts(params)
+    if (!isCurrentRequest(context)) return
     posts.value.push(...(res.data?.data ?? []))
+    page.value = nextPage
     hasMore.value = posts.value.length < total.value
-  } catch { /* ignore */ }
-  loadingMore.value = false
+  } catch {
+    // Keep the current page so a later observer event can retry it.
+  } finally {
+    if (isCurrentRequest(context)) loadingMore.value = false
+  }
 }
 function goBack() {
   const path = props.filterType === 'type' ? '/types' : '/statuses'
   router.push(path)
 }
 
-function setupObserver() {
-  if (!sentinelRef.value) return
+function setupObserver(context: RequestContext) {
+  if (!sentinelRef.value || !isCurrentRequest(context)) return
+  observer?.disconnect()
   observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting && hasMore.value && !loadingMore.value) {
-      loadMorePosts()
+    if (entry.isIntersecting && isCurrentRequest(context) && hasMore.value && !loadingMore.value) {
+      loadMorePosts(context)
     }
   }, { threshold: 0.1 })
   observer.observe(sentinelRef.value)
 }
 
-onMounted(async () => {
-  await loadMeta()
-  if (filterValue.value) await loadPosts()
-  await nextTick()
-  setupObserver()
+onMounted(() => {
+  mounted = true
+  reloadForCurrentRoute()
 })
-onUnmounted(() => { observer?.disconnect() })
+onUnmounted(() => {
+  mounted = false
+  requestGeneration++
+  observer?.disconnect()
+  observer = null
+})
 
-// 监听路由切换 — 合并 path 和 code 避免重复请求
+// 路由或筛选类型变化时，生成新的请求代次；旧响应不得提交状态。
 watch(
-  () => [route.path, route.params.code] as const,
-  async ([_path, code]) => {
-    observer?.disconnect()
-    page.value = 1
-    await loadMeta()
-    if (filterValue.value) {
-      await loadPosts()
-      await nextTick()
-      setupObserver()
-    } else {
-      posts.value = []
-      total.value = 0
-      hasMore.value = false
-    }
+  () => [route.path, route.params.code, props.filterType] as const,
+  () => {
+    reloadForCurrentRoute()
   },
 )
 </script>

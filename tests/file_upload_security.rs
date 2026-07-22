@@ -3,12 +3,40 @@ mod common;
 use axum_test::multipart::{MultipartForm, Part};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use lopdf::dictionary;
-use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement,
+};
 use serde_json::{json, Value};
 use std::io::Write;
 
 use common::TestApp;
-use marksharex::models::entity::files;
+use marksharex::models::entity::{categories, files, post_tags, posts, tags};
+
+fn regular_file_count(path: &std::path::Path) -> std::io::Result<usize> {
+    let mut count = 0;
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            count += regular_file_count(&entry.path())?;
+        } else if entry.file_type()?.is_file() {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+fn regular_files(path: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            files.extend(regular_files(&entry.path())?);
+        } else if entry.file_type()?.is_file() {
+            files.push(entry.path());
+        }
+    }
+    Ok(files)
+}
 
 fn valid_png(red: u8) -> Vec<u8> {
     let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([red, 0, 0, 255]));
@@ -17,6 +45,152 @@ fn valid_png(red: u8) -> Vec<u8> {
         .write_to(&mut cursor, image::ImageFormat::Png)
         .expect("test PNG must encode");
     cursor.into_inner()
+}
+
+#[tokio::test]
+async fn published_import_index_failure_rolls_back_database_relations_and_file_bytes(
+) -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let author = app
+        .create_user("import-index-failure-author", "author")
+        .await?;
+    let encoded = STANDARD.encode(valid_png(231));
+    app.state.search_engine.poison_writer_for_test();
+
+    let response = app
+        .server
+        .post("/api/v1/import/posts")
+        .authorization_bearer(&author.token)
+        .json(&json!({
+            "items": [{
+                "filename": "index-failure.md",
+                "content": "---\ntitle: Index failure import\ncategory: index-failure-category\ntags:\n  - index-failure-tag\nstatus: published\n---\n![x](index-failure.png)",
+                "images": [{
+                    "name": "index-failure.png",
+                    "data": format!("data:image/png;base64,{encoded}")
+                }]
+            }]
+        }))
+        .await;
+    response.assert_status_ok();
+    let body = response.json::<Value>();
+    assert_eq!(body["data"]["imported_count"], 0);
+    assert_eq!(body["data"]["skipped_count"], 1);
+
+    assert_eq!(
+        posts::Entity::find()
+            .filter(posts::Column::Title.eq("Index failure import"))
+            .count(&app.db)
+            .await?,
+        0
+    );
+    assert_eq!(
+        categories::Entity::find()
+            .filter(categories::Column::Name.eq("index-failure-category"))
+            .count(&app.db)
+            .await?,
+        0
+    );
+    assert_eq!(
+        tags::Entity::find()
+            .filter(tags::Column::Name.eq("index-failure-tag"))
+            .count(&app.db)
+            .await?,
+        0
+    );
+    assert_eq!(post_tags::Entity::find().count(&app.db).await?, 0);
+    assert_eq!(files::Entity::find().count(&app.db).await?, 0);
+    assert_eq!(
+        regular_file_count(std::path::Path::new(&app.state.config.storage.upload_dir))?,
+        0
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn compensation_failure_reports_persisted_post_and_preserves_relations_and_exact_file_bytes(
+) -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let author = app
+        .create_user("import-compensation-failure-author", "author")
+        .await?;
+    app.db
+        .execute_unprepared(
+            "CREATE TRIGGER fail_import_post_compensation
+             BEFORE DELETE ON posts
+             BEGIN
+                 SELECT RAISE(FAIL, 'forced import compensation failure');
+             END;",
+        )
+        .await?;
+    let png = valid_png(177);
+    let encoded = STANDARD.encode(&png);
+    app.state.search_engine.poison_writer_for_test();
+
+    let response = app
+        .server
+        .post("/api/v1/import/posts")
+        .authorization_bearer(&author.token)
+        .json(&json!({
+            "items": [{
+                "filename": "compensation-failure.md",
+                "content": "---\ntitle: Persisted after compensation failure\ncategory: persisted-category\ntags:\n  - persisted-tag\nstatus: published\n---\n![x](persisted.png)",
+                "images": [{
+                    "name": "persisted.png",
+                    "data": format!("data:image/png;base64,{encoded}")
+                }]
+            }]
+        }))
+        .await;
+    response.assert_status_ok();
+    let body = response.json::<Value>();
+    assert_eq!(body["data"]["success"], false);
+    assert_eq!(body["data"]["imported_count"], 1);
+    assert_eq!(body["data"]["skipped_count"], 0);
+    assert_eq!(
+        body["data"]["persisted_with_errors"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(body["data"]["errors"][0]
+        .as_str()
+        .unwrap()
+        .contains("数据库补偿也失败"));
+
+    let post = posts::Entity::find()
+        .filter(posts::Column::Title.eq("Persisted after compensation failure"))
+        .one(&app.db)
+        .await?
+        .expect("committed post must remain when compensation rolls back");
+    assert_eq!(body["data"]["persisted_with_errors"][0], post.id);
+    assert_eq!(
+        categories::Entity::find()
+            .filter(categories::Column::Name.eq("persisted-category"))
+            .count(&app.db)
+            .await?,
+        1
+    );
+    assert_eq!(
+        tags::Entity::find()
+            .filter(tags::Column::Name.eq("persisted-tag"))
+            .count(&app.db)
+            .await?,
+        1
+    );
+    assert_eq!(
+        post_tags::Entity::find()
+            .filter(post_tags::Column::PostId.eq(post.id))
+            .count(&app.db)
+            .await?,
+        1
+    );
+    assert_eq!(files::Entity::find().count(&app.db).await?, 1);
+    let paths = regular_files(std::path::Path::new(&app.state.config.storage.upload_dir))?;
+    assert_eq!(paths.len(), 1);
+    assert_eq!(std::fs::read(&paths[0])?, png);
+    Ok(())
 }
 
 fn valid_image(red: u8, format: image::ImageFormat) -> Vec<u8> {

@@ -260,6 +260,7 @@ pub async fn get_news(
 }
 
 /// GET /api/v1/admin/news/{id} — 管理详情（包含草稿）
+#[utoipa::path(get, path = "/api/v1/admin/news/{id}", tag = "News")]
 pub async fn get_admin_news(
     State(state): State<AppState>,
     Path(id): Path<i32>,
@@ -286,6 +287,7 @@ pub struct TopicTypeQuery {
     pub search: Option<String>,
 }
 
+#[utoipa::path(get, path = "/api/v1/news/topic-types", tag = "News")]
 pub async fn list_topic_types(
     State(state): State<AppState>,
     Query(params): Query<TopicTypeQuery>,
@@ -440,6 +442,7 @@ pub struct BatchDeleteRequest {
     pub ids: Vec<i32>,
 }
 
+#[utoipa::path(post, path = "/api/v1/admin/news/batch-delete", tag = "News")]
 pub async fn batch_delete_news(
     State(state): State<AppState>,
     _auth: PrivilegedUser,

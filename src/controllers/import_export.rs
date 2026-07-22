@@ -348,6 +348,7 @@ pub struct ImportResult {
     pub message: String,
     pub imported_count: usize,
     pub skipped_count: usize,
+    pub persisted_with_errors: Vec<i32>,
     pub errors: Vec<String>,
 }
 
@@ -415,6 +416,7 @@ pub async fn import_markdown(
         message: "".to_string(),
         imported_count: 0,
         skipped_count: 0,
+        persisted_with_errors: Vec::new(),
         errors: Vec::new(),
     };
 
@@ -622,9 +624,16 @@ pub async fn import_markdown(
         match result {
             Ok(_) => results.imported_count += 1,
             Err(e) => {
-                rollback_import_files(&state, &mutation_session, &created_file_ids).await?;
-                results.errors.push(format!("「{}」: {}", title, e));
-                results.skipped_count += 1;
+                if e.rollback_files {
+                    rollback_import_files(&state, &mutation_session, &created_file_ids).await?;
+                }
+                results.errors.push(format!("「{}」: {}", title, e.error));
+                if let Some(post_id) = e.persisted_post_id {
+                    results.imported_count += 1;
+                    results.persisted_with_errors.push(post_id);
+                } else {
+                    results.skipped_count += 1;
+                }
             }
         }
     }
@@ -633,8 +642,10 @@ pub async fn import_markdown(
         format!("成功导入 {} 篇文章", results.imported_count)
     } else {
         format!(
-            "导入完成，成功: {}, 失败: {}",
-            results.imported_count, results.skipped_count
+            "导入完成，已持久化: {}, 未导入: {}, 异常: {}",
+            results.imported_count,
+            results.skipped_count,
+            results.errors.len()
         )
     };
 
@@ -691,10 +702,14 @@ fn parse_front_matter(content: &str) -> (HashMap<String, String>, Vec<String>, S
             if in_tags {
                 if let Some(caps) = list_item_re.captures(line) {
                     tags.push(caps.get(1).unwrap().as_str().to_string());
-                } else if !line.trim().is_empty() && !line.starts_with("-") {
-                    in_tags = false;
+                    continue;
                 }
-            } else if let Some(caps) = key_value_re.captures(line) {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                in_tags = false;
+            }
+            if let Some(caps) = key_value_re.captures(line) {
                 meta.insert(
                     caps.get(1).unwrap().as_str().to_string(),
                     caps.get(2).unwrap().as_str().to_string(),
@@ -749,7 +764,7 @@ async fn create_post_from_import(
     tags: &[String],
     explicit_slug: Option<&str>,
     cover_url: Option<&str>,
-) -> Result<posts::Model, AppError> {
+) -> Result<posts::Model, crate::services::import_export::ImportPostError> {
     crate::services::import_export::create_post_from_import(
         state,
         user_id,
@@ -763,4 +778,21 @@ async fn create_post_from_import(
         cover_url,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_front_matter;
+
+    #[test]
+    fn front_matter_fields_after_multiline_tags_are_preserved() {
+        let (meta, tags, body) = parse_front_matter(
+            "---\ntitle: Ordered fields\ntags:\n  - rust\n  - sqlite\nstatus: published\nslug: ordered-fields\n---\nbody",
+        );
+
+        assert_eq!(tags, vec!["rust", "sqlite"]);
+        assert_eq!(meta.get("status").map(String::as_str), Some("published"));
+        assert_eq!(meta.get("slug").map(String::as_str), Some("ordered-fields"));
+        assert_eq!(body, "body");
+    }
 }

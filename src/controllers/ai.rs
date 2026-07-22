@@ -266,6 +266,7 @@ pub struct DefaultAgentInfo {
     pub name: Option<String>,
 }
 
+#[utoipa::path(get, path = "/api/v1/ai/default-agent", tag = "Ai")]
 pub async fn get_default_agent(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<DefaultAgentInfo>>, AppError> {
@@ -896,6 +897,7 @@ pub async fn delete_task(
 }
 
 /// POST /api/v1/admin/ai/tasks/{id}/run — 手动执行一次任务（异步启动+轮询追踪）
+#[utoipa::path(post, path = "/api/v1/admin/ai/tasks/{id}/run", tag = "Ai")]
 pub async fn run_task(
     State(state): State<AppState>,
     _admin: AdminUser,
@@ -932,6 +934,7 @@ pub async fn run_task(
 }
 
 /// GET /api/v1/admin/ai/tasks/{id}/trace — 轮询任务执行追踪
+#[utoipa::path(get, path = "/api/v1/admin/ai/tasks/{id}/trace", tag = "Ai")]
 pub async fn get_task_trace(
     State(_state): State<AppState>,
     _admin: AdminUser,
@@ -977,6 +980,7 @@ pub struct TaskLogDetail {
 }
 
 /// GET /api/v1/admin/ai/tasks/{id}/logs — 任务执行日志列表
+#[utoipa::path(get, path = "/api/v1/admin/ai/tasks/{id}/logs", tag = "Ai")]
 pub async fn list_task_logs(
     State(state): State<AppState>,
     _admin: AdminUser,
@@ -1017,6 +1021,7 @@ pub async fn list_task_logs(
 }
 
 /// GET /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 单条日志详情
+#[utoipa::path(get, path = "/api/v1/admin/ai/tasks/{id}/logs/{log_id}", tag = "Ai")]
 pub async fn get_task_log(
     State(state): State<AppState>,
     _admin: AdminUser,
@@ -1044,6 +1049,7 @@ pub async fn get_task_log(
 }
 
 /// DELETE /api/v1/admin/ai/tasks/{id}/logs/{log_id} — 删除单条日志
+#[utoipa::path(delete, path = "/api/v1/admin/ai/tasks/{id}/logs/{log_id}", tag = "Ai")]
 pub async fn delete_task_log(
     State(state): State<AppState>,
     _admin: AdminUser,

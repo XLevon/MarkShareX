@@ -26,7 +26,9 @@ pub enum Relation {
 }
 
 impl Related<super::ai_chat_session::Entity> for Entity {
-    fn to() -> RelationDef { Relation::Session.def() }
+    fn to() -> RelationDef {
+        Relation::Session.def()
+    }
 }
 
 impl ActiveModelBehavior for ActiveModel {}

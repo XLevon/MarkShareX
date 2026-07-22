@@ -1,5 +1,5 @@
 use crate::middleware::auth::{AuthUser, PrivilegedUser};
-use crate::models::entity::categories;
+use crate::models::entity::{categories, posts};
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
     extract::{Path, State},
@@ -399,19 +399,14 @@ pub async fn delete_category(
         return Err(AppError::Forbidden);
     }
 
-    // 检查是否有文章关联
-    let post_count: i64 = state
-        .db
-        .query_one(sea_orm::Statement::from_string(
-            state.db.get_database_backend(),
-            format!(
-                "SELECT COUNT(*) FROM posts WHERE category_id = {} AND deleted_at IS NULL",
-                id
-            ),
-        ))
-        .await?
-        .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-        .unwrap_or(0);
+    let txn = state.db.begin().await?;
+
+    // 软删除文章仍保留分类关系；只要存在任何历史引用就拒绝硬删除，
+    // 防止 FK 失败或静默破坏历史内容的分类归属。
+    let post_count = posts::Entity::find()
+        .filter(posts::Column::CategoryId.eq(id))
+        .count(&txn)
+        .await?;
 
     if post_count > 0 {
         return Err(AppError::BadRequest(format!(
@@ -426,8 +421,9 @@ pub async fn delete_category(
         "UPDATE categories SET parent_id = NULL WHERE parent_id = $1",
         vec![id.into()],
     );
-    state.db.execute(stmt).await?;
-    categories::Entity::delete_by_id(id).exec(&state.db).await?;
+    txn.execute(stmt).await?;
+    categories::Entity::delete_by_id(id).exec(&txn).await?;
+    txn.commit().await?;
 
     Ok(Json(ApiResponse::new(())))
 }

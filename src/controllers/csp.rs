@@ -105,6 +105,7 @@ fn should_log_report() -> bool {
 /// The route applies a 16 KiB body limit; individual logged fields are bounded,
 /// stripped of line-breaking controls, URI-sanitized fail closed, and sampled to
 /// at most 20 warning records per process per minute.
+#[utoipa::path(post, path = "/api/v1/csp-report", tag = "Csp")]
 pub(crate) async fn csp_report_handler(
     State(_state): State<AppState>,
     headers: HeaderMap,

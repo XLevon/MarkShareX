@@ -1,8 +1,11 @@
-use tantivy::{Index, IndexWriter, query::QueryParser, collector::TopDocs, directory::MmapDirectory, TantivyDocument};
-use tantivy::schema::{Schema, TEXT, STORED, INDEXED};
-use tantivy::schema::Value;
-use std::sync::{Arc, Mutex};
 use sea_orm::*;
+use std::sync::{Arc, Mutex};
+use tantivy::schema::Value;
+use tantivy::schema::{Schema, INDEXED, STORED, TEXT};
+use tantivy::{
+    collector::TopDocs, directory::MmapDirectory, query::QueryParser, Index, IndexWriter,
+    TantivyDocument,
+};
 
 /// 在 CJK 字符之间插入空格，使 SimpleTokenizer 能正确切分中/日/韩文字。
 /// "MarkFlow博客系统" → "MarkFlow 博 客 系 统"
@@ -16,7 +19,10 @@ fn cjk_tokenize(text: &str) -> String {
             let prev_is_alnum = chars[i - 1].is_alphanumeric();
             let curr_is_alnum = ch.is_alphanumeric();
             // 插入空格：CJK↔CJK, 字母↔CJK, CJK↔字母
-            if (prev_is_cjk && curr_is_cjk) || (prev_is_alnum && curr_is_cjk) || (prev_is_cjk && curr_is_alnum) {
+            if (prev_is_cjk && curr_is_cjk)
+                || (prev_is_alnum && curr_is_cjk)
+                || (prev_is_cjk && curr_is_alnum)
+            {
                 result.push(' ');
             }
         }
@@ -64,7 +70,10 @@ impl Clone for SearchEngine {
 
 impl SearchEngine {
     pub fn index_document(&self, post_id: u64, title: &str, body: &str) -> anyhow::Result<()> {
-        let mut writer = self.writer.lock().unwrap();
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| anyhow::anyhow!("搜索索引 writer 锁已损坏"))?;
         let schema = self.index.schema();
         let title_field = schema.get_field("title")?;
         let body_field = schema.get_field("body")?;
@@ -89,7 +98,10 @@ impl SearchEngine {
     }
 
     pub fn delete_from_index(&self, post_id: u64) -> anyhow::Result<()> {
-        let mut writer = self.writer.lock().unwrap();
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| anyhow::anyhow!("搜索索引 writer 锁已损坏"))?;
         let schema = self.index.schema();
         let post_id_field = schema.get_field("post_id")?;
         let term = tantivy::Term::from_field_u64(post_id_field, post_id);
@@ -123,6 +135,16 @@ impl SearchEngine {
 
         Ok(results)
     }
+
+    #[cfg(any(test, debug_assertions))]
+    #[doc(hidden)]
+    pub fn poison_writer_for_test(&self) {
+        let writer = Arc::clone(&self.writer);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let _guard = writer.lock().expect("writer must initially be healthy");
+            panic!("intentional search writer poison for fault injection");
+        }));
+    }
 }
 
 pub fn init_index(data_dir: &str) -> anyhow::Result<SearchEngine> {
@@ -144,6 +166,30 @@ pub fn init_index(data_dir: &str) -> anyhow::Result<SearchEngine> {
     })
 }
 
+pub async fn ensure_search_index_consistency(
+    engine: &SearchEngine,
+    db: &DatabaseConnection,
+    post_id: i32,
+    mutation_result: anyhow::Result<()>,
+) -> Result<(), crate::utils::AppError> {
+    let Err(primary_error) = mutation_result else {
+        return Ok(());
+    };
+
+    tracing::warn!(
+        post_id,
+        error = %primary_error,
+        "搜索索引增量更新失败，尝试从数据库全量重建"
+    );
+    reindex_all_posts(engine, db)
+        .await
+        .map_err(|rebuild_error| {
+            crate::utils::AppError::Internal(anyhow::anyhow!(
+                "文章 {post_id} 的索引增量更新失败: {primary_error}; 全量重建也失败: {rebuild_error}"
+            ))
+        })
+}
+
 /// Rebuild the full-text search index from all published posts in the database.
 /// Call this once at startup to populate the index.
 pub async fn reindex_all_posts(
@@ -152,7 +198,10 @@ pub async fn reindex_all_posts(
 ) -> anyhow::Result<()> {
     // Clear existing index
     {
-        let mut writer = engine.writer.lock().unwrap();
+        let mut writer = engine
+            .writer
+            .lock()
+            .map_err(|_| anyhow::anyhow!("搜索索引 writer 锁已损坏"))?;
         writer.delete_all_documents()?;
         writer.commit()?;
     }
@@ -180,4 +229,95 @@ pub async fn reindex_all_posts(
 
     tracing::info!("搜索索引重建完成：已索引 {} 篇文章", count);
     Ok(())
+}
+
+#[cfg(test)]
+mod consistency_tests {
+    use super::*;
+    use sea_orm::{ConnectionTrait, Database};
+
+    fn temporary_engine() -> anyhow::Result<(tempfile::TempDir, SearchEngine)> {
+        let directory = tempfile::tempdir()?;
+        let engine = init_index(directory.path().to_str().expect("temporary path is UTF-8"))?;
+        Ok((directory, engine))
+    }
+
+    fn live_document_count(engine: &SearchEngine) -> anyhow::Result<u64> {
+        Ok(engine.index.reader()?.searcher().num_docs())
+    }
+
+    #[test]
+    fn repeated_updates_leave_one_live_document_and_only_latest_terms() -> anyhow::Result<()> {
+        let (_directory, engine) = temporary_engine()?;
+
+        engine.index_document(99, "unrelated-survivor-token", "stable-body-token")?;
+        engine.index_document(42, "version-one-token", "first-body-token")?;
+        engine.index_document(42, "version-two-token", "second-body-token")?;
+        engine.index_document(42, "version-three-token", "latest-body-token")?;
+
+        assert!(engine.search("version-one-token", 10)?.is_empty());
+        assert!(engine.search("version-two-token", 10)?.is_empty());
+        assert!(engine.search("first-body-token", 10)?.is_empty());
+        assert!(engine.search("second-body-token", 10)?.is_empty());
+        assert_eq!(engine.search("version-three-token", 10)?, vec![42]);
+        assert_eq!(engine.search("latest-body-token", 10)?, vec![42]);
+        assert_eq!(engine.search("unrelated-survivor-token", 10)?, vec![99]);
+        assert_eq!(engine.search("stable-body-token", 10)?, vec![99]);
+        assert_eq!(live_document_count(&engine)?, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn deleting_a_post_preserves_unrelated_live_documents() -> anyhow::Result<()> {
+        let (_directory, engine) = temporary_engine()?;
+        engine.index_document(7, "delete-me-token", "body")?;
+        engine.index_document(8, "keep-me-token", "stable")?;
+
+        assert_eq!(engine.search("delete-me-token", 10)?, vec![7]);
+        assert_eq!(engine.search("keep-me-token", 10)?, vec![8]);
+        assert_eq!(live_document_count(&engine)?, 2);
+
+        engine.delete_from_index(7)?;
+
+        assert!(engine.search("delete-me-token", 10)?.is_empty());
+        assert_eq!(engine.search("keep-me-token", 10)?, vec![8]);
+        assert_eq!(live_document_count(&engine)?, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn full_reindex_matches_published_non_deleted_rows() -> anyhow::Result<()> {
+        let (_directory, engine) = temporary_engine()?;
+        let db = Database::connect("sqlite::memory:").await?;
+        db.execute_unprepared(
+            "CREATE TABLE posts (
+                id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                status TEXT NOT NULL,
+                deleted_at DATETIME NULL
+            );
+            INSERT INTO posts VALUES (1, 'published-index-token', 'body', 'published', NULL);
+            INSERT INTO posts VALUES (2, 'draft-index-token', 'body', 'draft', NULL);
+            INSERT INTO posts VALUES (3, 'deleted-index-token', 'body', 'published', CURRENT_TIMESTAMP);
+            INSERT INTO posts VALUES (4, 'second-published-token', 'second-body-token', 'published', NULL);",
+        )
+        .await?;
+
+        reindex_all_posts(&engine, &db).await?;
+        assert_eq!(engine.search("published-index-token", 10)?, vec![1]);
+        assert_eq!(engine.search("second-published-token", 10)?, vec![4]);
+        assert_eq!(engine.search("second-body-token", 10)?, vec![4]);
+        assert!(engine.search("draft-index-token", 10)?.is_empty());
+        assert!(engine.search("deleted-index-token", 10)?.is_empty());
+        assert_eq!(live_document_count(&engine)?, 2);
+
+        db.execute_unprepared("UPDATE posts SET status = 'draft' WHERE id = 1")
+            .await?;
+        reindex_all_posts(&engine, &db).await?;
+        assert!(engine.search("published-index-token", 10)?.is_empty());
+        assert_eq!(engine.search("second-published-token", 10)?, vec![4]);
+        assert_eq!(live_document_count(&engine)?, 1);
+        Ok(())
+    }
 }

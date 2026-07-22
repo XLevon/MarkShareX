@@ -258,7 +258,7 @@
 
               <!-- Nested replies -->
               <div v-if="c.replies && c.replies.length" class="mt-3 space-y-3 pl-2">
-                <div v-for="r in c.replies" :key="r.id" class="flex gap-2.5">
+                <div v-for="r in c.replies" :key="r.id" :id="`comment-${r.id}`" class="flex gap-2.5 scroll-mt-20">
                   <div class="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0" style="background: #818cf8; font-size: 11px; font-weight: 600">
                     {{ (r.author_name || '匿')[0] }}
                   </div>
@@ -655,6 +655,8 @@ async function toggleLike() {
 // ── Comments ──
 const comments = ref<Comment[]>([])
 let commentsRequestId = 0
+let commentActionRequestId = 0
+let replyActionRequestId = 0
 const commentLoading = ref(false)
 const commentSubmitting = ref(false)
 const commentError = ref('')
@@ -662,6 +664,20 @@ const replyTargetId = ref<number | null>(null)
 const replySubmitting = ref(false)
 const commentForm = reactive({ content: '', author_name: localStorage.getItem('marksharex_visitor_name') || '', author_email: '' })
 const replyForm = reactive({ content: '', author_name: localStorage.getItem('marksharex_visitor_name') || '' })
+
+function isStaleCommentMutation(actionId: number, requestId: number, slug: string, postId: number): boolean {
+  return actionId !== commentActionRequestId
+    || requestId !== postRequestId
+    || currentSlug() !== slug
+    || post.value?.id !== postId
+}
+
+function isStaleReplyMutation(actionId: number, requestId: number, slug: string, postId: number): boolean {
+  return actionId !== replyActionRequestId
+    || requestId !== postRequestId
+    || currentSlug() !== slug
+    || post.value?.id !== postId
+}
 
 const totalCommentCount = computed(() => {
   let n = comments.value.length
@@ -731,26 +747,34 @@ function scrollToCommentHash() {
 }
 
 async function submitComment() {
-  if (!commentForm.content.trim() || !post.value?.id) return
+  const postId = post.value?.id
+  if (!commentForm.content.trim() || !postId) return
+  const requestId = postRequestId
+  const slug = currentSlug()
+  const actionId = ++commentActionRequestId
+  const payload = {
+    content: commentForm.content,
+    author_name: commentForm.author_name || undefined,
+    author_email: commentForm.author_email || undefined,
+  }
   commentSubmitting.value = true
   commentError.value = ''
   try {
-    const { data: resp } = await createComment(post.value.id, {
-      content: commentForm.content,
-      author_name: commentForm.author_name || undefined,
-      author_email: commentForm.author_email || undefined,
-    })
+    const { data: resp } = await createComment(postId, payload)
+    if (isStaleCommentMutation(actionId, requestId, slug, postId)) return
     const newId = resp.data.id
     // Save visitor name
-    if (!isLoggedIn.value && commentForm.author_name) {
-      localStorage.setItem('marksharex_visitor_name', commentForm.author_name)
+    if (!isLoggedIn.value && payload.author_name) {
+      localStorage.setItem('marksharex_visitor_name', payload.author_name)
     }
     commentForm.content = ''
     commentForm.author_name = localStorage.getItem('marksharex_visitor_name') || ''
     commentForm.author_email = ''
     await loadComments()
+    if (isStaleCommentMutation(actionId, requestId, slug, postId)) return
     // Scroll to new comment
     await nextTick()
+    if (isStaleCommentMutation(actionId, requestId, slug, postId)) return
     const el = document.getElementById(`comment-${newId}`)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -760,9 +784,14 @@ async function submitComment() {
       setTimeout(() => { el.style.background = origBg }, 2000)
     }
   } catch (e: any) {
-    commentError.value = e?.response?.data?.error || '评论失败，请稍后重试'
+    if (!isStaleCommentMutation(actionId, requestId, slug, postId)) {
+      commentError.value = e?.response?.data?.error || '评论失败，请稍后重试'
+    }
+  } finally {
+    if (!isStaleCommentMutation(actionId, requestId, slug, postId)) {
+      commentSubmitting.value = false
+    }
   }
-  commentSubmitting.value = false
 }
 
 function startReply(c: Comment) {
@@ -777,25 +806,33 @@ function cancelReply() {
 }
 
 async function submitReply(parentId: number) {
-  if (!replyForm.content.trim() || !post.value?.id) return
+  const postId = post.value?.id
+  if (!replyForm.content.trim() || !postId) return
+  const requestId = postRequestId
+  const slug = currentSlug()
+  const actionId = ++replyActionRequestId
+  const payload = {
+    content: replyForm.content,
+    parent_id: parentId,
+    author_name: replyForm.author_name || undefined,
+  }
   replySubmitting.value = true
   try {
-    const { data: resp } = await createComment(post.value.id, {
-      content: replyForm.content,
-      parent_id: parentId,
-      author_name: replyForm.author_name || undefined,
-    })
+    const { data: resp } = await createComment(postId, payload)
+    if (isStaleReplyMutation(actionId, requestId, slug, postId)) return
     const newId = resp.data.id
     // Save visitor name
-    if (!isLoggedIn.value && replyForm.author_name) {
-      localStorage.setItem('marksharex_visitor_name', replyForm.author_name)
+    if (!isLoggedIn.value && payload.author_name) {
+      localStorage.setItem('marksharex_visitor_name', payload.author_name)
     }
     replyTargetId.value = null
     replyForm.content = ''
     replyForm.author_name = ''
     await loadComments()
+    if (isStaleReplyMutation(actionId, requestId, slug, postId)) return
     // Scroll to new reply
     await nextTick()
+    if (isStaleReplyMutation(actionId, requestId, slug, postId)) return
     const el = document.getElementById(`comment-${newId}`)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -806,8 +843,11 @@ async function submitReply(parentId: number) {
     }
   } catch {
     // ignore
+  } finally {
+    if (!isStaleReplyMutation(actionId, requestId, slug, postId)) {
+      replySubmitting.value = false
+    }
   }
-  replySubmitting.value = false
 }
 
 onMounted(() => {
@@ -817,6 +857,8 @@ onUnmounted(() => {
   postRequestId++
   commentsRequestId++
   likeActionRequestId++
+  commentActionRequestId++
+  replyActionRequestId++
   // Record read duration on leave
   if (readStartTime.value && post.value?.id) {
     const duration = Math.round((Date.now() - readStartTime.value) / 1000)
@@ -832,6 +874,12 @@ watch(() => route.params.slug, () => {
   }
   cleanupObserver()
   commentsRequestId++
+  commentActionRequestId++
+  replyActionRequestId++
+  commentSubmitting.value = false
+  replySubmitting.value = false
+  commentError.value = ''
+  replyTargetId.value = null
   comments.value = []
   commentLoading.value = false
   tocItems.value = []

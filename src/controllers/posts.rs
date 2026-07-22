@@ -1,5 +1,6 @@
 use crate::middleware::auth::{AuthUser, OptionalAuthUser, PrivilegedUser};
 use crate::models::entity::{article_statuses, article_types, posts, users};
+use crate::services::search::ensure_search_index_consistency;
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
     extract::{ConnectInfo, Path, Query, State},
@@ -1049,9 +1050,10 @@ pub async fn create_post(
         let title = post.title.clone();
         let content = post.content.clone().unwrap_or_default();
         let post_id = post.id as u64;
-        let _ = state
+        let result = state
             .search_engine
             .index_document(post_id, &title, &content);
+        ensure_search_index_consistency(&state.search_engine, &state.db, post.id, result).await?;
     }
 
     Ok(Json(ApiResponse::new(PostResponse::from(post))))
@@ -1198,11 +1200,15 @@ pub async fn update_post(
         let title = updated.title.clone();
         let content = updated.content.clone().unwrap_or_default();
         let post_id = updated.id as u64;
-        let _ = state
+        let result = state
             .search_engine
             .index_document(post_id, &title, &content);
+        ensure_search_index_consistency(&state.search_engine, &state.db, updated.id, result)
+            .await?;
     } else {
-        let _ = state.search_engine.delete_from_index(updated.id as u64);
+        let result = state.search_engine.delete_from_index(updated.id as u64);
+        ensure_search_index_consistency(&state.search_engine, &state.db, updated.id, result)
+            .await?;
     }
 
     Ok(Json(ApiResponse::new(PostResponse::from(updated))))
@@ -1225,8 +1231,10 @@ pub async fn delete_post(
 
     crate::services::posts::delete_post(&state.db, id).await?;
 
-    // Remove from search index
-    let _ = state.search_engine.delete_from_index(id as u64);
+    // Remove from search index. If the incremental mutation fails, rebuild from the
+    // database source of truth; never report success with a known stale index.
+    let result = state.search_engine.delete_from_index(id as u64);
+    ensure_search_index_consistency(&state.search_engine, &state.db, id, result).await?;
 
     Ok(Json(ApiResponse::new(())))
 }
@@ -1237,6 +1245,7 @@ pub struct BatchDeletePostsRequest {
     pub ids: Vec<i32>,
 }
 
+#[utoipa::path(post, path = "/api/v1/admin/posts/batch-delete", tag = "Posts")]
 pub async fn batch_delete_posts(
     State(state): State<AppState>,
     _privileged: PrivilegedUser,
@@ -1245,7 +1254,8 @@ pub async fn batch_delete_posts(
     let mut count = 0;
     for id in &req.ids {
         crate::services::posts::delete_post(&state.db, *id).await?;
-        let _ = state.search_engine.delete_from_index(*id as u64);
+        let result = state.search_engine.delete_from_index(*id as u64);
+        ensure_search_index_consistency(&state.search_engine, &state.db, *id, result).await?;
         count += 1;
     }
     Ok(Json(ApiResponse {
@@ -1260,6 +1270,7 @@ pub struct BatchPublishPostsRequest {
     pub ids: Vec<i32>,
 }
 
+#[utoipa::path(post, path = "/api/v1/admin/posts/batch-publish", tag = "Posts")]
 pub async fn batch_publish_posts(
     State(state): State<AppState>,
     _privileged: PrivilegedUser,
@@ -1269,6 +1280,7 @@ pub async fn batch_publish_posts(
     let mut count = 0;
     for id in &req.ids {
         let post = posts::Entity::find_by_id(*id)
+            .filter(posts::Column::DeletedAt.is_null())
             .one(&state.db)
             .await?
             .ok_or(AppError::NotFound("文章不存在".into()))?;
@@ -1280,9 +1292,10 @@ pub async fn batch_publish_posts(
             active.published_at = Set(Some(now));
             active.updated_at = Set(now);
             active.update(&state.db).await?;
-            let _ = state
+            let result = state
                 .search_engine
                 .index_document(*id as u64, &title, &content);
+            ensure_search_index_consistency(&state.search_engine, &state.db, *id, result).await?;
             count += 1;
         }
     }
@@ -1298,6 +1311,7 @@ pub struct BatchUnpublishPostsRequest {
     pub ids: Vec<i32>,
 }
 
+#[utoipa::path(post, path = "/api/v1/admin/posts/batch-unpublish", tag = "Posts")]
 pub async fn batch_unpublish_posts(
     State(state): State<AppState>,
     _privileged: PrivilegedUser,
@@ -1306,15 +1320,18 @@ pub async fn batch_unpublish_posts(
     let mut count = 0;
     for id in &req.ids {
         let post = posts::Entity::find_by_id(*id)
+            .filter(posts::Column::DeletedAt.is_null())
             .one(&state.db)
             .await?
             .ok_or(AppError::NotFound("文章不存在".into()))?;
         if post.status == "published" {
             let mut active: posts::ActiveModel = post.into();
             active.status = Set("draft".to_string());
+            active.published_at = Set(None);
             active.updated_at = Set(crate::utils::now_local());
             active.update(&state.db).await?;
-            let _ = state.search_engine.delete_from_index(*id as u64);
+            let result = state.search_engine.delete_from_index(*id as u64);
+            ensure_search_index_consistency(&state.search_engine, &state.db, *id, result).await?;
             count += 1;
         }
     }
@@ -1861,9 +1878,11 @@ pub async fn unified_search(
     let tag_like = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
     let tags: Vec<SearchTag> = {
         let sql = format!(
-            "SELECT t.id, t.name, t.slug, COUNT(pt.post_id) as post_count \
+            "SELECT t.id, t.name, t.slug, COUNT(p.id) as post_count \
              FROM tags t \
              LEFT JOIN post_tags pt ON pt.tag_id = t.id \
+             LEFT JOIN posts p ON p.id = pt.post_id \
+               AND p.status = 'published' AND p.deleted_at IS NULL \
              WHERE t.name LIKE ? \
              GROUP BY t.id \
              ORDER BY post_count DESC \
@@ -1942,12 +1961,14 @@ pub struct UpdatePinOrderRequest {
 }
 
 /// POST /api/v1/admin/posts/{id}/pin — 置顶文章
+#[utoipa::path(post, path = "/api/v1/admin/posts/{id}/pin", tag = "Posts")]
 pub async fn pin_post(
     State(state): State<AppState>,
     Path(id): Path<i32>,
     _privileged: PrivilegedUser,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = posts::Entity::find_by_id(id)
+        .filter(posts::Column::DeletedAt.is_null())
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound("文章不存在".to_string()))?;
@@ -1957,7 +1978,9 @@ pub async fn pin_post(
         .db
         .query_one(sea_orm::Statement::from_string(
             state.db.get_database_backend(),
-            "SELECT COALESCE(MAX(sort_order), 0) FROM posts WHERE is_pinned = 1".to_string(),
+            "SELECT COALESCE(MAX(sort_order), 0) FROM posts
+             WHERE is_pinned = 1 AND deleted_at IS NULL"
+                .to_string(),
         ))
         .await?
         .and_then(|r| r.try_get_by_index::<i64>(0).ok())
@@ -1972,12 +1995,14 @@ pub async fn pin_post(
 }
 
 /// POST /api/v1/admin/posts/{id}/unpin — 取消置顶
+#[utoipa::path(post, path = "/api/v1/admin/posts/{id}/unpin", tag = "Posts")]
 pub async fn unpin_post(
     State(state): State<AppState>,
     Path(id): Path<i32>,
     _privileged: PrivilegedUser,
 ) -> Result<Json<ApiResponse<PostResponse>>, AppError> {
     let post = posts::Entity::find_by_id(id)
+        .filter(posts::Column::DeletedAt.is_null())
         .one(&state.db)
         .await?
         .ok_or(AppError::NotFound("文章不存在".to_string()))?;
@@ -1991,6 +2016,7 @@ pub async fn unpin_post(
 }
 
 /// PUT /api/v1/admin/posts/pin-order — 更新置顶排序
+#[utoipa::path(put, path = "/api/v1/admin/posts/pin-order", tag = "Posts")]
 pub async fn update_pin_order(
     State(state): State<AppState>,
     _privileged: PrivilegedUser,
@@ -1998,6 +2024,7 @@ pub async fn update_pin_order(
 ) -> Result<Json<ApiResponse<String>>, AppError> {
     for (idx, post_id) in req.post_ids.iter().enumerate() {
         let post = posts::Entity::find_by_id(*post_id)
+            .filter(posts::Column::DeletedAt.is_null())
             .one(&state.db)
             .await?
             .ok_or(AppError::NotFound(format!("文章 {} 不存在", post_id)))?;
@@ -2009,6 +2036,7 @@ pub async fn update_pin_order(
 }
 
 /// GET /api/v1/posts/pinned — 获取置顶文章列表（公开）
+#[utoipa::path(get, path = "/api/v1/posts/pinned", tag = "Posts")]
 pub async fn list_pinned_posts(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<PostResponse>>>, AppError> {
@@ -2229,5 +2257,25 @@ mod authorization_tests {
         assert_eq!(public_post_status(None), "published");
         assert_eq!(public_post_status(Some("draft")), "published");
         assert_eq!(public_post_status(Some("deleted")), "published");
+    }
+
+    #[tokio::test]
+    async fn known_index_failure_is_not_reported_as_success_when_rebuild_also_fails() {
+        let dir = tempfile::TempDir::new().expect("temp index directory");
+        let engine =
+            crate::services::search::init_index(dir.path().to_str().expect("utf-8 temp path"))
+                .expect("search engine");
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory database");
+
+        engine.poison_writer_for_test();
+        let mutation_result = engine.delete_from_index(7);
+        assert!(mutation_result.is_err());
+        assert!(
+            ensure_search_index_consistency(&engine, &db, 7, mutation_result)
+                .await
+                .is_err()
+        );
     }
 }

@@ -1,0 +1,162 @@
+GET	/api/v1/openapi.json	获取 OpenAPI 文档
+GET	/api/v1/	获取所有 API 端点列表
+GET	/api/v1/health	健康检查
+GET	/api/v1/version	获取版本信息
+POST	/api/v1/csp-report	CSP 违规报告
+POST	/api/v1/auth/login	用户登录
+POST	/api/v1/auth/register	用户注册
+POST	/api/v1/auth/refresh	刷新令牌
+GET	/api/v1/posts	获取文章列表（前台公开）
+POST	/api/v1/posts	创建文章
+GET	/api/v1/posts/slug/:slug	根据 slug 获取文章
+GET	/api/v1/posts/:id	根据 ID 获取文章
+PUT	/api/v1/posts/:id	更新文章
+DELETE	/api/v1/posts/:id	删除文章
+GET	/api/v1/posts/:id/adjacent	获取文章的前后篇
+POST	/api/v1/posts/:id/like	点赞文章
+GET	/api/v1/posts/:id/like-status	查询点赞状态
+GET	/api/v1/posts/:id/comments	获取文章评论
+POST	/api/v1/posts/:id/comments	发表评论
+GET	/api/v1/categories	获取分类列表
+POST	/api/v1/categories	创建分类
+PUT	/api/v1/categories/:id	更新分类
+DELETE	/api/v1/categories/:id	删除分类
+PUT	/api/v1/admin/categories/reorder	Reorder categories
+GET	/api/v1/admin/categories	List admin categories
+GET	/api/v1/tags	获取标签列表
+POST	/api/v1/tags	创建标签
+PUT	/api/v1/tags/:id	更新标签
+DELETE	/api/v1/tags/:id	删除标签
+GET	/api/v1/authors	获取作者列表
+GET	/api/v1/search	全文搜索
+POST	/api/v1/files/upload	上传文件
+POST	/api/v1/files/batch	批量上传文件
+POST	/api/v1/files/check-md5	检查文件 MD5 是否存在
+GET	/api/v1/files	获取文件列表
+GET	/api/v1/files/unreferenced	获取未引用的文件
+DELETE	/api/v1/files/:id	删除文件
+DELETE	/api/v1/files/batch	批量删除文件
+GET	/api/v1/settings	获取站点设置
+PUT	/api/v1/settings	更新站点设置（含 api_key）
+GET	/api/v1/article-types	List article types
+GET	/api/v1/article-statuses	List article statuses
+GET	/api/v1/admin/article-types	List admin article types
+POST	/api/v1/admin/article-types	Create article type
+PUT	/api/v1/admin/article-types/:id	Update article type
+DELETE	/api/v1/admin/article-types/:id	Delete article type
+POST	/api/v1/admin/article-types/reorder	Reorder article types
+GET	/api/v1/admin/article-statuses	List admin article statuses
+POST	/api/v1/admin/article-statuses	Create article status
+PUT	/api/v1/admin/article-statuses/:id	Update article status
+DELETE	/api/v1/admin/article-statuses/:id	Delete article status
+POST	/api/v1/admin/article-statuses/reorder	Reorder article statuses
+GET	/api/v1/guestbook	List entries
+POST	/api/v1/guestbook	Create entry
+PUT	/api/v1/admin/guestbook/:id/reply	Reply entry
+DELETE	/api/v1/admin/guestbook/:id	Delete entry
+GET	/api/v1/site/admin-info	获取管理员信息
+GET	/api/v1/setup/status	检查初始化状态
+POST	/api/v1/setup	执行初始化
+POST	/api/v1/apply	申请成为作者
+GET	/api/v1/apply/status	查询申请状态
+GET	/api/v1/admin/applications/pending-count	待审批数量
+POST	/api/v1/admin/applications/:id/approve	审批通过
+POST	/api/v1/admin/applications/:id/reject	审批拒绝
+GET	/api/v1/admin/posts	管理端文章列表
+POST	/api/v1/admin/posts/batch-delete	Batch delete posts
+POST	/api/v1/admin/posts/batch-publish	Batch publish posts
+POST	/api/v1/admin/posts/batch-unpublish	Batch unpublish posts
+PUT	/api/v1/admin/posts/pin-order	Update pin order
+POST	/api/v1/admin/posts/:id/pin	Pin post
+POST	/api/v1/admin/posts/:id/unpin	Unpin post
+GET	/api/v1/posts/pinned	List pinned posts
+GET	/api/v1/admin/users	用户列表
+POST	/api/v1/admin/users	创建用户
+PUT	/api/v1/admin/users/:id/status	更新用户状态
+PUT	/api/v1/admin/users/:id/role	更新用户角色
+PUT	/api/v1/admin/users/:id/reset-password	Reset user password
+PUT	/api/v1/admin/users/:id	更新用户
+DELETE	/api/v1/admin/users/:id	删除用户
+GET	/api/v1/profile	获取个人资料
+PUT	/api/v1/profile	更新个人资料
+PUT	/api/v1/profile/password	修改密码
+GET	/api/v1/profile/api-key	获取当前用户的 API Key
+PUT	/api/v1/profile/api-key	生成/重置 API Key
+GET	/api/v1/admin/comments	管理端评论列表
+GET	/api/v1/admin/comments/pending-count	Pending count
+PUT	/api/v1/admin/comments/:id	更新评论状态
+GET	/api/v1/analytics/trend	访问趋势统计
+GET	/api/v1/analytics/total-views	总浏览量
+GET	/api/v1/analytics/total-likes	总点赞数
+GET	/api/v1/analytics/total-comments	总评论数
+GET	/api/v1/analytics/today-likes	Get today likes
+GET	/api/v1/analytics/today-posts	Get today posts
+GET	/api/v1/analytics/post-views	文章浏览量排行
+GET	/api/v1/admin/likes	管理端点赞记录
+GET	/api/v1/admin/login-logs	List login logs
+GET	/api/v1/admin/read-logs	List read logs
+POST	/api/v1/read-logs	Record read log
+GET	/api/v1/admin/logs	Get logs
+GET	/api/v1/admin/health	Get health
+GET	/api/v1/admin/stats	Get stats
+POST	/api/v1/export/posts	导出文章
+POST	/api/v1/import/posts	导入文章
+GET	/api/v1/network-resources	网络资源列表
+POST	/api/v1/network-resources	添加网络资源
+POST	/api/v1/network-resources/ensure	确保 URL 已入库（自动查重）
+POST	/api/v1/network-resources/batch-resolve	批量解析 ID → URL
+PUT	/api/v1/network-resources/:id	更新网络资源
+DELETE	/api/v1/network-resources/:id	删除网络资源
+GET	/api/v1/network-resources/:id/references	查询网络资源引用清单
+GET	/api/v1/network-resources/:id/resolve	解析资源 ID → 302 重定向
+GET	/api/v1/ai/default-agent	获取默认 AI 代理配置
+GET	/api/v1/changelogs/latest	Get latest version
+GET	/api/v1/changelogs/public	List public changelogs
+GET	/api/v1/changelogs	List changelogs
+POST	/api/v1/changelogs	Create changelog
+PUT	/api/v1/changelogs/:id	Update changelog
+DELETE	/api/v1/changelogs/:id	Delete changelog
+GET	/api/v1/news/topic-types	List topic types
+GET	/api/v1/news	List news
+GET	/api/v1/news/:id	Get news
+GET	/api/v1/admin/news	List admin news
+POST	/api/v1/admin/news	Create news
+POST	/api/v1/admin/news/batch-delete	Batch delete news
+GET	/api/v1/admin/news/:id	Get admin news
+PUT	/api/v1/admin/news/:id	Update news
+DELETE	/api/v1/admin/news/:id	Delete news
+GET	/api/v1/admin/ai/providers	List providers
+POST	/api/v1/admin/ai/providers	Create provider
+PUT	/api/v1/admin/ai/providers/:id	Update provider
+DELETE	/api/v1/admin/ai/providers/:id	Delete provider
+POST	/api/v1/admin/ai/providers/:id/test	Test provider
+GET	/api/v1/admin/ai/skills	List skills
+POST	/api/v1/admin/ai/skills	Create skill
+PUT	/api/v1/admin/ai/skills/:id	Update skill
+DELETE	/api/v1/admin/ai/skills/:id	Delete skill
+GET	/api/v1/admin/ai/tasks	List tasks
+POST	/api/v1/admin/ai/tasks	Create task
+PUT	/api/v1/admin/ai/tasks/:id	Update task
+DELETE	/api/v1/admin/ai/tasks/:id	Delete task
+POST	/api/v1/admin/ai/tasks/:id/run	Run task
+GET	/api/v1/admin/ai/tasks/:id/trace	Get task trace
+GET	/api/v1/admin/ai/tasks/:id/logs	List task logs
+GET	/api/v1/admin/ai/tasks/:id/logs/:log_id	Get task log
+DELETE	/api/v1/admin/ai/tasks/:id/logs/:log_id	Delete task log
+GET	/api/v1/admin/ai/agent-configs	List agent configs
+POST	/api/v1/admin/ai/agent-configs	Create agent config
+PUT	/api/v1/admin/ai/agent-configs/:id	Update agent config
+DELETE	/api/v1/admin/ai/agent-configs/:id	Delete agent config
+GET	/api/v1/admin/ai/models	List models
+POST	/api/v1/admin/ai/models	Create model
+PUT	/api/v1/admin/ai/models/:id	Update model
+DELETE	/api/v1/admin/ai/models/:id	Delete model
+GET	/api/v1/admin/ai/sessions	List sessions
+POST	/api/v1/admin/ai/sessions	Create session
+GET	/api/v1/admin/ai/sessions/:id	Get session
+DELETE	/api/v1/admin/ai/sessions/:id	Delete session
+POST	/api/v1/admin/ai/chat	Chat
+GET	/api/v1/admin/ai/tools	List tools
+POST	/api/v1/admin/ai/tools	Create tool
+PUT	/api/v1/admin/ai/tools/:id	Update tool
+DELETE	/api/v1/admin/ai/tools/:id	Delete tool

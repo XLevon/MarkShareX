@@ -2,6 +2,7 @@ use axum::{extract::DefaultBodyLimit, Router};
 use tower_http::trace::TraceLayer;
 
 pub mod api_doc;
+pub mod api_endpoints;
 pub mod config;
 pub mod controllers;
 pub mod crypto;

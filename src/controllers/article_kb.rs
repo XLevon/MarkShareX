@@ -66,25 +66,30 @@ pub struct ReorderRequest {
 
 // ─── Helpers ───
 
-async fn count_posts_by_type(db: &DatabaseConnection, code: &str) -> i64 {
-    posts::Entity::find()
-        .filter(posts::Column::ArticleType.eq(code))
-        .count(db)
-        .await
-        .unwrap_or(0) as i64
+async fn count_posts_by_type(db: &DatabaseConnection, code: &str, public_only: bool) -> i64 {
+    let mut query = posts::Entity::find().filter(posts::Column::ArticleType.eq(code));
+    if public_only {
+        query = query
+            .filter(posts::Column::Status.eq("published"))
+            .filter(posts::Column::DeletedAt.is_null());
+    }
+    query.count(db).await.unwrap_or(0) as i64
 }
 
-async fn count_posts_by_status(db: &DatabaseConnection, code: &str) -> i64 {
-    posts::Entity::find()
-        .filter(posts::Column::ArticleStatus.eq(code))
-        .count(db)
-        .await
-        .unwrap_or(0) as i64
+async fn count_posts_by_status(db: &DatabaseConnection, code: &str, public_only: bool) -> i64 {
+    let mut query = posts::Entity::find().filter(posts::Column::ArticleStatus.eq(code));
+    if public_only {
+        query = query
+            .filter(posts::Column::Status.eq("published"))
+            .filter(posts::Column::DeletedAt.is_null());
+    }
+    query.count(db).await.unwrap_or(0) as i64
 }
 
 // ─── Article Types ───
 
 /// GET /api/v1/article-types — public list (active only, with post_count)
+#[utoipa::path(get, path = "/api/v1/article-types", tag = "Article Kb")]
 pub async fn list_article_types(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<ArticleTypeWithCount>>>, AppError> {
@@ -97,13 +102,14 @@ pub async fn list_article_types(
 
     let mut results = Vec::new();
     for item in items {
-        let post_count = count_posts_by_type(&state.db, &item.code).await;
+        let post_count = count_posts_by_type(&state.db, &item.code, true).await;
         results.push(ArticleTypeWithCount { item, post_count });
     }
     Ok(Json(ApiResponse::new(results)))
 }
 
 /// GET /api/v1/admin/article-types — admin list (all, with post_count)
+#[utoipa::path(get, path = "/api/v1/admin/article-types", tag = "Article Kb")]
 pub async fn list_admin_article_types(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -116,13 +122,14 @@ pub async fn list_admin_article_types(
 
     let mut results = Vec::new();
     for item in items {
-        let post_count = count_posts_by_type(&state.db, &item.code).await;
+        let post_count = count_posts_by_type(&state.db, &item.code, false).await;
         results.push(ArticleTypeWithCount { item, post_count });
     }
     Ok(Json(ApiResponse::new(results)))
 }
 
 /// POST /api/v1/admin/article-types — create
+#[utoipa::path(post, path = "/api/v1/admin/article-types", tag = "Article Kb")]
 pub async fn create_article_type(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -147,6 +154,7 @@ pub async fn create_article_type(
 }
 
 /// PUT /api/v1/admin/article-types/:id
+#[utoipa::path(put, path = "/api/v1/admin/article-types/{id}", tag = "Article Kb")]
 pub async fn update_article_type(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -182,6 +190,7 @@ pub async fn update_article_type(
 }
 
 /// DELETE /api/v1/admin/article-types/:id — only when post_count == 0
+#[utoipa::path(delete, path = "/api/v1/admin/article-types/{id}", tag = "Article Kb")]
 pub async fn delete_article_type(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -193,7 +202,7 @@ pub async fn delete_article_type(
         .map_err(|e| AppError::DbError(e))?
         .ok_or(AppError::NotFound("文章类型不存在".into()))?;
 
-    let count = count_posts_by_type(&state.db, &item.code).await;
+    let count = count_posts_by_type(&state.db, &item.code, false).await;
     if count > 0 {
         return Err(AppError::BadRequest(format!(
             "该类型下有 {} 篇文章，无法删除",
@@ -208,6 +217,7 @@ pub async fn delete_article_type(
 }
 
 /// POST /api/v1/admin/article-types/reorder
+#[utoipa::path(post, path = "/api/v1/admin/article-types/reorder", tag = "Article Kb")]
 pub async fn reorder_article_types(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -232,6 +242,7 @@ pub async fn reorder_article_types(
 // ─── Article Statuses ───
 
 /// GET /api/v1/article-statuses — public list (active only, with post_count)
+#[utoipa::path(get, path = "/api/v1/article-statuses", tag = "Article Kb")]
 pub async fn list_article_statuses(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<ArticleStatusWithCount>>>, AppError> {
@@ -244,13 +255,14 @@ pub async fn list_article_statuses(
 
     let mut results = Vec::new();
     for item in items {
-        let post_count = count_posts_by_status(&state.db, &item.code).await;
+        let post_count = count_posts_by_status(&state.db, &item.code, true).await;
         results.push(ArticleStatusWithCount { item, post_count });
     }
     Ok(Json(ApiResponse::new(results)))
 }
 
 /// GET /api/v1/admin/article-statuses — admin list (all, with post_count)
+#[utoipa::path(get, path = "/api/v1/admin/article-statuses", tag = "Article Kb")]
 pub async fn list_admin_article_statuses(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -263,13 +275,14 @@ pub async fn list_admin_article_statuses(
 
     let mut results = Vec::new();
     for item in items {
-        let post_count = count_posts_by_status(&state.db, &item.code).await;
+        let post_count = count_posts_by_status(&state.db, &item.code, false).await;
         results.push(ArticleStatusWithCount { item, post_count });
     }
     Ok(Json(ApiResponse::new(results)))
 }
 
 /// POST /api/v1/admin/article-statuses — create
+#[utoipa::path(post, path = "/api/v1/admin/article-statuses", tag = "Article Kb")]
 pub async fn create_article_status(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -294,6 +307,7 @@ pub async fn create_article_status(
 }
 
 /// PUT /api/v1/admin/article-statuses/:id
+#[utoipa::path(put, path = "/api/v1/admin/article-statuses/{id}", tag = "Article Kb")]
 pub async fn update_article_status(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -329,6 +343,11 @@ pub async fn update_article_status(
 }
 
 /// DELETE /api/v1/admin/article-statuses/:id — only when post_count == 0
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/article-statuses/{id}",
+    tag = "Article Kb"
+)]
 pub async fn delete_article_status(
     State(state): State<AppState>,
     _auth: PrivilegedUser,
@@ -340,7 +359,7 @@ pub async fn delete_article_status(
         .map_err(|e| AppError::DbError(e))?
         .ok_or(AppError::NotFound("状态标签不存在".into()))?;
 
-    let count = count_posts_by_status(&state.db, &item.code).await;
+    let count = count_posts_by_status(&state.db, &item.code, false).await;
     if count > 0 {
         return Err(AppError::BadRequest(format!(
             "该状态标签下有 {} 篇文章，无法删除",
@@ -355,6 +374,11 @@ pub async fn delete_article_status(
 }
 
 /// POST /api/v1/admin/article-statuses/reorder
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/article-statuses/reorder",
+    tag = "Article Kb"
+)]
 pub async fn reorder_article_statuses(
     State(state): State<AppState>,
     _auth: PrivilegedUser,

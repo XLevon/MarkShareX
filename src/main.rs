@@ -6,9 +6,18 @@ use marksharex::{build_router, config::AppConfig, migrations, models, services, 
 
 /// 编译时嵌入的默认 Tera 模板
 const BUILTIN_TEMPLATES: &[(&str, &str)] = &[
-    ("default/base.html", include_str!("../templates/default/base.html")),
-    ("default/index.html", include_str!("../templates/default/index.html")),
-    ("default/post.html", include_str!("../templates/default/post.html")),
+    (
+        "default/base.html",
+        include_str!("../templates/default/base.html"),
+    ),
+    (
+        "default/index.html",
+        include_str!("../templates/default/index.html"),
+    ),
+    (
+        "default/post.html",
+        include_str!("../templates/default/post.html"),
+    ),
 ];
 
 #[tokio::main]
@@ -38,7 +47,10 @@ async fn main() -> anyhow::Result<()> {
             print!("{}\n", fig.to_string().trim_end());
         }
     }
-    println!("Lightweight Self-hosted Markdown Blog System v{} by XLevon\n", env!("CARGO_PKG_VERSION"));
+    println!(
+        "Lightweight Self-hosted Markdown Blog System v{} by XLevon\n",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // 日志级别：debug 模式输出详细信息，release 模式仅 info+
     let default_filter = if cfg!(debug_assertions) {
@@ -138,7 +150,8 @@ async fn main() -> anyhow::Result<()> {
     } else if db_count != index_count {
         tracing::info!(
             "索引与数据库不一致 (索引 {} 篇, DB {} 篇)，自动重建...",
-            index_count, db_count
+            index_count,
+            db_count
         );
         services::search::reindex_all_posts(&search_engine, &db).await?;
     } else {
@@ -160,7 +173,11 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("🚀 MarkShareX 运行在 http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

@@ -3,7 +3,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rand::RngCore;
 
 /// 从环境变量获取或生成加密密钥（32 bytes）
@@ -24,10 +24,14 @@ fn get_key() -> [u8; 32] {
         // No env var → generate random key (survives restarts via DB persistence)
         let mut k = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut k);
-        tracing::warn!("MARKSHAREX_ENCRYPT_KEY 未设置，已生成随机密钥。请设置环境变量以确保持久化。");
+        tracing::warn!(
+            "MARKSHAREX_ENCRYPT_KEY 未设置，已生成随机密钥。请设置环境变量以确保持久化。"
+        );
         k
     };
-    unsafe { KEY = Some(key); }
+    unsafe {
+        KEY = Some(key);
+    }
     key
 }
 
@@ -40,7 +44,9 @@ pub fn encrypt(plaintext: &str) -> String {
     let mut nonce_bytes = [0u8; 12];
     rand::thread_rng().fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes()).expect("encrypt");
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .expect("encrypt");
     // nonce || ciphertext, base64 encoded
     let mut combined = Vec::with_capacity(12 + ciphertext.len());
     combined.extend_from_slice(&nonce_bytes);
@@ -60,7 +66,10 @@ pub fn decrypt(encoded: &str) -> String {
     let key = get_key();
     let cipher = Aes256Gcm::new_from_slice(&key).expect("valid key");
     let nonce = Nonce::from_slice(&combined[..12]);
-    cipher.decrypt(nonce, &combined[12..]).map(|bytes| String::from_utf8_lossy(&bytes).to_string()).unwrap_or_default()
+    cipher
+        .decrypt(nonce, &combined[12..])
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

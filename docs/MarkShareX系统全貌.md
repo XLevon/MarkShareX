@@ -1,6 +1,6 @@
 # MarkShareX 系统全貌
 
-> 基于 MarkShareX v0.4.1 当前源码、README 与 `docs/` 现有专题文档综合整理。
+> 基于 MarkShareX v0.4.2 当前源码、README 与 `docs/` 现有专题文档综合整理。
 > 本文面向使用者、开发者与运维人员，说明系统定位、总体架构、功能模块、数据流、权限边界、AI 能力、运行机制及部署方式。若本文与旧文档存在差异，以当前源码和迁移文件为准。
 
 ---
@@ -29,7 +29,7 @@ MarkShareX 是一个面向个人技术创作者和小型内容团队的轻量级
 
 ### 1.2 当前技术规模
 
-按 v0.4.1 源码快照统计，排除 `.git`、`node_modules`、`target` 和构建产物后：
+按 v0.4.2 源码快照统计，排除 `.git`、`node_modules`、`target` 和构建产物后：
 
 - Rust 源文件：76 个，约 1.2 万行代码
 - Vue 单文件组件：54 个，约 1.6 万行代码
@@ -94,6 +94,8 @@ migrations/   初始化 Schema 及后续 SQL 增量迁移
 
 控制器与服务并非绝对隔离：部分业务仍直接位于控制器中，但总体上遵循“路由处理—业务服务—数据模型”的组织方式。
 
+`src/api_endpoints.rs` 是 162 个 `/api/v1/*` operation 的权威目录。每条声明同时包含 HTTP method、Axum path、handler、Utoipa path metadata 和是否需要认证；宏展开从同一目录生成 production Router、OpenAPI paths 与 `GET /api/v1/` discovery metadata。测试逐端点把 Axum 的 `:id` 规范化为 OpenAPI 的 `{id}`，校验 method/path 完全一致、无重复且双向无遗漏；测试期还从真实 handler 参数签名独立核对必选认证 extractor，并用迁移前的 162-operation fingerprint 防止重构漏项或错绑。受保护的 OpenAPI operation 必须精确声明 `bearerAuth OR apiKeyAuth`（`X-API-Key`）、使用空 scope、引用已注册 scheme；公开 operation 不得带有效 security requirement。端点发现通过独立 baseline fixture 逐字保留重构前 76 条中文描述；shared-path Router 测试还验证 POST+DELETE、GET+POST、GET+PUT+DELETE 的 405 与精确 `Allow` 集合。`GET /api/v1/openapi.json` 返回的版本从 Cargo package version 派生，`/scalar` 继续只允许管理员访问。
+
 ---
 
 ## 3. 项目目录
@@ -108,6 +110,7 @@ MarkShareX/
 │   ├── middleware/             # Auth、IP Guard、压缩和安全响应头
 │   ├── config/                 # 配置结构与加载逻辑
 │   ├── migrations.rs           # 编译嵌入的增量迁移执行器
+│   ├── api_endpoints.rs         # API Router/OpenAPI/discovery 权威端点目录
 │   ├── api_doc.rs              # OpenAPI 聚合
 │   ├── crypto.rs               # AI API Key 加解密
 │   └── utils/                  # 错误、响应和通用工具
@@ -120,7 +123,8 @@ MarkShareX/
 │   ├── src/stores/             # Pinia 登录、站点设置状态
 │   ├── src/composables/        # 主题、标题和可见性逻辑
 │   ├── src/utils/              # 标题、校验和内容访问工具
-│   └── tests/                  # Node TypeScript 测试
+│   ├── src/__tests__/          # Vitest/Vue 组件、Store 与竞态行为测试
+│   └── tests/                  # Node 源码契约和脚本门禁测试
 ├── templates/default/          # Tera SSR 模板
 ├── static/frontend/            # Vite 生产构建产物
 ├── migrations/                 # SQL 初始化与增量迁移
@@ -167,7 +171,7 @@ Tantivy 索引不是数据库真相源。启动时系统会比较：
 - 数据库中 `status='published'` 且未软删除的文章数
 - Tantivy 当前文档数
 
-数量不一致时从数据库重建索引。文章新增、更新和删除时也会增量维护索引。
+数量不一致时从数据库重建索引。文章新增、Markdown 导入、更新、发布状态变化和删除时也会增量维护索引；published 导入完成数据库事务后会立即写入 Tantivy。若增量提交失败，会按数据库真相源执行全量重建。只有增量提交或重建至少一项成功时请求才可成功，已知的索引失败不会被静默忽略。若 published import 的增量与重建同时失败，服务会在独立事务中补偿删除已提交的文章、关系以及仅本次创建且已无引用的分类/标签；只有补偿确认成功后 controller 才删除本次导入文件。若补偿自身失败，则保留文章、关系和文件，响应以 `success=false` 报告索引异常，但 `imported_count` 按 durable state 计数并在 `persisted_with_errors` 返回已持久化 post ID，避免“文章仍引用但文件已删”或客户端按 skipped 盲目重试。未显式提供 slug 的导入使用标题的确定性规范化 base，并在整个 posts 唯一域（包括软删除保留行）中依次选择 `base`、`base-2`……；非 ASCII 标题规范化为空时使用 `post` base。
 
 ### 4.2 AI 调度恢复
 
@@ -182,7 +186,7 @@ AI Scheduler 启动时会把上次异常退出遗留的 `running` 日志标记�
 文章是系统的核心内容实体，支持：
 
 - Markdown 原文与净化后的 HTML 双份存储
-- 草稿与发布状态；Schema 保留 `deleted_at`，但当前单篇删除流程在清理关联数据后执行硬删除
+- 草稿与发布状态；文章删除写入 `deleted_at` 软删除并保留关联数据
 - 独立 slug 固定链接
 - 作者、树形分类和多标签
 - 封面、本地文件或网络资源引用
@@ -190,13 +194,13 @@ AI Scheduler 启动时会把上次异常退出遗留的 `running` 日志标记�
 - 评论开关、点赞计数、评论计数和阅读统计
 - 文章类型与文章状态字典
 - 管理端搜索、状态筛选、批量删除和置顶排序
-- ZIP 导入导出及 YAML Front Matter 解析
+- ZIP 导入导出及 YAML Front Matter 解析；多行 `tags:` 后的 `status`、`slug` 等字段仍会在同一轮状态切换中解析，不依赖字段顺序；显式 slug 的重复检查和自动 slug 碰撞递增都覆盖软删除保留行，与数据库全表唯一约束一致
 
 文章写权限按角色和资源所有者共同约束：author 可创建文章、更新本人文章和删除本人草稿，但不能转移作者、设置置顶或删除已发布文章；admin、sub_admin 可全局管理文章、作者归属、置顶和批量删除。非特权用户的后台文章列表始终按当前用户 ID 过滤，调用方传入的 `author_id` 不能越权查询他人草稿。
 
 公开读取只暴露 `published` 文章。按 ID、slug、SSR 详情、相邻文章、评论、点赞状态和阅读日志等关联入口复用同一发布状态边界；未发布文章对匿名访客和非所有者统一表现为 404。文章所有者可在认证后的详情 API 中读取本人草稿，admin、sub_admin 可读取全局草稿。
 
-文章类型和状态并不是写死在前端的简单枚举，而是由 `article_types`、`article_statuses` 两张字典表维护；文章保存其 code，公开页面可按类型或状态聚合浏览。
+文章类型和状态并不是写死在前端的简单枚举，而是由 `article_types`、`article_statuses` 两张字典表维护；文章保存其 code，公开页面可按类型或状态聚合浏览。公开类型/状态列表的 `post_count` 仅统计已发布且未软删除文章，管理端计数仍覆盖全部引用，确保删除约束不会忽略草稿或历史行。
 
 #### Markdown 渲染管道
 
@@ -344,6 +348,21 @@ GET /api/v1/health → OK
 `settings` 是 key-value 表，保存站点标题、副标题、描述、Logo、友情链接、评论审核、侧栏行为、留言板开关和列表加载数量等运行时设置。
 
 更新日志模块独立维护版本号、内容、发布状态和时间，公开页面展示已发布记录，管理端支持 CRUD。
+
+### 5.10 资源删除语义
+
+删除操作按资源的数据价值和存储约束明确区分：
+
+| 资源 | 删除语义 | 关联数据行为 |
+|---|---|---|
+| 文章 | 软删除（写入 `deleted_at`） | 保留标签关系、评论、点赞和阅读日志；立即从公开查询、相邻文章、sitemap 与 Tantivy 索引中隐藏；删除后拒绝发布、取消发布、置顶、取消置顶和置顶排序 |
+| 评论 | 软删除（写入 `deleted_at`） | 保留正文和审核记录，公开及后台默认列表排除 |
+| 分类 | 未被任何文章引用时硬删除 | 有活动或软删除文章引用都拒绝；子分类解除父级关系与父分类删除处于同一事务，任一步失败整体回滚 |
+| 标签 | 未被任何文章引用时硬删除 | 有 `post_tags` 关系则拒绝，禁止通过删除标签隐式改写文章 |
+| 本地文件 | 事务性硬删除 | 数据库记录与物理文件必须一起删除；失败时恢复两者 |
+| 资讯 | 硬删除 | 资讯不进入文章关系链，保持明确的永久删除行为 |
+
+软删除文章不会批量清理历史互动数据；数据库是内容真相源，搜索索引属于可重建派生数据。
 
 ---
 
@@ -536,7 +555,7 @@ Vue 在客户端路由切换时同步 `document.title`：
 
 前端路由守卫允许 admin、sub_admin、author 进入后台框架，仅 admin 可进入 AI 管理页面。它只负责用户体验，真正的安全边界仍是后端权限检查。
 
-需要注意，`authStore.setTokens()` 当前无论 `rememberMe` 参数为何值都会写入 `localStorage`，而 Axios 与路由守卫同时兼容 `sessionStorage`。因此“记住登录”的存储策略尚未完全统一。
+认证信息被视为不可拆分的 Access Token、Refresh Token 与用户元组，用户对象必须至少包含合法的数字 ID 和角色：勾选“记住登录”时只写入 `localStorage`，否则只写入 `sessionStorage`；每次登录切换和退出都会先清理两处。Axios 请求、自动刷新、路由守卫和 Pinia Store 统一通过同一存储模块读取，发现历史冲突、残缺或畸形凭据时会 fail closed 清空并要求重新登录。每个请求在发出时绑定所属会话，401 刷新锁按原会话隔离；同一会话的并发或错峰 401 只刷新一次并沿 token 轮换关系重放。Refresh 响应的用户 ID 必须与原会话身份一致，角色等资料可更新但不得切换用户。登录请求使用 generation 防止 logout 后晚响应复活会话或旧登录覆盖新登录；跨标签页的 Storage identity replacement/logout 会同步 Pinia，并使本地未完成的旧登录失效。旧请求、旧 refresh 或重试响应即使晚于新登录或 logout 返回，也不得借用、覆盖或清除新会话。
 
 ### 8.4 状态管理
 
@@ -596,7 +615,7 @@ Authorization: Bearer <access-token>
 
 `/scalar` 本身由 admin 中间件保护，可接受后台设置的 `scalar_token` Cookie 或 Bearer Token。
 
-`GET /api/v1/` 的端点发现列表是手工维护的辅助清单，并不等同于路由注册表或权限真相源：部分新增模块尚未列入，个别 `auth_required` 标记也与 handler 实际签名不一致。例如点赞及点赞状态接口当前都要求登录。准确接口与权限应同时核对 OpenAPI、路由注册和具体 handler。
+`GET /api/v1/` 的端点发现列表、OpenAPI paths 和 production Router 均由 `src/api_endpoints.rs` 的同一目录生成。`auth_required` 会同步写入 discovery，并映射为 OpenAPI 的 Bearer/API Key security requirement；测试再与真实 handler 的必选认证 extractor 独立核对，防止 catalog 自我对照产生假阳性。点赞及点赞状态接口当前都明确要求登录。
 
 ---
 
@@ -754,14 +773,14 @@ ai_chat_sessions 1 ── N ai_chat_messages
 
 系统有两层迁移：
 
-1. `0000000000_init_schema.sql` 由模型初始化逻辑执行，DDL 采用 `IF NOT EXISTS`，兼顾全新安装与幂等启动。
-2. 后续 SQL 文件由 `build.rs` 在编译期嵌入二进制，运行时按文件名顺序执行，并记录到 `_migrations`。
+1. `0000000000_init_schema.sql` 由模型初始化逻辑作为完整 SQLite batch 在事务内执行；任意非幂等错误都会回滚并阻止启动。fresh database 成功后会在同一事务中记录初始化基线与全部已嵌入增量迁移。测试逐个验证 29 张应用表和 27 个应用索引，并在排除 SQLite 内部对象后精确断言总数，因此额外对象也会导致失败；排序、规范化后的完整 `sqlite_master(type,name,sql)` 另有固定 fingerprint，覆盖 table/index/view/trigger 及全部列、类型、NULL/default、PK/UNIQUE/FK 与索引定义。固定 seed 另有独立全量 fingerprint，精确覆盖 article types/statuses、AI tools（含描述、parameters schema、enabled/config）、默认 agent config 和完整 settings 的全部稳定字段与行集合。历史升级 fixture 是剥离九个 incremental delta 后的完整 29-table 应用 schema，保留所有无关表、seed、约束和索引；升级后独立 fingerprint 与 `ai_tasks` 的 provider/skill/agent/model 四个 FK、provider `NOT NULL` 及 legacy provider value 精确断言证明原有 schema 未被改变。
+2. 九个后续 SQL 文件（`0000000001`–`0000000004`、`0000000007`–`0000000011`）由 `build.rs` 按固定文件名顺序嵌入二进制。每个文件作为完整 SQLite batch 在独立事务内执行并记录到 `_migrations`；失败时 schema 与迁移记录共同回滚，重复启动只跳过已记录文件。执行器支持 trigger body、字符串内分号和嵌套 `CASE ... END`，并拒绝迁移自行发出顶层事务控制语句。
 
 因此发布新二进制时不需要额外携带迁移工具，但部署前仍应备份数据库。
 
 ### 11.4 软删除与统计
 
-文章、用户、分类、标签、文件和评论等核心实体普遍保留 `deleted_at`，但删除策略并不完全统一：部分查询使用软删除过滤，文章单篇删除服务则会清理标签、点赞、评论和阅读日志后硬删除文章。阅读量主要从 `read_logs` 聚合，`posts.view_count` 作为历史兼容字段保留。
+文章、用户、分类、标签、文件和评论等核心实体普遍保留 `deleted_at`，但删除策略按资源明确区分：文章和评论软删除并保留关联数据；已被文章引用的分类/标签拒绝删除、未引用项硬删除；文件和资讯硬删除。阅读量主要从 `read_logs` 聚合，`posts.view_count` 作为历史兼容字段保留。
 
 ---
 
@@ -948,9 +967,9 @@ config.toml
 - CSP 当前处于 Report-Only 观察期：已移除 `unsafe-eval`，但为兼容现有内联初始化脚本和样式暂时保留 `unsafe-inline`。连续至少 14 天没有需保留的违规后，应先移除内联依赖及 `unsafe-inline`，再将同一策略切换为 enforcing；切换前必须完成前台、后台、登录、编辑器和 AI 对话回归。
 - `/api/v1/csp-report` 请求体限制为 16 KiB，日志字段去除控制字符并限制长度；URI 仅记录规范化 HTTP(S) 地址或 `inline`/`eval`/`wasm-eval`，其他格式统一脱敏，且 WARN 日志最多每进程每分钟 20 条，避免无限请求体、敏感参数泄露、日志注入和日志放大。
 - 自定义 Markdown/HTML 展示点都应经过明确净化，不能因为内容来自管理后台就默认可信。
-- 当前上传校验仍会按声明 MIME/扩展名走兼容分支，虽然依赖中声明了 `magic`，并不能据此认为所有文件都已经过 magic bytes 强校验；自定义重命名也需要额外防止路径分隔符和 `..`。
-- AI `web_extract` 的直接抓取和可配置 Provider Base URL 由服务端主动请求，目前应增加私网、环回和重定向目标限制以降低 SSRF 风险。
-- AI 聊天和更新日志等前端展示点使用 `v-html`/Markdown 渲染时，应在展示前建立明确的 HTML 净化边界。
+- 上传入口联合校验文件签名、扩展名和声明 MIME，拒绝截断 magic、伪造内容、危险历史文件名、路径分隔符和 `..`；SVG 默认 fail closed，图片在无界解码前检查尺寸上限。文件系统与数据库更新按可恢复顺序执行，并有失败回滚测试。
+- AI `web_extract`、Provider 测试和聊天出站请求统一拒绝环回、私网、链路本地、云元数据及其他保留地址；DNS 结果在连接时固定，重定向目标逐跳重新校验，只有显式 allowlist 可放行指定私网地址或 CIDR。
+- 用户或 LLM 生成的 Markdown 通过共享 `renderMarkdown()` 管道执行 `marked` 后再由 DOMPurify 净化；新增 `v-html` 展示点必须复用该边界，不能直接渲染未净化字符串。固定代码生成的导航图标不属于不可信 Markdown。
 - 反向代理必须正确传递 `X-Forwarded-Proto` 和可信客户端 IP 头，HSTS 与 IP 审计才能按预期工作。
 
 ---

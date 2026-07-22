@@ -63,6 +63,7 @@ pub struct GuestbookQuery {
 }
 
 /// POST /api/v1/guestbook — 提交留言（公开）
+#[utoipa::path(post, path = "/api/v1/guestbook", tag = "Guestbook")]
 pub async fn create_entry(
     State(state): State<AppState>,
     auth: OptionalAuthUser,
@@ -107,6 +108,7 @@ pub async fn create_entry(
 }
 
 /// GET /api/v1/guestbook — 留言列表（公开，支持搜索）
+#[utoipa::path(get, path = "/api/v1/guestbook", tag = "Guestbook")]
 pub async fn list_entries(
     State(state): State<AppState>,
     Query(query): Query<GuestbookQuery>,
@@ -165,6 +167,7 @@ pub async fn list_entries(
 }
 
 /// PUT /api/v1/admin/guestbook/{id}/reply — 管理员回复
+#[utoipa::path(put, path = "/api/v1/admin/guestbook/{id}/reply", tag = "Guestbook")]
 pub async fn reply_entry(
     State(state): State<AppState>,
     Path(id): Path<i32>,
@@ -189,6 +192,7 @@ pub async fn reply_entry(
 }
 
 /// DELETE /api/v1/admin/guestbook/{id} — 管理员删除（软删除）
+#[utoipa::path(delete, path = "/api/v1/admin/guestbook/{id}", tag = "Guestbook")]
 pub async fn delete_entry(
     State(state): State<AppState>,
     Path(id): Path<i32>,

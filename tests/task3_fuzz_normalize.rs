@@ -15,8 +15,7 @@ mod fuzz_normalize_local_api_url {
 
         // === Phase 2: extract path + query ===
         let path_and_query = if input.starts_with("http://") || input.starts_with("https://") {
-            let parsed =
-                url::Url::parse(input).map_err(|_| "parse-fail".to_string())?;
+            let parsed = url::Url::parse(input).map_err(|_| "parse-fail".to_string())?;
             if parsed.fragment().is_some() {
                 return Err("fragment".into());
             }
@@ -31,7 +30,9 @@ mod fuzz_normalize_local_api_url {
         };
 
         // === Phase 3: join against base, then strict assertion ===
-        let normalized = base.join(&path_and_query).map_err(|_| "join-fail".to_string())?;
+        let normalized = base
+            .join(&path_and_query)
+            .map_err(|_| "join-fail".to_string())?;
         let ok = normalized.scheme() == "http"
             && normalized.host_str() == Some("127.0.0.1")
             && normalized.port_or_known_default() == Some(port)
@@ -103,7 +104,10 @@ mod fuzz_normalize_local_api_url {
             "api/v1/search\\x",
             "api/v1/search?q=\\test",
         ] {
-            assert!(should_reject(payload), "backslash must be rejected: {payload}");
+            assert!(
+                should_reject(payload),
+                "backslash must be rejected: {payload}"
+            );
         }
     }
 
@@ -204,8 +208,7 @@ mod fuzz_normalize_local_api_url {
             let result = normalize_local_api_url(payload, 5023);
             match result {
                 Ok(url) => assert_eq!(
-                    url,
-                    "http://127.0.0.1:5023/api/v1/search",
+                    url, "http://127.0.0.1:5023/api/v1/search",
                     "port must be server port: {payload} → {url}"
                 ),
                 Err(_) => {}
@@ -283,8 +286,14 @@ mod fuzz_normalize_local_api_url {
     #[test]
     fn query_parameters_preserved_but_url_stays_local() {
         let tests = [
-            ("api/v1/search?url=http://evil.example/", "http://127.0.0.1:5023/api/v1/search?url=http://evil.example/"),
-            ("/api/v1/tags?x=1&y=2", "http://127.0.0.1:5023/api/v1/tags?x=1&y=2"),
+            (
+                "api/v1/search?url=http://evil.example/",
+                "http://127.0.0.1:5023/api/v1/search?url=http://evil.example/",
+            ),
+            (
+                "/api/v1/tags?x=1&y=2",
+                "http://127.0.0.1:5023/api/v1/tags?x=1&y=2",
+            ),
         ];
         for (input, expected) in tests {
             let result = normalize_local_api_url(input, 5023);
@@ -324,9 +333,9 @@ mod fuzz_normalize_local_api_url {
     #[test]
     fn mixed_slash_does_not_bypass() {
         for payload in [
-            r"http:/evil.example/api/v1/search",     // single-slash authority
-            "http:evil.example/api/v1/search",         // colon-no-slash
-            "http:/\\/evil.example/api/v1/search",     // (backslash rejected by Phase 1)
+            r"http:/evil.example/api/v1/search",   // single-slash authority
+            "http:evil.example/api/v1/search",     // colon-no-slash
+            "http:/\\/evil.example/api/v1/search", // (backslash rejected by Phase 1)
         ] {
             let result = normalize_local_api_url(payload, 5023);
             match result {
@@ -446,8 +455,10 @@ mod fuzz_normalize_local_api_url {
                 }
                 Err(e) => {
                     assert!(
-                        e.contains("backslash") || e.contains("fragment")
-                            || e.contains("assertion") || e.contains("parse")
+                        e.contains("backslash")
+                            || e.contains("fragment")
+                            || e.contains("assertion")
+                            || e.contains("parse")
                             || e.contains("join"),
                         "unexpected error for '{input}': {e}"
                     );

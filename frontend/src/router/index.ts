@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
+import { readAuthSession } from '@/utils/authStorage'
 
 const frontRoutes: RouteRecordRaw[] = [
   {
@@ -103,24 +104,18 @@ const router = createRouter({
 router.beforeEach(async (to, from) => {
   // Auth guard
   if (to.meta.requiresAuth) {
-    const token = localStorage.getItem('marksharex_token') || sessionStorage.getItem('marksharex_token')
-    if (!token) {
+    const session = readAuthSession()
+    if (!session?.accessToken || typeof session.user?.role !== 'string') {
       return { name: 'login', query: { redirect: to.fullPath } }
     }
     // Role check: only admin/sub_admin/author can access admin routes
     const adminRoles = ['admin', 'sub_admin', 'author']
-    const userStr = localStorage.getItem('marksharex_user') || sessionStorage.getItem('marksharex_user')
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr)
-        if (!adminRoles.includes(user.role)) {
-          return { name: 'home' }
-        }
-        // only admin can access AI module
-        if (user.role !== 'admin' && to.path.startsWith('/admin/ai')) {
-          return { name: 'admin-dashboard' }
-        }
-      } catch { /* corrupted user data, let through */ }
+    if (!adminRoles.includes(session.user.role)) {
+      return { name: 'home' }
+    }
+    // only admin can access AI module
+    if (session.user.role !== 'admin' && to.path.startsWith('/admin/ai')) {
+      return { name: 'admin-dashboard' }
     }
   }
   // Save current scroll position for the page we're leaving

@@ -1,9 +1,9 @@
-use sea_orm::*;
-use sea_orm::sea_query::Expr;
-use crate::models::entity::{posts, categories, tags, post_tags, comments};
 use crate::models::entity::network_resources;
+use crate::models::entity::{categories, post_tags, posts, tags};
 use crate::utils::{AppError, Pagination};
 use regex::Regex;
+use sea_orm::sea_query::Expr;
+use sea_orm::*;
 
 pub async fn list_posts(
     db: &DatabaseConnection,
@@ -24,8 +24,7 @@ pub async fn list_posts(
     include_subcategories: Option<bool>,
     search: Option<&str>,
 ) -> Result<(Vec<posts::Model>, Pagination), AppError> {
-    let mut condition = Condition::all()
-        .add(posts::Column::DeletedAt.is_null());
+    let mut condition = Condition::all().add(posts::Column::DeletedAt.is_null());
 
     if let Some(s) = status {
         condition = condition.add(posts::Column::Status.eq(s));
@@ -34,7 +33,9 @@ pub async fn list_posts(
     let merged_category_ids: Vec<i32> = {
         let mut ids: Vec<i32> = category_ids.map(|v| v.to_vec()).unwrap_or_default();
         if let Some(cid) = category_id {
-            if !ids.contains(&cid) { ids.push(cid); }
+            if !ids.contains(&cid) {
+                ids.push(cid);
+            }
         }
         ids
     };
@@ -92,7 +93,9 @@ pub async fn list_posts(
         if !types.is_empty() {
             let mut all = types.to_vec();
             if let Some(at) = article_type {
-                if !all.contains(&at.to_string()) { all.push(at.to_string()); }
+                if !all.contains(&at.to_string()) {
+                    all.push(at.to_string());
+                }
             }
             condition = condition.add(posts::Column::ArticleType.is_in(all));
         }
@@ -104,7 +107,9 @@ pub async fn list_posts(
         if !statuses.is_empty() {
             let mut all = statuses.to_vec();
             if let Some(as_) = article_status {
-                if !all.contains(&as_.to_string()) { all.push(as_.to_string()); }
+                if !all.contains(&as_.to_string()) {
+                    all.push(as_.to_string());
+                }
             }
             condition = condition.add(posts::Column::ArticleStatus.is_in(all));
         }
@@ -183,7 +188,10 @@ pub async fn get_post(db: &DatabaseConnection, id: i32) -> Result<posts::Model, 
     Ok(post)
 }
 
-pub async fn get_post_by_slug(db: &DatabaseConnection, slug: &str) -> Result<posts::Model, AppError> {
+pub async fn get_post_by_slug(
+    db: &DatabaseConnection,
+    slug: &str,
+) -> Result<posts::Model, AppError> {
     let post = posts::Entity::find()
         .filter(posts::Column::Slug.eq(slug))
         .filter(posts::Column::DeletedAt.is_null())
@@ -194,41 +202,23 @@ pub async fn get_post_by_slug(db: &DatabaseConnection, slug: &str) -> Result<pos
 }
 
 pub async fn delete_post(db: &DatabaseConnection, id: i32) -> Result<(), AppError> {
-    // 1. 删除文章标签关联
-    post_tags::Entity::delete_many()
-        .filter(post_tags::Column::PostId.eq(id))
-        .exec(db)
-        .await?;
-    
-    // 2. 删除点赞
-    let stmt = Statement::from_string(
-        db.get_database_backend(),
-        format!("DELETE FROM likes WHERE post_id = {}", id)
-    );
-    db.execute(stmt).await?;
-    
-    // 3. 删除文章评论
-    comments::Entity::delete_many()
-        .filter(comments::Column::PostId.eq(id))
-        .exec(db)
-        .await?;
-    
-    // 4. 删除文章阅读日志
-    let stmt = Statement::from_string(
-        db.get_database_backend(),
-        format!("DELETE FROM read_logs WHERE post_id = {}", id)
-    );
-    db.execute(stmt).await?;
-    
-    // 5. 硬删除文章
-    posts::Entity::delete_by_id(id)
-        .exec(db)
-        .await?;
-    
+    let post = posts::Entity::find_by_id(id)
+        .filter(posts::Column::DeletedAt.is_null())
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("文章不存在".to_string()))?;
+    let now = crate::utils::now_local();
+    let mut active: posts::ActiveModel = post.into();
+    active.deleted_at = Set(Some(now));
+    active.updated_at = Set(now);
+    active.update(db).await?;
     Ok(())
 }
 
-pub async fn get_category_name(db: &DatabaseConnection, category_id: Option<i32>) -> Option<String> {
+pub async fn get_category_name(
+    db: &DatabaseConnection,
+    category_id: Option<i32>,
+) -> Option<String> {
     if let Some(cid) = category_id {
         categories::Entity::find_by_id(cid)
             .one(db)
@@ -241,7 +231,10 @@ pub async fn get_category_name(db: &DatabaseConnection, category_id: Option<i32>
     }
 }
 
-pub async fn get_post_tags(db: &DatabaseConnection, post_id: i32) -> Result<Vec<tags::Model>, AppError> {
+pub async fn get_post_tags(
+    db: &DatabaseConnection,
+    post_id: i32,
+) -> Result<Vec<tags::Model>, AppError> {
     let tag_ids: Vec<i32> = post_tags::Entity::find()
         .filter(post_tags::Column::PostId.eq(post_id))
         .all(db)
@@ -262,7 +255,11 @@ pub async fn get_post_tags(db: &DatabaseConnection, post_id: i32) -> Result<Vec<
     Ok(tags)
 }
 
-pub async fn set_post_tags(db: &DatabaseConnection, post_id: i32, tag_ids: &[i32]) -> Result<(), AppError> {
+pub async fn set_post_tags(
+    db: &DatabaseConnection,
+    post_id: i32,
+    tag_ids: &[i32],
+) -> Result<(), AppError> {
     use sea_orm::ConnectionTrait;
 
     // Delete existing tags
@@ -276,7 +273,8 @@ pub async fn set_post_tags(db: &DatabaseConnection, post_id: i32, tag_ids: &[i32
     db.execute(sea_orm::Statement::from_string(
         sea_orm::DatabaseBackend::Sqlite,
         "PRAGMA foreign_keys = OFF",
-    )).await?;
+    ))
+    .await?;
 
     for &tid in tag_ids {
         db.execute(sea_orm::Statement::from_sql_and_values(
@@ -286,7 +284,12 @@ pub async fn set_post_tags(db: &DatabaseConnection, post_id: i32, tag_ids: &[i32
         ))
         .await
         .map_err(|e| {
-            tracing::error!("set_post_tags: insert error for post={} tag={}: {:?}", post_id, tid, e);
+            tracing::error!(
+                "set_post_tags: insert error for post={} tag={}: {:?}",
+                post_id,
+                tid,
+                e
+            );
             AppError::DbError(e)
         })?;
     }
@@ -294,13 +297,17 @@ pub async fn set_post_tags(db: &DatabaseConnection, post_id: i32, tag_ids: &[i32
     db.execute(sea_orm::Statement::from_string(
         sea_orm::DatabaseBackend::Sqlite,
         "PRAGMA foreign_keys = ON",
-    )).await?;
+    ))
+    .await?;
 
     Ok(())
 }
 
 /// Resolve tag names to tag IDs. Creates new tags for names that don't exist.
-pub async fn resolve_tag_names(db: &DatabaseConnection, tag_names: &[String]) -> Result<Vec<i32>, AppError> {
+pub async fn resolve_tag_names(
+    db: &DatabaseConnection,
+    tag_names: &[String],
+) -> Result<Vec<i32>, AppError> {
     let now = crate::utils::now_local();
     let mut tag_ids = Vec::new();
 
@@ -324,17 +331,20 @@ pub async fn resolve_tag_names(db: &DatabaseConnection, tag_names: &[String]) ->
             let model = tags::ActiveModel {
                 name: Set(name.to_string()),
                 slug: Set(slug),
-                user_id: Set(None),  // 明确设置 NULL 避免 FK 约束问题
+                user_id: Set(None), // 明确设置 NULL 避免 FK 约束问题
                 deleted_at: Set(None),
                 created_at: Set(now),
                 updated_at: Set(now),
                 ..Default::default()
             };
-            let created = model.insert(db).await
-                .map_err(|e| {
-                    tracing::error!("resolve_tag_names: failed to insert tag '{}': {:?}", name, e);
-                    AppError::DbError(e)
-                })?;
+            let created = model.insert(db).await.map_err(|e| {
+                tracing::error!(
+                    "resolve_tag_names: failed to insert tag '{}': {:?}",
+                    name,
+                    e
+                );
+                AppError::DbError(e)
+            })?;
             created.id
         };
         tag_ids.push(tag_id);
@@ -355,7 +365,9 @@ pub async fn get_adjacent_posts(
         .await?
         .ok_or(AppError::NotFound("文章不存在".to_string()))?;
 
-    let published_at = current.published_at.ok_or(AppError::NotFound("文章未发布".to_string()))?;
+    let published_at = current
+        .published_at
+        .ok_or(AppError::NotFound("文章未发布".to_string()))?;
 
     // Previous: max published_at < current, order by published_at DESC
     let prev = posts::Entity::find()
@@ -393,7 +405,12 @@ pub async fn render_markdown(db: &DatabaseConnection, content: &str) -> String {
         let alt = cap.get(1).unwrap().as_str();
         let id_str = cap.get(2).unwrap().as_str();
         if let Ok(id) = id_str.parse::<i32>() {
-            if let Some(nr) = network_resources::Entity::find_by_id(id).one(db).await.ok().flatten() {
+            if let Some(nr) = network_resources::Entity::find_by_id(id)
+                .one(db)
+                .await
+                .ok()
+                .flatten()
+            {
                 resolved = resolved.replace(full, &format!("![{}]({})", alt, nr.url));
             }
         }
@@ -407,7 +424,7 @@ pub async fn render_markdown(db: &DatabaseConnection, content: &str) -> String {
     options.extension.shortcodes = true;
     options.extension.superscript = true;
     let html = comrak::markdown_to_html(&resolved, &options);
-    
+
     // Allow class attribute on code/pre for syntax highlighting
     let mut builder = ammonia::Builder::default();
     builder.add_tag_attributes("code", &["class"]);
@@ -415,30 +432,39 @@ pub async fn render_markdown(db: &DatabaseConnection, content: &str) -> String {
     // Allow target on links for new-tab opening (rel is managed by ammonia)
     builder.add_tag_attributes("a", &["href", "target", "title"]);
     // Allow referrerpolicy on img for anti-hotlinking
-    builder.add_tag_attributes("img", &["src", "alt", "title", "width", "height", "loading", "referrerpolicy"]);
+    builder.add_tag_attributes(
+        "img",
+        &[
+            "src",
+            "alt",
+            "title",
+            "width",
+            "height",
+            "loading",
+            "referrerpolicy",
+        ],
+    );
     let safe_html = builder.clean(&html).to_string();
 
     // Add target="_blank" to all external links for new-tab opening
     // (rel is already handled by ammonia)
     let link_re = Regex::new(r#"<a(\s[^>]*)?\shref="([^"]+)"([^>]*)>"#).unwrap();
-    let safe_html = link_re.replace_all(&safe_html, 
-        r#"<a$1 href="$2" target="_blank"$3>"#).to_string();
+    let safe_html = link_re
+        .replace_all(&safe_html, r#"<a$1 href="$2" target="_blank"$3>"#)
+        .to_string();
 
     // Add referrerpolicy to all img tags (prevents hotlink blocking from sites like CSDN)
     let re = Regex::new(r"<img\s").unwrap();
-    re.replace_all(&safe_html, r#"<img referrerpolicy="no-referrer" "#).to_string()
+    re.replace_all(&safe_html, r#"<img referrerpolicy="no-referrer" "#)
+        .to_string()
 }
 
-pub fn generate_slug(title: &str) -> String {
-    use nanoid::nanoid;
-
+pub(crate) fn generate_slug_base(title: &str) -> String {
     let slugified: String = title
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() {
                 c.to_ascii_lowercase()
-            } else if c.is_whitespace() || c == '_' || c == '-' {
-                '-'
             } else {
                 '-'
             }
@@ -450,7 +476,9 @@ pub fn generate_slug(title: &str) -> String {
     let mut prev_dash = false;
     for c in slugified.chars() {
         if c == '-' {
-            if !prev_dash { result.push(c); }
+            if !prev_dash {
+                result.push(c);
+            }
             prev_dash = true;
         } else {
             result.push(c);
@@ -458,18 +486,25 @@ pub fn generate_slug(title: &str) -> String {
         }
     }
     let base = result.trim_matches('-').to_string();
-
-    // Truncate meaningful prefix, then append fixed-length Nano ID
-    // for guaranteed uniqueness. Total length ≤ 40 + 1 + 10 = 51.
-    let prefix = if base.len() > 40 {
+    if base.len() > 40 {
         let mut p = base[..40].to_string();
         if let Some(i) = p.rfind('-') {
-            if i > 20 { p.truncate(i); }  // word boundary
+            if i > 20 {
+                p.truncate(i);
+            } // word boundary
         }
         p.trim_matches('-').to_string()
     } else {
         base
-    };
+    }
+}
+
+pub fn generate_slug(title: &str) -> String {
+    use nanoid::nanoid;
+
+    // Append a fixed-length Nano ID for ordinary interactive creation.
+    // Imports use the deterministic base plus a database-checked suffix.
+    let prefix = generate_slug_base(title);
 
     if prefix.is_empty() {
         format!("post-{}", nanoid!(10))

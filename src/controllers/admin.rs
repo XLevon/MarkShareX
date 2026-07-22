@@ -279,6 +279,7 @@ pub struct ResetPasswordRequest {
     pub password: String,
 }
 
+#[utoipa::path(put, path = "/api/v1/admin/users/{id}/reset-password", tag = "Admin")]
 pub async fn reset_user_password(
     State(state): State<AppState>,
     _auth: AdminUser,

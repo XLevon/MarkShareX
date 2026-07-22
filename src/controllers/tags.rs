@@ -190,14 +190,21 @@ pub async fn delete_tag(
         return Err(AppError::Forbidden);
     }
 
-    // Delete associated post_tags
-    crate::models::entity::post_tags::Entity::delete_many()
+    let txn = state.db.begin().await?;
+    let reference_count = crate::models::entity::post_tags::Entity::find()
         .filter(crate::models::entity::post_tags::Column::TagId.eq(id))
-        .exec(&state.db)
+        .count(&txn)
         .await?;
+    if reference_count > 0 {
+        return Err(AppError::BadRequest(format!(
+            "该标签已被 {} 篇文章使用，无法删除。请先移除文章关联",
+            reference_count
+        )));
+    }
 
-    // Hard delete the tag
-    tags::Entity::delete_by_id(id).exec(&state.db).await?;
+    // 未被任何文章引用的结构元数据采用硬删除，避免 slug 唯一约束冲突。
+    tags::Entity::delete_by_id(id).exec(&txn).await?;
+    txn.commit().await?;
 
     Ok(Json(ApiResponse::new(())))
 }

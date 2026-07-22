@@ -24,7 +24,9 @@ pub enum Relation {
 }
 
 impl Related<super::ai_provider::Entity> for Entity {
-    fn to() -> RelationDef { Relation::Provider.def() }
+    fn to() -> RelationDef {
+        Relation::Provider.def()
+    }
 }
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -20,7 +20,9 @@ pub enum Relation {
 }
 
 impl Related<super::ai_chat_message::Entity> for Entity {
-    fn to() -> RelationDef { Relation::Messages.def() }
+    fn to() -> RelationDef {
+        Relation::Messages.def()
+    }
 }
 
 impl ActiveModelBehavior for ActiveModel {}

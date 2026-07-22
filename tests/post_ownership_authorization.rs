@@ -191,9 +191,17 @@ async fn post_delete_ownership_matrix_preserves_forbidden_posts() -> anyhow::Res
         .await
         .assert_status_ok();
 
-    assert!(app.get_post_row(owner_draft.id).await.is_err());
-    assert!(app.get_post_row(privileged_draft.id).await.is_err());
-    assert!(app.get_post_row(admin_target.id).await.is_err());
+    assert!(app.get_post_row(owner_draft.id).await?.deleted_at.is_some());
+    assert!(app
+        .get_post_row(privileged_draft.id)
+        .await?
+        .deleted_at
+        .is_some());
+    assert!(app
+        .get_post_row(admin_target.id)
+        .await?
+        .deleted_at
+        .is_some());
 
     Ok(())
 }

@@ -1,10 +1,10 @@
-pub mod auth;
-pub mod posts;
-pub mod search;
-pub mod files;
-pub mod logs;
-pub mod ai_tools;
 pub mod ai_chat;
 pub mod ai_scheduler;
+pub mod ai_tools;
 pub mod ai_trace;
+pub mod auth;
+pub mod files;
 pub mod import_export;
+pub mod logs;
+pub mod posts;
+pub mod search;
