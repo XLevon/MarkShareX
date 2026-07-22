@@ -1,4 +1,4 @@
-use crate::middleware::auth::{AuthUser, OptionalAuthUser, PrivilegedUser};
+use crate::middleware::auth::{AuthorOrPrivilegedUser, OptionalAuthUser, PrivilegedUser};
 use crate::models::entity::comments;
 use crate::models::entity::users;
 use crate::utils::{ApiResponse, AppError, AppState, Pagination};
@@ -274,7 +274,7 @@ pub async fn create_comment(
 )]
 pub async fn list_all_comments(
     State(state): State<AppState>,
-    auth: AuthUser,
+    auth: AuthorOrPrivilegedUser,
     Query(query): Query<ListCommentsQuery>,
 ) -> Result<Json<ApiResponse<Vec<CommentResponse>>>, AppError> {
     use crate::models::entity::posts;

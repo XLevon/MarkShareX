@@ -2,6 +2,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::TestApp;
+use marksharex::models::entity::news;
+use sea_orm::{ActiveModelTrait, Set};
 use serde_json::{json, Value};
 
 fn ids(response: &axum_test::TestResponse) -> Vec<i64> {
@@ -25,6 +27,76 @@ fn assert_secrets_absent(
 fn assert_hidden(response: &axum_test::TestResponse, secret_title: &str, secret_content: &str) {
     response.assert_status(StatusCode::NOT_FOUND);
     assert_secrets_absent(response, secret_title, secret_content);
+}
+
+#[tokio::test]
+async fn public_optional_auth_rejects_an_explicit_empty_api_key() -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let owner = app.create_user("empty-key-owner", "author").await?;
+    let post = app
+        .create_post(&owner, "empty-key-public-post", "published")
+        .await?;
+
+    app.server
+        .get(&format!("/api/v1/posts/{}", post.id))
+        .add_header("X-API-Key", "")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn public_news_date_filters_reject_sql_syntax_without_leaking_drafts() -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let now = marksharex::utils::now_local();
+    for (title, status, topic_type) in [
+        ("public-news-fixture", "published", "public-topic"),
+        ("draft-news-secret-9f2c", "draft", "draft-topic-secret-9f2c"),
+    ] {
+        news::ActiveModel {
+            title: Set(title.to_string()),
+            summary: Set(format!("{title}-summary")),
+            content: Set(format!("{title}-content")),
+            content_html: Set(format!("<p>{title}-content</p>")),
+            status: Set(status.to_string()),
+            topic_type: Set(topic_type.to_string()),
+            source_url: Set(String::new()),
+            sort_order: Set(0),
+            published_at: Set((status == "published").then_some(now)),
+            user_id: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(&app.db)
+        .await?;
+    }
+
+    let injected_date = "x%27%20OR%201%3D1%20--";
+    for path in [
+        format!("/api/v1/news?date_from={injected_date}&include_content=true"),
+        format!("/api/v1/news/topic-types?date_from={injected_date}"),
+    ] {
+        let response = app.server.get(&path).await;
+        response.assert_status_bad_request();
+        assert!(!response.text().contains("draft-news-secret-9f2c"));
+        assert!(!response.text().contains("draft-topic-secret-9f2c"));
+    }
+
+    let today = now.date().format("%Y-%m-%d");
+    for path in [
+        format!("/api/v1/news?date_from={today}&date_to={today}&include_content=true"),
+        format!("/api/v1/news/topic-types?date_from={today}&date_to={today}"),
+    ] {
+        let response = app.server.get(&path).await;
+        response.assert_status_ok();
+        assert!(response.text().contains("public"));
+        assert!(!response.text().contains("draft-news-secret-9f2c"));
+        assert!(!response.text().contains("draft-topic-secret-9f2c"));
+    }
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -297,6 +369,41 @@ async fn draft_and_soft_deleted_posts_stay_out_of_ssr_sitemap_search_and_adjacen
     adjacent.assert_status_ok();
     assert_secrets_absent(&adjacent, &draft.title, draft_content);
     assert_secrets_absent(&adjacent, &deleted.title, deleted_content);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn demoted_author_cannot_read_historical_post_comments_from_admin_api() -> anyhow::Result<()>
+{
+    let app = TestApp::new().await?;
+    let author = app.create_user("demoted-comment-author", "author").await?;
+    let post = app
+        .create_post(&author, "demoted-comment-post", "published")
+        .await?;
+    app.server
+        .post(&format!("/api/v1/posts/{}/comments", post.id))
+        .authorization_bearer(&author.token)
+        .json(&json!({"content": "pending-comment-secret"}))
+        .await
+        .assert_status_ok();
+
+    let before_demotion = app
+        .server
+        .get("/api/v1/admin/comments")
+        .authorization_bearer(&author.token)
+        .await;
+    before_demotion.assert_status_ok();
+    assert!(before_demotion.text().contains("pending-comment-secret"));
+
+    app.set_user_role(author.id, "visitor").await?;
+    let after_demotion = app
+        .server
+        .get("/api/v1/admin/comments")
+        .authorization_bearer(&author.token)
+        .await;
+    after_demotion.assert_status(StatusCode::FORBIDDEN);
+    assert!(!after_demotion.text().contains("pending-comment-secret"));
 
     Ok(())
 }

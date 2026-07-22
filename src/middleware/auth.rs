@@ -100,6 +100,44 @@ impl FromRequestParts<AppState> for PrivilegedUser {
     }
 }
 
+/// Authenticated author, sub-administrator, or administrator. This is used for
+/// owner-scoped editorial surfaces that visitors must lose immediately after a
+/// database role downgrade.
+#[derive(Debug, Clone)]
+pub struct AuthorOrPrivilegedUser(pub AuthUser);
+
+impl TryFrom<AuthUser> for AuthorOrPrivilegedUser {
+    type Error = AppError;
+
+    fn try_from(user: AuthUser) -> Result<Self, Self::Error> {
+        if user.role == "author" || user.is_privileged() {
+            Ok(Self(user))
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+}
+
+impl std::ops::Deref for AuthorOrPrivilegedUser {
+    type Target = AuthUser;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[axum::async_trait]
+impl FromRequestParts<AppState> for AuthorOrPrivilegedUser {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        Self::try_from(AuthUser::from_request_parts(parts, state).await?)
+    }
+}
+
 /// Optional authentication for public endpoints that expose additional data to
 /// an authenticated owner or privileged user. Invalid supplied credentials are
 /// rejected; only a completely absent credential is treated as anonymous.
@@ -114,11 +152,7 @@ impl FromRequestParts<AppState> for OptionalAuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let has_api_key = parts
-            .headers
-            .get("X-API-Key")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| !value.is_empty());
+        let has_api_key = parts.headers.contains_key("X-API-Key");
         let has_bearer = parts.headers.contains_key("Authorization");
 
         if !has_api_key && !has_bearer {
@@ -146,10 +180,12 @@ impl FromRequestParts<AppState> for AuthUser {
             .map(|ci| ci.0);
 
         // ── 优先检查 X-API-Key ──
-        if let Some(api_key) = parts.headers.get("X-API-Key").and_then(|v| v.to_str().ok()) {
-            if !api_key.is_empty() {
-                return Self::from_api_key(api_key, state, &parts.headers, socket_addr).await;
+        if let Some(value) = parts.headers.get("X-API-Key") {
+            let api_key = value.to_str().map_err(|_| AppError::Unauthorized)?;
+            if api_key.is_empty() {
+                return Err(AppError::Unauthorized);
             }
+            return Self::from_api_key(api_key, state, &parts.headers, socket_addr).await;
         }
 
         // ── 回退到 JWT Bearer Token ──

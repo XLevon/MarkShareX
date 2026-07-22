@@ -5,7 +5,6 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use sea_orm::sea_query::Expr;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -91,7 +90,31 @@ pub struct UpdateNewsRequest {
     pub sort_order: Option<i32>,
 }
 
-fn apply_news_filters(mut select: Select<news::Entity>, q: &NewsQuery) -> Select<news::Entity> {
+fn parse_news_date(value: &str, field: &str) -> Result<chrono::NaiveDate, AppError> {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| AppError::BadRequest(format!("{field} 必须使用 YYYY-MM-DD 格式")))
+}
+
+fn start_of_news_date(value: &str, field: &str) -> Result<chrono::NaiveDateTime, AppError> {
+    parse_news_date(value, field)?
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(|| AppError::BadRequest(format!("{field} 日期无效")))
+}
+
+fn start_of_day_after_news_date(
+    value: &str,
+    field: &str,
+) -> Result<chrono::NaiveDateTime, AppError> {
+    parse_news_date(value, field)?
+        .succ_opt()
+        .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .ok_or_else(|| AppError::BadRequest(format!("{field} 日期超出范围")))
+}
+
+fn apply_news_filters(
+    mut select: Select<news::Entity>,
+    q: &NewsQuery,
+) -> Result<Select<news::Entity>, AppError> {
     if let Some(status) = &q.status {
         if status != "all" {
             select = select.filter(news::Column::Status.eq(status));
@@ -105,12 +128,15 @@ fn apply_news_filters(mut select: Select<news::Entity>, q: &NewsQuery) -> Select
     }
     if let Some(date_from) = &q.date_from {
         if !date_from.is_empty() {
-            select = select.filter(Expr::cust(&format!("DATE(created_at) >= '{}'", date_from)));
+            select = select
+                .filter(news::Column::CreatedAt.gte(start_of_news_date(date_from, "date_from")?));
         }
     }
     if let Some(date_to) = &q.date_to {
         if !date_to.is_empty() {
-            select = select.filter(Expr::cust(&format!("DATE(created_at) <= '{}'", date_to)));
+            select = select.filter(
+                news::Column::CreatedAt.lt(start_of_day_after_news_date(date_to, "date_to")?),
+            );
         }
     }
     if let Some(search) = &q.search {
@@ -120,7 +146,7 @@ fn apply_news_filters(mut select: Select<news::Entity>, q: &NewsQuery) -> Select
             select = select.filter(news::Column::Title.like(&like));
         }
     }
-    select
+    Ok(select)
 }
 
 // ── 内部函数 ──
@@ -139,7 +165,7 @@ async fn list_news_internal(
             select = select.filter(news::Column::Status.eq(s));
         }
     }
-    select = apply_news_filters(select, &query);
+    select = apply_news_filters(select, &query)?;
 
     let paginator = select
         .order_by_desc(news::Column::SortOrder)
@@ -264,43 +290,42 @@ pub async fn list_topic_types(
     State(state): State<AppState>,
     Query(params): Query<TopicTypeQuery>,
 ) -> Result<Json<ApiResponse<Vec<String>>>, AppError> {
-    use sea_orm::{ConnectionTrait, Statement};
-
-    // Build dynamic SQL
-    let mut sql = String::from(
-        "SELECT DISTINCT topic_type FROM news WHERE topic_type != '' AND status = 'published'",
-    );
+    let mut select = news::Entity::find()
+        .select_only()
+        .column(news::Column::TopicType)
+        .distinct()
+        .filter(news::Column::TopicType.ne(""))
+        .filter(news::Column::Status.eq("published"));
 
     if let Some(ref date_from) = params.date_from {
         if !date_from.is_empty() {
-            sql.push_str(&format!(" AND DATE(created_at) >= '{}'", date_from));
+            select = select
+                .filter(news::Column::CreatedAt.gte(start_of_news_date(date_from, "date_from")?));
         }
     }
     if let Some(ref date_to) = params.date_to {
         if !date_to.is_empty() {
-            sql.push_str(&format!(" AND DATE(created_at) <= '{}'", date_to));
+            select = select.filter(
+                news::Column::CreatedAt.lt(start_of_day_after_news_date(date_to, "date_to")?),
+            );
         }
     }
     if let Some(ref search) = params.search {
         let term = search.trim();
         if !term.is_empty() {
-            // Escape single quotes in search term
-            let escaped = term.replace('\'', "''");
-            sql.push_str(&format!(
-                " AND (title LIKE '%{}%' OR summary LIKE '%{}%')",
-                escaped, escaped
-            ));
+            select = select.filter(
+                Condition::any()
+                    .add(news::Column::Title.contains(term))
+                    .add(news::Column::Summary.contains(term)),
+            );
         }
     }
-    sql.push_str(" ORDER BY topic_type");
 
-    let rows = state
-        .db
-        .query_all(Statement::from_string(state.db.get_database_backend(), sql))
-        .await?
-        .into_iter()
-        .filter_map(|row| row.try_get::<String>("", "topic_type").ok())
-        .collect::<Vec<String>>();
+    let rows = select
+        .order_by_asc(news::Column::TopicType)
+        .into_tuple::<String>()
+        .all(&state.db)
+        .await?;
 
     Ok(Json(ApiResponse {
         data: rows,
