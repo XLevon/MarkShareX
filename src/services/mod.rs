@@ -1,5 +1,6 @@
 pub mod ai_chat;
 pub mod ai_scheduler;
+pub(crate) mod ai_sessions;
 pub mod ai_tools;
 pub mod ai_trace;
 pub mod auth;

@@ -7,7 +7,7 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement,
 };
 use serde_json::{json, Value};
-use std::io::Write;
+use std::io::{Read, Write};
 
 use common::TestApp;
 use marksharex::models::entity::{categories, files, post_tags, posts, tags};
@@ -916,6 +916,52 @@ async fn export_rejects_a_symlink_instead_of_reading_outside_uploads() -> anyhow
         .await
         .assert_status_bad_request();
     assert_eq!(std::fs::read(&outside)?, b"do-not-export");
+    Ok(())
+}
+
+#[tokio::test]
+async fn export_preserves_archive_contract_and_author_scope() -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let author = app.create_user("export-contract-author", "author").await?;
+    let other = app.create_user("export-contract-other", "author").await?;
+    let own_post = app
+        .create_post(&author, "Export / contract", "draft")
+        .await?;
+    let other_post = app
+        .create_post(&other, "Must not be exported", "draft")
+        .await?;
+
+    let response = app
+        .server
+        .post("/api/v1/export/posts")
+        .authorization_bearer(&author.token)
+        .json(&json!({"post_ids": [own_post.id, other_post.id]}))
+        .await;
+    response.assert_status_ok();
+    assert_eq!(response.header("content-type").to_str()?, "application/zip");
+
+    let disposition_header = response.header("content-disposition");
+    let disposition = disposition_header.to_str()?;
+    assert!(
+        regex::Regex::new(r#"^attachment; filename="marksharex_export_\d{8}_\d{6}\.zip"$"#)?
+            .is_match(disposition),
+        "unexpected content-disposition: {disposition}"
+    );
+
+    let bytes = response.as_bytes();
+    assert_eq!(
+        response.header("content-length").to_str()?,
+        bytes.len().to_string()
+    );
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes.as_ref()))?;
+    assert_eq!(archive.len(), 1, "author export must exclude foreign posts");
+    let mut markdown = String::new();
+    let mut entry = archive.by_index(0)?;
+    assert!(entry.name().ends_with("/index.md"));
+    entry.read_to_string(&mut markdown)?;
+    assert!(markdown.contains("title: \"Export / contract\""));
+    assert!(markdown.contains(&format!("slug: \"{}\"", own_post.slug)));
+    assert!(!markdown.contains("Must not be exported"));
     Ok(())
 }
 

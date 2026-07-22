@@ -1,8 +1,30 @@
 use crate::config::AuthConfig;
-use crate::utils::AppError;
+use crate::models::entity::users;
+use crate::utils::{AppError, AppState};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
+
+pub(crate) async fn current_active_user(
+    state: &AppState,
+    user_id: i32,
+) -> Result<users::Model, AppError> {
+    users::Entity::find_by_id(user_id)
+        .filter(users::Column::Status.eq("active"))
+        .filter(users::Column::IsActive.eq(true))
+        .filter(users::Column::DeletedAt.is_null())
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::Forbidden)
+}
+
+pub(crate) async fn current_active_role(
+    state: &AppState,
+    user_id: i32,
+) -> Result<String, AppError> {
+    Ok(current_active_user(state, user_id).await?.role)
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {

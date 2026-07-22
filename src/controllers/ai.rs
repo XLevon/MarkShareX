@@ -2,7 +2,7 @@ use crate::crypto;
 use crate::middleware::auth::{AdminUser, AuthUser};
 use crate::models::entity::{
     ai_agent_config, ai_chat_message, ai_chat_session, ai_model, ai_provider, ai_skill, ai_task,
-    ai_task_log, ai_tool, users,
+    ai_task_log, ai_tool,
 };
 use crate::utils::{ApiResponse, AppError, AppState};
 use axum::{
@@ -1413,6 +1413,21 @@ pub struct ChatSessionResponse {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+impl From<crate::services::ai_sessions::SessionListItem> for ChatSessionResponse {
+    fn from(item: crate::services::ai_sessions::SessionListItem) -> Self {
+        Self {
+            id: item.id,
+            title: item.title,
+            user_id: item.user_id,
+            user_display_name: item.user_display_name,
+            agent_config_id: item.agent_config_id,
+            msg_count: item.msg_count,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+        }
+    }
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct ChatSessionDetail {
     pub id: i32,
@@ -1433,22 +1448,32 @@ pub struct ChatMessageResponse {
     pub created_at: chrono::NaiveDateTime,
 }
 
-fn authorize_session_access(auth: &AuthUser, owner_id: i32) -> Result<(), AppError> {
-    if auth.user_id == owner_id {
-        Ok(())
-    } else {
-        Err(AppError::NotFound("会话不存在".into()))
+impl From<crate::services::ai_sessions::SessionDetailData> for ChatSessionDetail {
+    fn from(data: crate::services::ai_sessions::SessionDetailData) -> Self {
+        Self {
+            id: data.session.id,
+            title: data.session.title,
+            user_id: data.session.user_id,
+            agent_config_id: data.session.agent_config_id,
+            messages: data
+                .messages
+                .into_iter()
+                .map(|message| ChatMessageResponse {
+                    id: message.id,
+                    role: message.role,
+                    content: message.content,
+                    tool_calls: message.tool_calls,
+                    created_at: message.created_at,
+                })
+                .collect(),
+            created_at: data.session.created_at,
+            updated_at: data.session.updated_at,
+        }
     }
 }
 
-async fn authorize_session_read_or_delete(
-    state: &AppState,
-    auth: &AuthUser,
-    owner_id: i32,
-) -> Result<(), AppError> {
-    if auth.user_id == owner_id
-        || crate::middleware::auth::current_active_role(state, auth.user_id).await? == "admin"
-    {
+fn authorize_session_access(auth: &AuthUser, owner_id: i32) -> Result<(), AppError> {
+    if auth.user_id == owner_id {
         Ok(())
     } else {
         Err(AppError::NotFound("会话不存在".into()))
@@ -1461,47 +1486,11 @@ pub async fn list_sessions(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<ApiResponse<Vec<ChatSessionResponse>>>, AppError> {
-    let is_admin =
-        crate::middleware::auth::current_active_role(&state, auth.user_id).await? == "admin";
-
-    let sessions = if is_admin {
-        ai_chat_session::Entity::find()
-            .order_by_desc(ai_chat_session::Column::UpdatedAt)
-            .all(&state.db)
-            .await?
-    } else {
-        ai_chat_session::Entity::find()
-            .filter(ai_chat_session::Column::UserId.eq(auth.user_id))
-            .order_by_desc(ai_chat_session::Column::UpdatedAt)
-            .all(&state.db)
-            .await?
-    };
-
-    let mut result = Vec::new();
-    for s in sessions {
-        let count = ai_chat_message::Entity::find()
-            .filter(ai_chat_message::Column::SessionId.eq(s.id))
-            .count(&state.db)
-            .await?;
-        let user_display_name = if is_admin {
-            users::Entity::find_by_id(s.user_id)
-                .one(&state.db)
-                .await?
-                .and_then(|u| u.display_name.or(Some(u.username)))
-        } else {
-            None
-        };
-        result.push(ChatSessionResponse {
-            id: s.id,
-            title: s.title,
-            user_id: s.user_id,
-            user_display_name,
-            agent_config_id: s.agent_config_id,
-            msg_count: count as usize,
-            created_at: s.created_at,
-            updated_at: s.updated_at,
-        });
-    }
+    let result = crate::services::ai_sessions::list_sessions(&state, auth.user_id)
+        .await?
+        .into_iter()
+        .map(ChatSessionResponse::from)
+        .collect();
 
     Ok(Json(ApiResponse {
         data: result,
@@ -1549,37 +1538,10 @@ pub async fn get_session(
     auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<ChatSessionDetail>>, AppError> {
-    let session = ai_chat_session::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
-    authorize_session_read_or_delete(&state, &auth, session.user_id).await?;
-
-    let messages: Vec<ChatMessageResponse> = ai_chat_message::Entity::find()
-        .filter(ai_chat_message::Column::SessionId.eq(id))
-        .order_by_asc(ai_chat_message::Column::CreatedAt)
-        .all(&state.db)
-        .await?
-        .into_iter()
-        .map(|m| ChatMessageResponse {
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            tool_calls: m.tool_calls,
-            created_at: m.created_at,
-        })
-        .collect();
+    let detail = crate::services::ai_sessions::get_session_detail(&state, auth.user_id, id).await?;
 
     Ok(Json(ApiResponse {
-        data: ChatSessionDetail {
-            id: session.id,
-            title: session.title,
-            user_id: session.user_id,
-            agent_config_id: session.agent_config_id,
-            messages,
-            created_at: session.created_at,
-            updated_at: session.updated_at,
-        },
+        data: ChatSessionDetail::from(detail),
         pagination: None,
     }))
 }
@@ -1591,14 +1553,7 @@ pub async fn delete_session(
     auth: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    let session = ai_chat_session::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
-    authorize_session_read_or_delete(&state, &auth, session.user_id).await?;
-    ai_chat_session::Entity::delete_by_id(id)
-        .exec(&state.db)
-        .await?;
+    crate::services::ai_sessions::delete_session(&state, auth.user_id, id).await?;
     Ok(Json(ApiResponse {
         data: (),
         pagination: None,
@@ -1654,7 +1609,21 @@ pub async fn chat(
 
     // ── 斜杠命令处理 ──
     if user_msg.starts_with('/') {
-        return handle_slash_command(&state, &auth, &user_msg, &req).await;
+        let result = crate::services::ai_sessions::handle_slash_command(
+            &state,
+            auth.user_id,
+            &user_msg,
+            req.session_id,
+            req.agent_config_id,
+        )
+        .await?;
+        return Ok(Json(ApiResponse {
+            data: ChatResponse {
+                reply: result.reply,
+                session_id: result.session_id,
+            },
+            pagination: None,
+        }));
     }
 
     // ── 1. 获取或创建 Session ──
@@ -1766,7 +1735,7 @@ pub async fn chat(
             token: token.to_string(),
         });
     let is_currently_privileged = matches!(
-        crate::middleware::auth::current_active_role(&state, auth.user_id)
+        crate::services::auth::current_active_role(&state, auth.user_id)
             .await?
             .as_str(),
         "admin" | "sub_admin"
@@ -1804,112 +1773,6 @@ pub async fn chat(
     let mut s_model: ai_chat_session::ActiveModel = session.into();
     s_model.updated_at = Set(now2);
     s_model.update(&state.db).await?;
-
-    Ok(Json(ApiResponse {
-        data: ChatResponse { reply, session_id },
-        pagination: None,
-    }))
-}
-
-/// 处理斜杠命令
-async fn handle_slash_command(
-    state: &AppState,
-    auth: &AuthUser,
-    cmd: &str,
-    req: &ChatRequest,
-) -> Result<Json<ApiResponse<ChatResponse>>, AppError> {
-    let now = crate::utils::now_local();
-    let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
-    let command = parts[0].to_lowercase();
-
-    if let Some(session_id) = req.session_id {
-        let session = ai_chat_session::Entity::find_by_id(session_id)
-            .one(&state.db)
-            .await?
-            .ok_or_else(|| AppError::NotFound("会话不存在".into()))?;
-        authorize_session_access(auth, session.user_id)?;
-    }
-
-    let mut created_session_id = None;
-    let reply = match command.as_str() {
-        "/new" => {
-            // 创建新会话
-            let title = String::from(*parts.get(1).unwrap_or(&"新会话"));
-            let model = ai_chat_session::ActiveModel {
-                user_id: Set(auth.user_id),
-                title: Set(title.clone()),
-                agent_config_id: Set(req.agent_config_id),
-                created_at: Set(now),
-                updated_at: Set(now),
-                ..Default::default()
-            };
-            let session = model.insert(&state.db).await?;
-            created_session_id = Some(session.id);
-            format!("✅ 已创建新会话「{}」(ID: {})", title, session.id)
-        }
-        "/model" => {
-            let models = ai_model::Entity::find()
-                .order_by_asc(ai_model::Column::ProviderId)
-                .order_by_asc(ai_model::Column::Name)
-                .all(&state.db)
-                .await?;
-            if models.is_empty() {
-                "📭 暂无可用模型。请在管理后台添加模型。".to_string()
-            } else {
-                let mut out = "📋 可用模型：\n\n".to_string();
-                for m in &models {
-                    let provider = ai_provider::Entity::find_by_id(m.provider_id)
-                        .one(&state.db)
-                        .await?;
-                    let pname = provider
-                        .map(|p| p.name)
-                        .unwrap_or_else(|| "未知".to_string());
-                    out.push_str(&format!(
-                        "  • {} ({})  {}\n",
-                        m.name,
-                        pname,
-                        if m.is_default { "⭐默认" } else { "" }
-                    ));
-                }
-                out
-            }
-        }
-        "/help" => "可用命令：\n\
-             • /new [标题] — 新建会话\n\
-             • /model — 查看可用模型\n\
-             • /help — 显示帮助"
-            .to_string(),
-        _ => {
-            format!("❓ 未知命令「{}」。输入 /help 查看可用命令。", command)
-        }
-    };
-
-    let session_id = if let Some(sid) = created_session_id {
-        sid
-    } else if let Some(sid) = req.session_id {
-        sid
-    } else {
-        // 没有会话，创建临时会话来保存
-        let model = ai_chat_session::ActiveModel {
-            user_id: Set(auth.user_id),
-            title: Set("命令".to_string()),
-            agent_config_id: Set(req.agent_config_id),
-            created_at: Set(now),
-            updated_at: Set(now),
-            ..Default::default()
-        };
-        model.insert(&state.db).await?.id
-    };
-
-    // 命令结果保存到实际返回的会话；/new 必须写入新会话，而不是旧会话。
-    let msg = ai_chat_message::ActiveModel {
-        session_id: Set(session_id),
-        role: Set("system".to_string()),
-        content: Set(format!("用户执行命令: {}", cmd)),
-        created_at: Set(now),
-        ..Default::default()
-    };
-    msg.insert(&state.db).await?;
 
     Ok(Json(ApiResponse {
         data: ChatResponse { reply, session_id },

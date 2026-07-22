@@ -1,6 +1,7 @@
 use crate::models::entity::network_resources;
 use crate::models::entity::{categories, post_tags, posts, tags};
-use crate::utils::{AppError, Pagination};
+use crate::services::search::ensure_search_index_consistency;
+use crate::utils::{AppError, AppState, Pagination};
 use regex::Regex;
 use sea_orm::sea_query::Expr;
 use sea_orm::*;
@@ -213,6 +214,33 @@ pub async fn delete_post(db: &DatabaseConnection, id: i32) -> Result<(), AppErro
     active.updated_at = Set(now);
     active.update(db).await?;
     Ok(())
+}
+
+pub(crate) async fn batch_publish_posts(state: &AppState, ids: &[i32]) -> Result<i32, AppError> {
+    let now = crate::utils::now_local();
+    let mut count = 0;
+    for id in ids {
+        let post = posts::Entity::find_by_id(*id)
+            .filter(posts::Column::DeletedAt.is_null())
+            .one(&state.db)
+            .await?
+            .ok_or(AppError::NotFound("文章不存在".into()))?;
+        if post.status == "draft" {
+            let title = post.title.clone();
+            let content = post.content.clone().unwrap_or_default();
+            let mut active: posts::ActiveModel = post.into();
+            active.status = Set("published".to_string());
+            active.published_at = Set(Some(now));
+            active.updated_at = Set(now);
+            active.update(&state.db).await?;
+            let result = state
+                .search_engine
+                .index_document(*id as u64, &title, &content);
+            ensure_search_index_consistency(&state.search_engine, &state.db, *id, result).await?;
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 pub async fn get_category_name(

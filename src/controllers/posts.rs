@@ -1276,29 +1276,7 @@ pub async fn batch_publish_posts(
     _privileged: PrivilegedUser,
     Json(req): Json<BatchPublishPostsRequest>,
 ) -> Result<Json<ApiResponse<i32>>, AppError> {
-    let now = crate::utils::now_local();
-    let mut count = 0;
-    for id in &req.ids {
-        let post = posts::Entity::find_by_id(*id)
-            .filter(posts::Column::DeletedAt.is_null())
-            .one(&state.db)
-            .await?
-            .ok_or(AppError::NotFound("文章不存在".into()))?;
-        if post.status == "draft" {
-            let title = post.title.clone();
-            let content = post.content.clone().unwrap_or_default();
-            let mut active: posts::ActiveModel = post.into();
-            active.status = Set("published".to_string());
-            active.published_at = Set(Some(now));
-            active.updated_at = Set(now);
-            active.update(&state.db).await?;
-            let result = state
-                .search_engine
-                .index_document(*id as u64, &title, &content);
-            ensure_search_index_consistency(&state.search_engine, &state.db, *id, result).await?;
-            count += 1;
-        }
-    }
+    let count = crate::services::posts::batch_publish_posts(&state, &req.ids).await?;
     Ok(Json(ApiResponse {
         data: count,
         pagination: None,

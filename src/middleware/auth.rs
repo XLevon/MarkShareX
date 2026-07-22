@@ -1,4 +1,3 @@
-use crate::models::entity::users;
 use crate::services::auth;
 use crate::utils::AppError;
 use crate::utils::AppState;
@@ -6,28 +5,8 @@ use axum::extract::ConnectInfo;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::HeaderMap;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::EntityTrait;
 use std::net::SocketAddr;
-
-pub(crate) async fn current_active_user(
-    state: &AppState,
-    user_id: i32,
-) -> Result<users::Model, AppError> {
-    users::Entity::find_by_id(user_id)
-        .filter(users::Column::Status.eq("active"))
-        .filter(users::Column::IsActive.eq(true))
-        .filter(users::Column::DeletedAt.is_null())
-        .one(&state.db)
-        .await?
-        .ok_or(AppError::Forbidden)
-}
-
-pub(crate) async fn current_active_role(
-    state: &AppState,
-    user_id: i32,
-) -> Result<String, AppError> {
-    Ok(current_active_user(state, user_id).await?.role)
-}
 
 #[derive(Debug, Clone)]
 pub struct AuthUser {
@@ -200,7 +179,7 @@ impl FromRequestParts<AppState> for AuthUser {
             .ok_or(AppError::Unauthorized)?;
 
         let claims = auth::verify_token(token, &state.config.auth.jwt_secret)?;
-        let user = current_active_user(state, claims.user_id).await?;
+        let user = auth::current_active_user(state, claims.user_id).await?;
         Ok(AuthUser {
             user_id: user.id,
             username: user.username,
@@ -346,7 +325,7 @@ pub async fn require_admin_middleware(
     };
 
     let claims = crate::services::auth::verify_token(&token, &state.config.auth.jwt_secret)?;
-    if current_active_role(&state, claims.user_id).await? != "admin" {
+    if auth::current_active_role(&state, claims.user_id).await? != "admin" {
         return Err(AppError::Forbidden);
     }
 

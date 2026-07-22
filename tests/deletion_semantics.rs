@@ -2,7 +2,9 @@ mod common;
 
 use axum::http::StatusCode;
 use common::TestApp;
-use marksharex::models::entity::{categories, comments, news, post_tags, posts, tags};
+use marksharex::models::entity::{
+    categories, comments, network_resources, news, post_tags, posts, tags,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, PaginatorTrait,
     QueryFilter, Set,
@@ -55,6 +57,61 @@ async fn published_markdown_import_is_immediately_searchable() -> anyhow::Result
             .search_engine
             .search("import-index-unique-token", 10)?,
         vec![imported.id as u64]
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn import_cover_with_leading_space_does_not_become_a_network_resource() -> anyhow::Result<()>
+{
+    let app = TestApp::new().await?;
+    let author = app
+        .create_user("import-cover-space-author", "author")
+        .await?;
+    let now = marksharex::utils::now_local();
+    let resource = network_resources::ActiveModel {
+        url: Set("https://example.com/cover.png".to_string()),
+        label: Set(None),
+        source_type: Set("test".to_string()),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&app.db)
+    .await?;
+
+    let response = app
+        .server
+        .post("/api/v1/import/posts")
+        .authorization_bearer(&author.token)
+        .json(&json!({
+            "items": [{
+                "filename": "leading-cover-space.md",
+                "content": format!(
+                    "---\ntitle: Leading cover space\nslug: leading-cover-space\nstatus: draft\ncover_url: \" nr:{}\"\n---\nbody",
+                    resource.id
+                ),
+                "images": []
+            }]
+        }))
+        .await;
+    response.assert_status_ok();
+    assert_eq!(
+        response.json::<serde_json::Value>()["data"]["imported_count"],
+        1
+    );
+
+    let imported = posts::Entity::find()
+        .filter(posts::Column::Slug.eq("leading-cover-space"))
+        .one(&app.db)
+        .await?
+        .expect("imported post");
+    let expected_filename = format!(" nr:{}", resource.id);
+    assert_eq!(imported.cover_network_id, None);
+    assert_eq!(imported.cover_image_url, None);
+    assert_eq!(
+        imported.cover_image_filename.as_deref(),
+        Some(expected_filename.as_str())
     );
     Ok(())
 }
@@ -799,5 +856,218 @@ async fn failed_category_hard_delete_rolls_back_child_unlink() -> anyhow::Result
         .one(&app.db)
         .await?
         .is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn batch_publish_success_preserves_http_db_index_and_file_contract() -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let admin = app.create_user("batch-publish-admin", "admin").await?;
+    let draft = app
+        .create_post_with_content(
+            &admin,
+            "batchpublishtitleuniquetoken",
+            Some("batch-publish-draft-unique-token"),
+            "draft",
+        )
+        .await?;
+    let second_draft = app
+        .create_post_with_content(
+            &admin,
+            "secondbatchpublishtitleuniquetoken",
+            Some("batch-publish-second-draft-token"),
+            "draft",
+        )
+        .await?;
+    let already_published = app
+        .create_post_with_content(
+            &admin,
+            "Batch publish no-op",
+            Some("batch-publish-noop-unique-token"),
+            "published",
+        )
+        .await?;
+    let draft_before = app.get_post_row(draft.id).await?;
+    let second_draft_before = app.get_post_row(second_draft.id).await?;
+    let published_before = app.get_post_row(already_published.id).await?;
+    let noop_index_before = app
+        .state
+        .search_engine
+        .search("batch-publish-noop-unique-token", 10)?;
+    assert_eq!(noop_index_before, vec![already_published.id as u64]);
+
+    let sentinel_path = app.upload_dir().join("batch-publish-sentinel.txt");
+    std::fs::write(&sentinel_path, b"batch publish must not touch files")?;
+    let mut files_before = std::fs::read_dir(app.upload_dir())?
+        .map(|entry| entry.map(|item| item.file_name()))
+        .collect::<Result<Vec<_>, _>>()?;
+    files_before.sort();
+
+    let response = app
+        .server
+        .post("/api/v1/admin/posts/batch-publish")
+        .authorization_bearer(&admin.token)
+        .json(&json!({
+            "ids": [draft.id, already_published.id, draft.id, second_draft.id]
+        }))
+        .await;
+    response.assert_status_ok();
+    assert_eq!(response.json::<serde_json::Value>(), json!({"data": 2}));
+
+    let draft_after = app.get_post_row(draft.id).await?;
+    assert_eq!(draft_after.status, "published");
+    assert_eq!(draft_after.published_at, Some(draft_after.updated_at));
+    assert_ne!(draft_after.updated_at, draft_before.updated_at);
+    assert_eq!(draft_after.content, draft_before.content);
+
+    let second_draft_after = app.get_post_row(second_draft.id).await?;
+    assert_eq!(second_draft_after.status, "published");
+    assert_eq!(
+        second_draft_after.published_at,
+        Some(second_draft_after.updated_at)
+    );
+    assert_eq!(second_draft_after.updated_at, draft_after.updated_at);
+    assert_ne!(
+        second_draft_after.updated_at,
+        second_draft_before.updated_at
+    );
+    assert_eq!(second_draft_after.content, second_draft_before.content);
+
+    let published_after = app.get_post_row(already_published.id).await?;
+    assert_eq!(published_after.status, "published");
+    assert_eq!(published_after.published_at, published_before.published_at);
+    assert_eq!(published_after.updated_at, published_before.updated_at);
+    assert_eq!(published_after.content, published_before.content);
+
+    assert_eq!(
+        app.state
+            .search_engine
+            .search("batch-publish-draft-unique-token", 10)?,
+        vec![draft.id as u64]
+    );
+    assert_eq!(
+        app.state
+            .search_engine
+            .search("batchpublishtitleuniquetoken", 10)?,
+        vec![draft.id as u64]
+    );
+    assert_eq!(
+        app.state
+            .search_engine
+            .search("batch-publish-second-draft-token", 10)?,
+        vec![second_draft.id as u64]
+    );
+    assert_eq!(
+        app.state
+            .search_engine
+            .search("batch-publish-noop-unique-token", 10)?,
+        noop_index_before
+    );
+
+    let mut files_after = std::fs::read_dir(app.upload_dir())?
+        .map(|entry| entry.map(|item| item.file_name()))
+        .collect::<Result<Vec<_>, _>>()?;
+    files_after.sort();
+    assert_eq!(files_after, files_before);
+    assert_eq!(
+        std::fs::read(sentinel_path)?,
+        b"batch publish must not touch files"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn batch_publish_stops_after_a_missing_id_and_preserves_prior_progress() -> anyhow::Result<()>
+{
+    let app = TestApp::new().await?;
+    let admin = app
+        .create_user("batch-publish-partial-admin", "admin")
+        .await?;
+    let first = app
+        .create_post_with_content(
+            &admin,
+            "Batch publish first",
+            Some("batch-publish-first-progress-token"),
+            "draft",
+        )
+        .await?;
+    let trailing = app
+        .create_post_with_content(
+            &admin,
+            "Batch publish trailing",
+            Some("batch-publish-trailing-unprocessed-token"),
+            "draft",
+        )
+        .await?;
+    let sentinel_path = app.upload_dir().join("batch-publish-partial-sentinel.txt");
+    std::fs::write(&sentinel_path, b"partial failure must not touch files")?;
+
+    app.server
+        .post("/api/v1/admin/posts/batch-publish")
+        .authorization_bearer(&admin.token)
+        .json(&json!({"ids": [first.id, i32::MAX, trailing.id]}))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    assert_eq!(app.get_post_row(first.id).await?.status, "published");
+    assert_eq!(app.get_post_row(trailing.id).await?.status, "draft");
+    assert_eq!(
+        app.state
+            .search_engine
+            .search("batch-publish-first-progress-token", 10)?,
+        vec![first.id as u64]
+    );
+    assert!(app
+        .state
+        .search_engine
+        .search("batch-publish-trailing-unprocessed-token", 10)?
+        .is_empty());
+    assert_eq!(
+        std::fs::read(sentinel_path)?,
+        b"partial failure must not touch files"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn batch_publish_reports_index_recovery_failure_after_persisting_the_current_row(
+) -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let admin = app
+        .create_user("batch-publish-index-failure-admin", "admin")
+        .await?;
+    let current = app
+        .create_post_with_content(
+            &admin,
+            "Batch publish poisoned index",
+            Some("batch-publish-poisoned-index-token"),
+            "draft",
+        )
+        .await?;
+    let trailing = app
+        .create_post_with_content(
+            &admin,
+            "Batch publish after poisoned index",
+            Some("batch-publish-after-poison-token"),
+            "draft",
+        )
+        .await?;
+    let sentinel_path = app.upload_dir().join("batch-publish-index-sentinel.txt");
+    std::fs::write(&sentinel_path, b"index failure must not touch files")?;
+    app.state.search_engine.poison_writer_for_test();
+
+    app.server
+        .post("/api/v1/admin/posts/batch-publish")
+        .authorization_bearer(&admin.token)
+        .json(&json!({"ids": [current.id, trailing.id]}))
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+
+    assert_eq!(app.get_post_row(current.id).await?.status, "published");
+    assert_eq!(app.get_post_row(trailing.id).await?.status, "draft");
+    assert_eq!(
+        std::fs::read(sentinel_path)?,
+        b"index failure must not touch files"
+    );
     Ok(())
 }
