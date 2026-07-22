@@ -2,10 +2,13 @@ mod common;
 
 use axum_test::multipart::{MultipartForm, Part};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use sea_orm::{ConnectionTrait, Statement};
+use lopdf::dictionary;
+use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, Statement};
 use serde_json::{json, Value};
+use std::io::Write;
 
 use common::TestApp;
+use marksharex::models::entity::files;
 
 fn valid_png(red: u8) -> Vec<u8> {
     let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([red, 0, 0, 255]));
@@ -16,12 +19,86 @@ fn valid_png(red: u8) -> Vec<u8> {
     cursor.into_inner()
 }
 
+fn valid_image(red: u8, format: image::ImageFormat) -> Vec<u8> {
+    let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([red, 1, 2, 255]));
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut cursor, format)
+        .expect("test image must encode");
+    cursor.into_inner()
+}
+
+fn valid_pdf() -> Vec<u8> {
+    let mut document = lopdf::Document::with_version("1.5");
+    let pages = document.add_object(dictionary! {
+        "Type" => "Pages",
+        "Kids" => lopdf::Object::Array(Vec::new()),
+        "Count" => 0,
+    });
+    let catalog = document.add_object(dictionary! {
+        "Type" => "Catalog",
+        "Pages" => pages,
+    });
+    document.trailer.set("Root", catalog);
+    let mut bytes = Vec::new();
+    document.save_to(&mut bytes).expect("test PDF must encode");
+    bytes
+}
+
+fn valid_zip() -> Vec<u8> {
+    let cursor = std::io::Cursor::new(Vec::new());
+    let mut writer = zip::ZipWriter::new(cursor);
+    writer
+        .start_file("entry.txt", zip::write::FileOptions::default())
+        .expect("test ZIP entry must start");
+    writer
+        .write_all(b"safe archive")
+        .expect("test ZIP entry must write");
+    writer.finish().expect("test ZIP must finish").into_inner()
+}
+
 fn file_form(filename: &str, mime: &str, bytes: &[u8]) -> MultipartForm {
     file_form_with_field("file", filename, mime, bytes)
 }
 
 fn batch_file_form(filename: &str, mime: &str, bytes: &[u8]) -> MultipartForm {
     file_form_with_field("files", filename, mime, bytes)
+}
+
+#[cfg(target_os = "macos")]
+struct ImmutableFileGuard(std::path::PathBuf);
+
+#[cfg(target_os = "macos")]
+impl ImmutableFileGuard {
+    fn clear(self) -> anyhow::Result<()> {
+        let status = std::process::Command::new("chflags")
+            .arg("nouchg")
+            .arg(&self.0)
+            .status()?;
+        anyhow::ensure!(status.success(), "chflags nouchg failed: {status}");
+        std::mem::forget(self);
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for ImmutableFileGuard {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("chflags")
+            .arg("nouchg")
+            .arg(&self.0)
+            .status();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn make_file_immutable(path: &std::path::Path) -> anyhow::Result<ImmutableFileGuard> {
+    let status = std::process::Command::new("chflags")
+        .arg("uchg")
+        .arg(path)
+        .status()?;
+    anyhow::ensure!(status.success(), "chflags uchg failed: {status}");
+    Ok(ImmutableFileGuard(path.to_path_buf()))
 }
 
 fn file_form_with_field(field: &str, filename: &str, mime: &str, bytes: &[u8]) -> MultipartForm {
@@ -111,6 +188,88 @@ async fn upload_requires_real_content_to_match_extension_and_declared_mime() -> 
 
     assert_eq!(app.file_count().await?, 0);
     assert_eq!(std::fs::read_dir(app.upload_dir())?.count(), 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn every_configured_upload_type_accepts_valid_content_and_rejects_spoofed_content(
+) -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let admin = app.create_user("upload-all-types-admin", "admin").await?;
+    let fixtures = vec![
+        (
+            "valid.jpg",
+            "image/jpeg",
+            valid_image(11, image::ImageFormat::Jpeg),
+        ),
+        (
+            "valid.png",
+            "image/png",
+            valid_image(12, image::ImageFormat::Png),
+        ),
+        (
+            "valid.gif",
+            "image/gif",
+            valid_image(13, image::ImageFormat::Gif),
+        ),
+        (
+            "valid.webp",
+            "image/webp",
+            valid_image(14, image::ImageFormat::WebP),
+        ),
+        ("valid.pdf", "application/pdf", valid_pdf()),
+        ("valid.md", "text/markdown", b"# valid markdown\n".to_vec()),
+        ("valid.txt", "text/plain", b"valid plain text\n".to_vec()),
+        ("valid.zip", "application/zip", valid_zip()),
+    ];
+    let fixture_types = fixtures
+        .iter()
+        .map(|(_, mime, _)| (*mime).to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+    let configured_types = app
+        .allowed_upload_types()
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        fixture_types, configured_types,
+        "the fixture matrix must exactly track every configured upload type"
+    );
+
+    for (filename, mime, bytes) in &fixtures {
+        let response = app
+            .server
+            .post("/api/v1/files/upload")
+            .authorization_bearer(&admin.token)
+            .multipart(file_form(filename, mime, bytes))
+            .await;
+        response.assert_status_ok();
+        let body = response.json::<Value>();
+        assert_eq!(body["data"]["mime_type"], *mime, "valid {filename}");
+        assert_eq!(
+            std::fs::read(app.upload_dir().join(filename))?,
+            *bytes,
+            "stored bytes for {filename}"
+        );
+    }
+
+    for (filename, mime, _) in &fixtures {
+        let spoofed_name = format!("spoofed-{filename}");
+        let spoofed = if mime.starts_with("text/") {
+            b"invalid\0control".as_slice()
+        } else {
+            b"plain text pretending to be another format".as_slice()
+        };
+        app.server
+            .post("/api/v1/files/upload")
+            .authorization_bearer(&admin.token)
+            .multipart(file_form(&spoofed_name, mime, spoofed))
+            .await
+            .assert_status_bad_request();
+        assert!(!app.upload_dir().join(spoofed_name).exists());
+    }
+
+    assert_eq!(app.file_count().await?, fixtures.len() as u64);
     Ok(())
 }
 
@@ -268,6 +427,59 @@ async fn overwrite_insert_failure_preserves_the_old_row_and_bytes() -> anyhow::R
         })
         .count();
     assert_eq!(root_files, 1);
+    assert_eq!(
+        std::fs::read_dir(app.upload_dir().join(".transactions"))?.count(),
+        0
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn overwrite_commit_failure_restores_the_exact_old_row_and_bytes() -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let admin = app.create_user("overwrite-commit-admin", "admin").await?;
+    let original = valid_png(43);
+    app.server
+        .post("/api/v1/files/upload")
+        .authorization_bearer(&admin.token)
+        .multipart(file_form("commit-stable.png", "image/png", &original))
+        .await
+        .assert_status_ok();
+
+    let rows_before = files::Entity::find()
+        .order_by_asc(files::Column::Id)
+        .all(&app.db)
+        .await?;
+    app.db
+        .execute(Statement::from_string(
+            app.db.get_database_backend(),
+            "CREATE TABLE forced_commit_parent (id INTEGER PRIMARY KEY); \
+             CREATE TABLE forced_commit_child (parent_id INTEGER, \
+               FOREIGN KEY(parent_id) REFERENCES forced_commit_parent(id) \
+               DEFERRABLE INITIALLY DEFERRED); \
+             CREATE TRIGGER force_file_commit_failure AFTER INSERT ON files \
+               BEGIN INSERT INTO forced_commit_child(parent_id) VALUES (999); END",
+        ))
+        .await?;
+
+    app.server
+        .post("/api/v1/files/upload")
+        .authorization_bearer(&admin.token)
+        .add_query_param("rename", "commit-stable.png")
+        .add_query_param("overwrite", true)
+        .multipart(file_form("replacement.png", "image/png", &valid_png(44)))
+        .await
+        .assert_status_internal_server_error();
+
+    let rows_after = files::Entity::find()
+        .order_by_asc(files::Column::Id)
+        .all(&app.db)
+        .await?;
+    assert_eq!(rows_after, rows_before);
+    assert_eq!(
+        std::fs::read(app.upload_dir().join("commit-stable.png"))?,
+        original
+    );
     assert_eq!(
         std::fs::read_dir(app.upload_dir().join(".transactions"))?.count(),
         0
@@ -593,6 +805,103 @@ async fn batch_delete_preflights_every_historical_name_before_any_deletion() -> 
 
     assert_eq!(std::fs::read(&safe_path)?, safe_bytes);
     assert_eq!(app.file_count().await?, 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn batch_delete_midway_storage_failure_restores_prior_backups_and_database_rows(
+) -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let admin = app
+        .create_user("batch-delete-compensation-admin", "admin")
+        .await?;
+    let first_path = app.upload_dir().join("first.png");
+    let first_bytes = valid_png(32);
+    std::fs::write(&first_path, &first_bytes)?;
+    let first_id = app
+        .insert_file_record(admin.id, "first.png", "image/png")
+        .await?;
+
+    let blocking_path = app.upload_dir().join("blocking.png");
+    std::fs::create_dir(&blocking_path)?;
+    let blocking_id = app
+        .insert_file_record(admin.id, "blocking.png", "image/png")
+        .await?;
+    let rows_before = files::Entity::find()
+        .order_by_asc(files::Column::Id)
+        .all(&app.db)
+        .await?;
+
+    app.server
+        .delete("/api/v1/files/batch")
+        .authorization_bearer(&admin.token)
+        .json(&json!({"ids": [first_id, blocking_id]}))
+        .await
+        .assert_status_bad_request();
+
+    let rows_after = files::Entity::find()
+        .order_by_asc(files::Column::Id)
+        .all(&app.db)
+        .await?;
+    assert_eq!(rows_after, rows_before);
+    assert_eq!(std::fs::read(&first_path)?, first_bytes);
+    assert!(blocking_path.is_dir());
+    assert_eq!(
+        std::fs::read_dir(app.upload_dir().join(".transactions"))?.count(),
+        0
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn batch_delete_real_second_rename_failure_restores_first_backup_and_database_rows(
+) -> anyhow::Result<()> {
+    let app = TestApp::new().await?;
+    let admin = app.create_user("rename-failure-admin", "admin").await?;
+    let first_name = "01-first.png";
+    let immutable_name = "02-immutable.png";
+    let first_bytes = b"first-real-file";
+    let immutable_bytes = b"immutable-real-file";
+    let first_id = app
+        .insert_file_record(admin.id, first_name, "image/png")
+        .await?;
+    let immutable_id = app
+        .insert_file_record(admin.id, immutable_name, "image/png")
+        .await?;
+    let first_path = app.upload_dir().join(first_name);
+    let immutable_path = app.upload_dir().join(immutable_name);
+    std::fs::write(&first_path, first_bytes)?;
+    std::fs::write(&immutable_path, immutable_bytes)?;
+    let immutable_guard = make_file_immutable(&immutable_path)?;
+    let rows_before = files::Entity::find()
+        .order_by_asc(files::Column::Id)
+        .all(&app.db)
+        .await?;
+
+    let response = app
+        .server
+        .delete("/api/v1/files/batch")
+        .authorization_bearer(&admin.token)
+        .json(&json!({ "ids": [first_id, immutable_id] }))
+        .await;
+    assert_eq!(
+        response.status_code(),
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
+
+    let rows_after = files::Entity::find()
+        .order_by_asc(files::Column::Id)
+        .all(&app.db)
+        .await?;
+    assert_eq!(rows_after, rows_before);
+    assert_eq!(std::fs::read(&first_path)?, first_bytes);
+    assert_eq!(std::fs::read(&immutable_path)?, immutable_bytes);
+    assert_eq!(
+        std::fs::read_dir(app.upload_dir().join(".transactions"))?.count(),
+        0
+    );
+    immutable_guard.clear()?;
     Ok(())
 }
 

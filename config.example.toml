@@ -13,9 +13,14 @@ data_dir = "./data"
 host = "0.0.0.0"
 port = 5023
 # 仅支持精确代理 IP（不支持 CIDR）；应用从 X-Forwarded-For 右向左剥离可信代理跳点。
-# Nginx 应使用：proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+# Nginx 应覆盖而非透传协议头：proxy_set_header X-Forwarded-Proto $scheme;
+# 客户端链使用：proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 # X-Real-IP 不作为访问控制来源。Nginx 与应用同机时通常配置为 ["127.0.0.1"]；直连部署保持空数组。
 trusted_proxies = []
+# 允许浏览器跨域调用 API 的精确 origin。默认空数组表示禁用跨域；同源访问不受影响。
+# 只接受 http(s) scheme + host + 可选端口，不接受 `*`、路径、查询或片段。
+# 示例: ["https://admin.example.com", "http://127.0.0.1:5173"]
+cors_allowed_origins = []
 
 # ------------------------------ 数据库配置 ------------------------------
 [database]

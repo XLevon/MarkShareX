@@ -52,6 +52,19 @@ impl TestApp {
     }
 
     pub async fn new_with_trusted_proxies(trusted_proxies: Vec<String>) -> anyhow::Result<Self> {
+        Self::new_with_server_security(trusted_proxies, Vec::new()).await
+    }
+
+    pub async fn new_with_cors_allowed_origins(
+        cors_allowed_origins: Vec<String>,
+    ) -> anyhow::Result<Self> {
+        Self::new_with_server_security(vec!["127.0.0.1".to_string()], cors_allowed_origins).await
+    }
+
+    async fn new_with_server_security(
+        trusted_proxies: Vec<String>,
+        cors_allowed_origins: Vec<String>,
+    ) -> anyhow::Result<Self> {
         let temp = tempfile::tempdir()?;
         let data_dir = temp.path().join("data");
         let upload_dir = temp.path().join("uploads");
@@ -65,6 +78,7 @@ impl TestApp {
                 host: "127.0.0.1".to_string(),
                 port: 0,
                 trusted_proxies,
+                cors_allowed_origins,
             },
             database: DatabaseConfig {
                 url: format!("sqlite://{}?mode=rwc", database_path.display()),
@@ -80,7 +94,16 @@ impl TestApp {
             storage: StorageConfig {
                 upload_dir: upload_dir.to_string_lossy().into_owned(),
                 max_file_size: 1024 * 1024,
-                allowed_types: vec!["image/png".to_string(), "image/jpeg".to_string()],
+                allowed_types: vec![
+                    "image/jpeg".to_string(),
+                    "image/png".to_string(),
+                    "image/gif".to_string(),
+                    "image/webp".to_string(),
+                    "application/pdf".to_string(),
+                    "text/markdown".to_string(),
+                    "text/plain".to_string(),
+                    "application/zip".to_string(),
+                ],
             },
             ai: None,
         };
@@ -92,7 +115,7 @@ impl TestApp {
         let search_engine = services::search::init_index(&config.data_dir)?;
         let log_buffer = services::logs::LogBuffer::new(100);
         let state = AppState::new(db.clone(), config.clone(), search_engine, log_buffer);
-        let app = build_router(state.clone());
+        let app = build_router(state.clone())?;
         let server = TestServer::new(app.into_make_service_with_connect_info::<SocketAddr>())?;
 
         Ok(Self {
@@ -118,6 +141,7 @@ impl TestApp {
                 host: "127.0.0.1".to_string(),
                 port: 0,
                 trusted_proxies: vec!["127.0.0.1".to_string()],
+                cors_allowed_origins: Vec::new(),
             },
             database: DatabaseConfig {
                 url: format!("sqlite://{}?mode=rwc", database_path.display()),
@@ -133,7 +157,16 @@ impl TestApp {
             storage: StorageConfig {
                 upload_dir: upload_dir.to_string_lossy().into_owned(),
                 max_file_size: 1024 * 1024,
-                allowed_types: vec!["image/png".to_string(), "image/jpeg".to_string()],
+                allowed_types: vec![
+                    "image/jpeg".to_string(),
+                    "image/png".to_string(),
+                    "image/gif".to_string(),
+                    "image/webp".to_string(),
+                    "application/pdf".to_string(),
+                    "text/markdown".to_string(),
+                    "text/plain".to_string(),
+                    "application/zip".to_string(),
+                ],
             },
             ai: Some(AiConfig {
                 max_tool_rounds: 8,
@@ -149,7 +182,7 @@ impl TestApp {
         let search_engine = services::search::init_index(&config.data_dir)?;
         let log_buffer = services::logs::LogBuffer::new(100);
         let state = AppState::new(db.clone(), config.clone(), search_engine, log_buffer);
-        let app = build_router(state.clone());
+        let app = build_router(state.clone())?;
         let server = TestServer::new(app.into_make_service_with_connect_info::<SocketAddr>())?;
 
         Ok(Self {
@@ -163,6 +196,10 @@ impl TestApp {
 
     pub fn upload_dir(&self) -> &std::path::Path {
         std::path::Path::new(&self.config.storage.upload_dir)
+    }
+
+    pub fn allowed_upload_types(&self) -> &[String] {
+        &self.config.storage.allowed_types
     }
 
     pub fn temp_root(&self) -> &std::path::Path {

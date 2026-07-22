@@ -25,6 +25,7 @@ use crate::api_doc::ApiDoc;
 use crate::middleware::auth::require_admin_middleware;
 use crate::utils::{ApiResponse, AppState};
 use axum::{
+    extract::DefaultBodyLimit,
     middleware,
     routing::{delete, get, post, put},
     Json, Router,
@@ -553,7 +554,10 @@ pub fn api_routes(state: AppState) -> Router<AppState> {
         .route("/api/v1/health", get(health_check))
         .route("/api/v1/version", get(version))
         // CSP violation report
-        .route("/api/v1/csp-report", post(csp::csp_report_handler))
+        .route(
+            "/api/v1/csp-report",
+            post(csp::csp_report_handler).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         // Auth
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/register", post(auth::register))

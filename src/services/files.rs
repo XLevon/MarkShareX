@@ -855,6 +855,16 @@ async fn batch_delete_files_locked(
         .filter(files::Column::Id.is_in(ids.iter().copied()))
         .all(db)
         .await?;
+    // SQL IN does not define result ordering. Preserve the caller's order so
+    // compensation behavior and failure handling are deterministic.
+    let mut records_by_id = records
+        .into_iter()
+        .map(|record| (record.id, record))
+        .collect::<std::collections::HashMap<_, _>>();
+    let records = ids
+        .iter()
+        .filter_map(|id| records_by_id.remove(id))
+        .collect::<Vec<_>>();
     if records.is_empty() {
         return Ok(0);
     }

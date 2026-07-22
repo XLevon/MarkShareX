@@ -154,7 +154,7 @@ async fn main() -> anyhow::Result<()> {
     let scheduler = services::ai_scheduler::AiScheduler::new(std::sync::Arc::new(state.clone()));
     tokio::spawn(async move { scheduler.start().await });
 
-    let app = build_router(state);
+    let app = build_router(state)?;
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     tracing::info!("🚀 MarkShareX 运行在 http://{}", addr);

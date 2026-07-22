@@ -90,6 +90,10 @@ pub struct ServerConfig {
     pub port: u16,
     #[serde(default)]
     pub trusted_proxies: Vec<String>,
+    /// Exact cross-origin browser origins allowed to call the API.
+    /// Empty means no cross-origin access; same-origin requests do not need CORS headers.
+    #[serde(default)]
+    pub cors_allowed_origins: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -144,6 +148,16 @@ impl AppConfig {
                 #[cfg(debug_assertions)]
                 println!("  ✅ 环境变量覆盖: server.port = {}", port_num);
             }
+        }
+
+        if let Ok(origins) = std::env::var("MARKSHAREX_SERVER_CORS_ALLOWED_ORIGINS") {
+            let origins = origins
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            builder = builder.set_override("server.cors_allowed_origins", origins)?;
         }
 
         // 数据库相关环境变量

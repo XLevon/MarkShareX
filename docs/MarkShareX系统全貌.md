@@ -935,15 +935,18 @@ config.toml
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `X-Frame-Options: SAMEORIGIN`
-- HTTPS 代理场景下成功响应的 HSTS
+- 仅采信 `trusted_proxies` 转发的 HTTPS 标记，并在所有 HTTPS 响应（包括错误响应）返回 `max-age=31536000` HSTS；默认不扩展到子域。反向代理必须覆盖客户端协议头，例如 Nginx 使用 `proxy_set_header X-Forwarded-Proto $scheme;`。
+- 默认禁止跨域、可配置精确 origin allowlist 的 CORS；预检仅允许明确方法和请求头
+- CSP Report-Only（含 `object-src 'none'`、`base-uri`、`frame-ancestors` 等约束）及 16 KiB 违规报告上限
 - 哈希静态资源一年 immutable 缓存
 - Scalar admin 保护
 
 需要理解的边界：
 
-- 当前 CORS 配置允许任意来源、方法和请求头；公网部署时应结合实际集成需求评估是否收紧。
+- CORS 默认不返回跨域允许头；确有独立前端域名时，通过 `server.cors_allowed_origins` 或 `MARKSHAREX_SERVER_CORS_ALLOWED_ORIGINS` 配置精确 `http(s)://host[:port]`，不支持 `*`、路径、查询或片段。
 - 前端路由守卫不是安全控制，后端权限判断才是最终边界。
-- CSP 尚未在应用中设置。
+- CSP 当前处于 Report-Only 观察期：已移除 `unsafe-eval`，但为兼容现有内联初始化脚本和样式暂时保留 `unsafe-inline`。连续至少 14 天没有需保留的违规后，应先移除内联依赖及 `unsafe-inline`，再将同一策略切换为 enforcing；切换前必须完成前台、后台、登录、编辑器和 AI 对话回归。
+- `/api/v1/csp-report` 请求体限制为 16 KiB，日志字段去除控制字符并限制长度；URI 仅记录规范化 HTTP(S) 地址或 `inline`/`eval`/`wasm-eval`，其他格式统一脱敏，且 WARN 日志最多每进程每分钟 20 条，避免无限请求体、敏感参数泄露、日志注入和日志放大。
 - 自定义 Markdown/HTML 展示点都应经过明确净化，不能因为内容来自管理后台就默认可信。
 - 当前上传校验仍会按声明 MIME/扩展名走兼容分支，虽然依赖中声明了 `magic`，并不能据此认为所有文件都已经过 magic bytes 强校验；自定义重命名也需要额外防止路径分隔符和 `..`。
 - AI `web_extract` 的直接抓取和可配置 Provider Base URL 由服务端主动请求，目前应增加私网、环回和重定向目标限制以降低 SSRF 风险。
