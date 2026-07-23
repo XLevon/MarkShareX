@@ -11,6 +11,7 @@ use regex::Regex;
 use sea_orm::*;
 use std::collections::HashMap;
 use std::io::Write;
+use std::sync::LazyLock;
 
 /// 构建文章的Front Matter
 fn build_front_matter(
@@ -91,6 +92,16 @@ fn extract_image_urls(content: &str) -> Vec<String> {
 
 fn get_filename_from_url(url: &str) -> String {
     url.split('/').last().unwrap_or(url).to_string()
+}
+
+static ABSOLUTE_UPLOAD_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)https?://[^/\s<>()"'?#]+/uploads/"#).expect("valid upload URL regex")
+});
+
+fn normalize_upload_urls(content: &str) -> String {
+    ABSOLUTE_UPLOAD_PREFIX
+        .replace_all(content, "./uploads/")
+        .into_owned()
 }
 
 fn sanitize_filename(name: &str) -> String {
@@ -291,10 +302,8 @@ pub(crate) async fn export_posts_archive(
 
         let front_matter =
             build_front_matter(post, category_name, tag_names, resolved_cover.as_deref());
-        // 将内容中的完整URL替换为相对路径，确保导出后可再次导入
-        let normalized_content = content
-            .replace("https://www.xlevon.cn/uploads/", "./uploads/")
-            .replace("http://www.xlevon.cn/uploads/", "./uploads/");
+        // 将任意部署域名下的本地上传 URL 转为归档内相对路径，确保可跨站点导入。
+        let normalized_content = normalize_upload_urls(content);
         let full_content = format!("{}\n\n{}", front_matter, normalized_content);
 
         let md_path = format!("{}/index.md", dir_name);
@@ -991,6 +1000,46 @@ pub async fn create_post_from_import(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_normalizes_upload_urls_from_any_deployment_host() {
+        let content = concat!(
+            "![a](https://blog.example.com/uploads/a.png)\n",
+            "![b](http://localhost:5023/uploads/b.webp?size=large#preview)\n",
+            "![external](https://cdn.example.com/images/c.png)\n",
+            "![relative](./uploads/d.png)\n",
+            "![nested](https://blog.example.com/archive/uploads/e.png)"
+        );
+
+        assert_eq!(
+            normalize_upload_urls(content),
+            concat!(
+                "![a](./uploads/a.png)\n",
+                "![b](./uploads/b.webp?size=large#preview)\n",
+                "![external](https://cdn.example.com/images/c.png)\n",
+                "![relative](./uploads/d.png)\n",
+                "![nested](https://blog.example.com/archive/uploads/e.png)"
+            )
+        );
+    }
+
+    #[test]
+    fn export_does_not_treat_query_or_fragment_upload_text_as_a_root_path() {
+        let content = concat!(
+            "[query](https://example.com?next=/uploads/a.png)\n",
+            "[fragment](https://example.com#section/uploads/b.png)\n",
+            "![uppercase](HTTPS://[::1]:5023/uploads/c.png)"
+        );
+
+        assert_eq!(
+            normalize_upload_urls(content),
+            concat!(
+                "[query](https://example.com?next=/uploads/a.png)\n",
+                "[fragment](https://example.com#section/uploads/b.png)\n",
+                "![uppercase](./uploads/c.png)"
+            )
+        );
+    }
 
     #[test]
     fn front_matter_fields_after_multiline_tags_are_preserved() {
