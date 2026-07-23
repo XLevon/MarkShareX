@@ -151,6 +151,20 @@ PR 应包含：
 
 请保持 PR 尺寸可审查。审查过程中新增改动后，应重新运行受影响的质量门禁。所有 CI 必须通过后才能合并。
 
+## 发布流程
+
+`.github/workflows/release.yml` 是跨平台发布流程的事实来源：
+
+- `workflow_dispatch` 构建并冒烟验证全部平台，只保留临时 Actions Artifacts，不创建 Release；
+- 推送与 `Cargo.toml`、`frontend/package.json` 一致的 `vX.Y.Z` Tag 后，全部平台通过才会创建 GitHub Release；
+- Vue 前端只构建一次，再与 Linux x86_64/ARM64、macOS Intel/ARM64 和 Windows x86_64 后端分别组合；
+- 每个完整包包含后端二进制、`static/frontend`、`config.example.toml`、启动脚本和项目文档，并附带 SHA-256；
+- 发布包不得包含 `.env`、`config.toml`、`data/`、数据库、上传文件或真实凭据。
+
+正式打 Tag 前应先从 GitHub Actions 手工运行 Release workflow，确认五个平台的构建、打包和运行时健康检查全部通过。版本发布必须同步 `Cargo.toml`、`frontend/package.json`、README badge 和 CHANGELOG；不要移动已经公开发布的 Tag。
+
+当前 macOS 和 Windows 发布物不做代码签名。引入 Apple notarization 或 Windows Authenticode 前，签名凭据只能存放在 GitHub Actions Secrets 中，不得写入仓库或构建产物。
+
 ## 文档与许可证
 
 新增面向用户的功能、配置项或破坏性变更时，请同步更新 README、配置文档和 CHANGELOG。提交代码即表示你同意该贡献按仓库的 [MIT License](LICENSE) 发布。

@@ -64,7 +64,35 @@ MarkShareX 面向需要自行掌控内容、附件和运行数据的技术创作
 
 ## 快速开始
 
-### 方式一：Docker Compose（推荐）
+### 方式一：下载 GitHub Release
+
+每个正式版本都会在 [GitHub Releases](https://github.com/XLevon/MarkShareX/releases) 提供已经组合好的后端、前端和示例配置：
+
+| 平台 | 架构 | 文件后缀 |
+|---|---|---|
+| Linux | x86_64、ARM64 | `.tar.gz` |
+| macOS | Intel x86_64、Apple Silicon ARM64 | `.tar.gz` |
+| Windows | x86_64 | `.zip` |
+
+下载与操作系统、架构匹配的压缩包及同名 `.sha256` 文件。Linux/macOS 示例：
+
+```bash
+sha256sum -c marksharex-v0.4.2-linux-x86_64.tar.gz.sha256
+tar -xzf marksharex-v0.4.2-linux-x86_64.tar.gz
+cd marksharex-v0.4.2-linux-x86_64
+cp config.example.toml config.toml
+openssl rand -hex 32  # 填入 config.toml 的 auth.jwt_secret
+openssl rand -hex 32  # 填入 config.toml 的 auth.encrypt_key
+./start.sh
+```
+
+macOS 可使用 `shasum -a 256` 对照 `.sha256` 中的摘要。Windows 可使用 `Get-FileHash -Algorithm SHA256`，解压后复制并填写 `config.toml`，然后运行 `start.cmd`。
+
+Release 包必须从解压后的根目录启动，因为程序运行时会读取相对路径下的 `config.toml`、`static/frontend` 和 `data`。当前发布物暂未进行 Apple notarization 或 Windows Authenticode 签名；请只从本项目 GitHub Release 页面下载并核对 SHA-256。
+
+首次启动会创建 SQLite 数据库、执行迁移并初始化搜索索引。升级已有站点前请先阅读[备份与升级](#备份与升级)。
+
+### 方式二：Docker Compose
 
 前置条件：Git、Docker 和 Docker Compose v2。
 
@@ -100,7 +128,7 @@ docker compose down
 docker compose down -v
 ```
 
-### 方式二：原生构建
+### 方式三：原生构建
 
 前置条件：Rust `1.95`、Node.js `22.14+`、npm、OpenSSL 和 SQLite 运行环境。
 
