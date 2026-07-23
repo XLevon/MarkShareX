@@ -76,55 +76,6 @@
         </n-spin>
       </n-tab-pane>
 
-      <n-tab-pane name="changelog" tab="版本维护">
-        <n-spin :show="clLoading">
-          <n-card class="mb-4">
-            <n-form label-placement="left" label-width="100">
-              <n-form-item label="版本号">
-                <n-space align="center">
-                  <n-input v-model:value="clForm.version" placeholder="留空保存草稿，填写后前台可见" style="width:240px" />
-                  <n-button v-if="editingId > 0" type="primary" :loading="clSaving" @click="handleChangelogSave">保存修改</n-button>
-                  <n-button v-else type="primary" :loading="clSaving" @click="handleChangelogSave">保存</n-button>
-                  <n-button v-if="editingId > 0" @click="cancelChangelogEdit">取消编辑</n-button>
-                </n-space>
-              </n-form-item>
-              <n-form-item label="更新内容">
-                <n-input v-model:value="clForm.content" type="textarea" placeholder="Markdown 格式的更新说明" :rows="5" />
-              </n-form-item>
-            </n-form>
-          </n-card>
-
-          <n-card v-if="changelogs.length > 0">
-            <h3 class="font-bold mb-4" style="color: var(--input-color); font-size: 16px">历史版本信息：</h3>
-            <div
-              v-for="entry in changelogs"
-              :key="entry.id"
-              class="version-entry"
-              :class="entry.version ? 'entry-published' : 'entry-draft'"
-            >
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1 flex-wrap">
-                  <n-tag v-if="entry.version" type="info" size="small" :bordered="false">{{ entry.version }}</n-tag>
-                  <n-tag v-if="entry.version" type="success" size="small" :bordered="false">已发布</n-tag>
-                  <n-tag v-else type="warning" size="small" :bordered="false">草稿</n-tag>
-                  <span class="text-xs" style="color: var(--color-text-muted)">{{ formatDate(entry.created_at) }}</span>
-                </div>
-                <p class="text-sm leading-relaxed" style="color: var(--color-text); white-space: pre-wrap; word-break: break-word">{{ entry.content }}</p>
-              </div>
-              <div class="flex gap-1.5 flex-shrink-0 ml-3">
-                <n-button size="tiny" quaternary @click="openChangelogEdit(entry)">编辑</n-button>
-                <n-popconfirm @positive-click="handleChangelogDelete(entry.id)">
-                  <template #trigger>
-                    <n-button size="tiny" type="error" quaternary>删除</n-button>
-                  </template>
-                  确认删除版本 {{ entry.version || '草稿' }}？
-                </n-popconfirm>
-              </div>
-            </div>
-          </n-card>
-        </n-spin>
-      </n-tab-pane>
-
       <n-tab-pane name="ipaccess" tab="IP访问设置">
         <n-spin :show="loading">
           <n-card class="mb-4">
@@ -185,6 +136,55 @@
                 <n-button type="primary" :loading="ipSaving" @click="handleIpSave">保存IP设置</n-button>
               </n-form-item>
             </n-form>
+          </n-card>
+        </n-spin>
+      </n-tab-pane>
+
+      <n-tab-pane name="changelog" tab="版本维护">
+        <n-spin :show="clLoading">
+          <n-card class="mb-4">
+            <n-form label-placement="left" label-width="100">
+              <n-form-item label="版本号">
+                <n-space align="center">
+                  <n-input v-model:value="clForm.version" placeholder="留空保存草稿，填写后前台可见" style="width:240px" />
+                  <n-button v-if="editingId > 0" type="primary" :loading="clSaving" @click="handleChangelogSave">保存修改</n-button>
+                  <n-button v-else type="primary" :loading="clSaving" @click="handleChangelogSave">保存</n-button>
+                  <n-button v-if="editingId > 0" @click="cancelChangelogEdit">取消编辑</n-button>
+                </n-space>
+              </n-form-item>
+              <n-form-item label="更新内容">
+                <n-input v-model:value="clForm.content" type="textarea" placeholder="Markdown 格式的更新说明" :rows="5" />
+              </n-form-item>
+            </n-form>
+          </n-card>
+
+          <n-card v-if="changelogs.length > 0">
+            <h3 class="font-bold mb-4" style="color: var(--input-color); font-size: 16px">历史版本信息：</h3>
+            <div
+              v-for="entry in changelogs"
+              :key="entry.id"
+              class="version-entry"
+              :class="entry.version ? 'entry-published' : 'entry-draft'"
+            >
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <n-tag v-if="entry.version" type="info" size="small" :bordered="false">{{ entry.version }}</n-tag>
+                  <n-tag v-if="entry.version" type="success" size="small" :bordered="false">已发布</n-tag>
+                  <n-tag v-else type="warning" size="small" :bordered="false">草稿</n-tag>
+                  <span class="text-xs" style="color: var(--color-text-muted)">{{ formatDate(entry.created_at) }}</span>
+                </div>
+                <p class="text-sm leading-relaxed" style="color: var(--color-text); white-space: pre-wrap; word-break: break-word">{{ entry.content }}</p>
+              </div>
+              <div class="flex gap-1.5 flex-shrink-0 ml-3">
+                <n-button size="tiny" quaternary @click="openChangelogEdit(entry)">编辑</n-button>
+                <n-popconfirm @positive-click="handleChangelogDelete(entry.id)">
+                  <template #trigger>
+                    <n-button size="tiny" type="error" quaternary>删除</n-button>
+                  </template>
+                  确认删除版本 {{ entry.version || '草稿' }}？
+                </n-popconfirm>
+              </div>
+            </div>
           </n-card>
         </n-spin>
       </n-tab-pane>

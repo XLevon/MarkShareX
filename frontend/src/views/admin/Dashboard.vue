@@ -99,19 +99,19 @@
         <span class="quick-label">标签管理</span>
         <span class="quick-desc">管理文章标签系统</span>
       </router-link>
-      <router-link v-if="isAdmin" to="/admin/settings" class="quick-card">
-        <div class="quick-icon settings">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-        </div>
-        <span class="quick-label">基础设置</span>
-        <span class="quick-desc">站点标题、描述等配置</span>
-      </router-link>
       <router-link v-if="isAdmin || isSubAdmin" to="/admin/news" class="quick-card">
         <div class="quick-icon news-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 4l8 8 8-8"/></svg>
         </div>
         <span class="quick-label">资讯管理</span>
         <span class="quick-desc">管理资讯文章采集发布</span>
+      </router-link>
+      <router-link v-if="isAdmin" to="/admin/settings" class="quick-card">
+        <div class="quick-icon settings">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        </div>
+        <span class="quick-label">系统设置</span>
+        <span class="quick-desc">站点标题、描述等配置</span>
       </router-link>
     </div>
 

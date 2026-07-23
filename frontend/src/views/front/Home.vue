@@ -215,8 +215,8 @@
             }"
             @click="toggleNews(item)"
           >
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-3">
+              <div class="news-card-title flex-1 min-w-0">
                 <h3 class="text-lg font-semibold flex items-start gap-2" :style="{ color: 'var(--color-text)' }">
                   <svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ color: 'var(--color-primary)' }">
                     <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
@@ -225,9 +225,9 @@
                   <span class="line-clamp-3 md:line-clamp-2">{{ item.title }}</span>
                 </h3>
               </div>
-              <div class="flex items-center gap-2">
-                <span v-if="item.topic_type" class="text-xs px-1.5 py-0.5 rounded" :style="{ backgroundColor: topicTypeColor(item.topic_type, 0.15), color: topicTypeColor(item.topic_type, 1) }">{{ topicTypeLabel(item.topic_type) }}</span>
-                <span class="text-xs whitespace-nowrap pt-0.5" :style="{ color: 'var(--color-text-muted)' }">{{ formatDate(item.published_at || item.created_at) }}</span>
+              <div class="news-card-meta flex flex-col items-end gap-1 shrink-0">
+                <span class="news-card-date text-xs whitespace-nowrap" :style="{ color: 'var(--color-text-muted)' }">{{ formatDate(item.published_at || item.created_at) }}</span>
+                <span v-if="item.topic_type" class="news-card-topic text-xs px-1.5 py-0.5 rounded" :style="{ backgroundColor: topicTypeColor(item.topic_type, 0.15), color: topicTypeColor(item.topic_type, 1) }">{{ topicTypeLabel(item.topic_type) }}</span>
               </div>
             </div>
             <p class="text-sm leading-relaxed line-clamp-2 mt-2 flex items-start gap-1.5 min-h-[2.5rem]" :style="{ color: item.summary ? 'var(--color-text-secondary)' : 'transparent' }">
