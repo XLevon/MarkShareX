@@ -51,6 +51,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
 COPY templates ./templates
+COPY assets ./assets
 COPY build.rs ./
 
 # 复制前端构建产物

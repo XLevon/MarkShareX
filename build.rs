@@ -34,7 +34,7 @@ fn main() {
     for f in &files {
         let abs_path = abs_dir.join(f);
         code.push_str(&format!(
-            "    (\"{}\", include_str!(\"{}\")),\n",
+            "    (\"{}\", include_str!(r\"{}\")),\n",
             f,
             abs_path.to_str().unwrap()
         ));
