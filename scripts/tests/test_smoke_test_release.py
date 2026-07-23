@@ -26,8 +26,14 @@ def create_test_archive(root: Path) -> Path:
     frontend = root / "frontend"
     binary = root / "marksharex"
     write(repository / "config.example.toml", "[server]\nport = 5023\n")
-    for name in ("README.md", "CHANGELOG.md", "LICENSE"):
+    for name in ("README.md", "CHANGELOG.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md"):
         write(repository / name, f"{name}\n")
+    write(repository / "docs/CONFIG.md", "# Configuration\n")
+    write(repository / "docs/MarkShareX系统全貌.md", "# System overview\n")
+    write(repository / ".github/ISSUE_TEMPLATE/bug_report.yml", "name: Bug report\n")
+    write(repository / ".github/ISSUE_TEMPLATE/feature_request.yml", "name: Feature request\n")
+    write(repository / ".github/ISSUE_TEMPLATE/config.yml", "blank_issues_enabled: false\n")
+    write(repository / ".github/pull_request_template.md", "# Pull request\n")
     write(
         frontend / "index.html",
         '<div id="app"></div><script src="/assets/index-test.js"></script>\n',
@@ -46,6 +52,9 @@ def create_test_archive(root: Path) -> Path:
                 if self.path == "/api/v1/health":
                     body = b"OK"
                     content_type = "text/plain"
+                elif self.path == "/api/v1/openapi.json":
+                    body = b'{"info":{"version":"1.2.3"}}'
+                    content_type = "application/json"
                 elif self.path == "/":
                     body = Path("static/frontend/index.html").read_bytes()
                     content_type = "text/html"
@@ -109,7 +118,14 @@ class SmokeTestReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             archive = create_test_archive(Path(directory))
             result = subprocess.run(
-                [sys.executable, str(SMOKE_TEST), "--archive", str(archive)],
+                [
+                    sys.executable,
+                    str(SMOKE_TEST),
+                    "--archive",
+                    str(archive),
+                    "--expected-version",
+                    "1.2.3",
+                ],
                 text=True,
                 capture_output=True,
                 check=False,
@@ -117,6 +133,26 @@ class SmokeTestReleaseTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("SMOKE_TEST_PASS", result.stdout)
+
+    def test_archive_with_wrong_binary_version_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = create_test_archive(Path(directory))
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SMOKE_TEST),
+                    "--archive",
+                    str(archive),
+                    "--expected-version",
+                    "9.9.9",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("version", (result.stdout + result.stderr).lower())
 
     def test_archive_path_traversal_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -129,7 +165,14 @@ class SmokeTestReleaseTests(unittest.TestCase):
                 package.addfile(info, io.BytesIO(payload))
 
             result = subprocess.run(
-                [sys.executable, str(SMOKE_TEST), "--archive", str(archive)],
+                [
+                    sys.executable,
+                    str(SMOKE_TEST),
+                    "--archive",
+                    str(archive),
+                    "--expected-version",
+                    "1.2.3",
+                ],
                 text=True,
                 capture_output=True,
                 check=False,
@@ -137,6 +180,33 @@ class SmokeTestReleaseTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unsafe", (result.stdout + result.stderr).lower())
             self.assertFalse((root / "escape").exists())
+
+    def test_archive_special_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "special.tar.gz"
+            with tarfile.open(archive, "w:gz") as package:
+                directory_info = tarfile.TarInfo("package")
+                directory_info.type = tarfile.DIRTYPE
+                package.addfile(directory_info)
+                fifo = tarfile.TarInfo("package/fifo")
+                fifo.type = tarfile.FIFOTYPE
+                package.addfile(fifo)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SMOKE_TEST),
+                    "--archive",
+                    str(archive),
+                    "--expected-version",
+                    "1.2.3",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("special", (result.stdout + result.stderr).lower())
 
 
 if __name__ == "__main__":

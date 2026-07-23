@@ -153,10 +153,10 @@ PR 应包含：
 
 ## 发布流程
 
-`.github/workflows/release.yml` 是跨平台发布流程的事实来源：
+`.github/workflows/release.yml` 定义跨平台构建边界，`scripts/publish_release.py` 是 Draft 创建、远端资产下载复核和最终公开发布的事实来源：
 
 - `workflow_dispatch` 构建并冒烟验证全部平台，只保留临时 Actions Artifacts，不创建 Release；
-- 推送与 `Cargo.toml`、`frontend/package.json` 一致的 `vX.Y.Z` Tag 后，全部平台通过才会创建 GitHub Release；
+- 推送与 `Cargo.toml`、`frontend/package.json` 一致的 `vX.Y.Z` Tag 后，全部平台通过才会创建 Draft Release；只有远端下载回来的十个资产名称、数量和 SHA-256 全部复核通过，才会公开发布；
 - Vue 前端只构建一次，再与 Linux x86_64/ARM64、macOS Intel/ARM64 和 Windows x86_64 后端分别组合；
 - 每个完整包包含后端二进制、`static/frontend`、`config.example.toml`、启动脚本和项目文档，并附带 SHA-256；
 - 发布包不得包含 `.env`、`config.toml`、`data/`、数据库、上传文件或真实凭据。

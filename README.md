@@ -74,6 +74,8 @@ MarkShareX 面向需要自行掌控内容、附件和运行数据的技术创作
 | macOS | Intel x86_64、Apple Silicon ARM64 | `.tar.gz` |
 | Windows | x86_64 | `.zip` |
 
+Linux 发布包分别以 `x86_64-unknown-linux-gnu` 和 `aarch64-unknown-linux-gnu` 为目标，并在 Ubuntu 22.04 Runner 上构建；需要兼容的 glibc/GNU 用户空间，不支持 Alpine 等 musl 系统。musl 静态包将在 SQLite、Tantivy 等原生依赖完成独立验证后再提供。
+
 下载与操作系统、架构匹配的压缩包及同名 `.sha256` 文件。Linux/macOS 示例：
 
 ```bash

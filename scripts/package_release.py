@@ -16,7 +16,20 @@ from pathlib import Path
 
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 PLATFORM_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-REQUIRED_DOCUMENTS = ("README.md", "CHANGELOG.md", "LICENSE")
+REQUIRED_DOCUMENTS = (
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+)
+REQUIRED_DOC_PAGES = ("CONFIG.md", "MarkShareX系统全貌.md")
+REQUIRED_GITHUB_TEMPLATES = (
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/pull_request_template.md",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +73,10 @@ def validate_inputs(args: argparse.Namespace) -> None:
     require_file(args.repository / "config.example.toml", "config.example.toml")
     for name in REQUIRED_DOCUMENTS:
         require_file(args.repository / name, name)
+    for name in REQUIRED_DOC_PAGES:
+        require_file(args.repository / "docs" / name, f"docs/{name}")
+    for name in REQUIRED_GITHUB_TEMPLATES:
+        require_file(args.repository / name, name)
 
 
 def write_launcher(package: Path, windows: bool) -> None:
@@ -89,6 +106,11 @@ def create_package_tree(args: argparse.Namespace, package: Path) -> None:
     shutil.copy2(args.repository / "config.example.toml", package / "config.example.toml")
     for name in REQUIRED_DOCUMENTS:
         shutil.copy2(args.repository / name, package / name)
+    shutil.copytree(args.repository / "docs", package / "docs")
+    for name in REQUIRED_GITHUB_TEMPLATES:
+        destination = package / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(args.repository / name, destination)
     write_launcher(package, windows)
 
 

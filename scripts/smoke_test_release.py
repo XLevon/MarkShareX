@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -25,6 +26,7 @@ ASSET_RE = re.compile(r"(?:src|href)=[\"'](/assets/[^\"']+)[\"']")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--expected-version", required=True)
     parser.add_argument("--timeout", type=float, default=60.0)
     return parser.parse_args()
 
@@ -48,6 +50,8 @@ def extract_archive(archive: Path, destination: Path) -> None:
                 safe_destination(destination, member.name)
                 if member.issym() or member.islnk():
                     raise ValueError(f"unsafe archive link: {member.name}")
+                if not (member.isdir() or member.isfile()):
+                    raise ValueError(f"unsafe archive special file: {member.name}")
             package.extractall(destination)
         return
 
@@ -94,7 +98,7 @@ def fetch(url: str, timeout: float = 2.0) -> tuple[int, bytes]:
         return response.status, response.read()
 
 
-def smoke_test(root: Path, timeout: float) -> None:
+def smoke_test(root: Path, timeout: float, expected_version: str) -> None:
     windows = os.name == "nt"
     binary = root / ("marksharex.exe" if windows else "marksharex")
     if not binary.is_file():
@@ -159,6 +163,20 @@ def smoke_test(root: Path, timeout: float) -> None:
             if health_body.strip() != b"OK":
                 raise RuntimeError("health endpoint did not return OK")
 
+            version_status, openapi_body = fetch(
+                f"http://127.0.0.1:{port}/api/v1/openapi.json"
+            )
+            if version_status != 200:
+                raise RuntimeError(f"OpenAPI document returned HTTP {version_status}")
+            try:
+                actual_version = json.loads(openapi_body)["info"]["version"]
+            except (KeyError, TypeError, json.JSONDecodeError) as error:
+                raise RuntimeError("OpenAPI document does not expose a valid version") from error
+            if actual_version != expected_version:
+                raise RuntimeError(
+                    f"binary version mismatch: expected {expected_version}, got {actual_version}"
+                )
+
             status, homepage = fetch(f"http://127.0.0.1:{port}/")
             if status != 200:
                 raise RuntimeError(f"homepage returned HTTP {status}")
@@ -191,7 +209,7 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="marksharex-smoke-") as directory:
             destination = Path(directory)
             extract_archive(args.archive, destination)
-            smoke_test(package_root(destination), args.timeout)
+            smoke_test(package_root(destination), args.timeout, args.expected_version)
     except (OSError, RuntimeError, ValueError, zipfile.BadZipFile, tarfile.TarError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
