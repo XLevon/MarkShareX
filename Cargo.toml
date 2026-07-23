@@ -9,7 +9,7 @@ repository = "https://github.com/XLevon/MarkShareX"
 
 [dependencies]
 # Web 框架
-axum = { version = "0.7", features = ["multipart", "macros"] }
+axum = { version = "0.8", features = ["multipart", "macros"] }
 http = "1"
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tokio = { version = "1", features = ["full"] }
