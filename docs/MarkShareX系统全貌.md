@@ -37,7 +37,7 @@ MarkShareX 是一个面向个人技术创作者和小型内容团队的轻量级
 - 后端控制器模块：23 个
 - `/api/v1/*` API operation：162 个，由 `src/api_endpoints.rs` 权威目录统一生成
 - 当前版本仅支持 SQLite；PostgreSQL 和 MySQL 计划在后续版本支持。
-- 初始化 Schema：29 张应用表、27 个应用索引（包含 `_migrations` 迁移追踪表）
+- 初始化 Schema 当前包含 29 张应用表和 27 个应用索引。其中包含 `_migrations` 迁移追踪表。
 
 这些数字用于描述当前规模，不作为稳定 API 承诺。
 
@@ -1073,41 +1073,7 @@ python3 scripts/check_doc_sync.py
 
 ---
 
-## 17. 现有文档的定位
-
-本文综合了 `docs/` 中的专题资料，但不替代所有细节文档：
-
-| 文档 | 主要用途 |
-|---|---|
-| `INTRODUCTION.md` | 产品理念和早期功能介绍 |
-| `SYSTEM.md` | v0.2/v0.3 阶段系统模块说明 |
-| `REQUIREMENTS.md` | 原始需求、规格和设计记录 |
-| `DATABASE.md` | 字段级数据库说明；Schema 数量以初始化 migration 和同步门禁为准 |
-| `NETWORK_RESOURCES.md` | `nr:{id}` 网络资源机制专题 |
-| `CONFIG.md` | 配置与环境变量契约；映射由源码测试和同步门禁校验 |
-| `DOCKER.md` | Docker 详细部署 |
-| `DOCKER_QUICKREF.md` | Docker 常用命令速查 |
-| `AI_API.md` | AI 模块接口和数据结构 |
-| `AI_HELP.md` | AI 后台使用帮助 |
-| `告别臃肿与残缺！MarkShareX.md` | 产品叙事和项目介绍文章 |
-
-旧文档中常见的过时信息包括：
-
-- 版本仍写作 v0.2.x 或 v0.3.x；当前 Cargo 与前端版本为 v0.4.2。
-- 数据表统计仍为 14、25 或 28 张。初始化 Schema 当前包含 29 张应用表和 27 个应用索引。
-- 控制器、服务和前端页面数量低于当前实际值。
-- “所有环境变量自动映射配置”的描述超出当前显式实现。
-- “单二进制包含所有前端静态资源”的表述不完全准确；当前生产运行还需要 `static/frontend/`。
-- 部分旧路由仍写作 `/post/:id`；当前公开文章路由以 `/post/:slug` 为准。
-- `AI_API.md` 中的独立 Python MCP Server 仍是待实现方案，不能与仓库中已经落地的内置 AI Agent 子系统混为一谈。
-- `NETWORK_RESOURCES.md` 早期使用 `/nr/:id`，当前正文与封面主要使用 `nr:{id}`/`nr:ID` 语义。
-- 当前 Cargo 只启用 SQLite 驱动。PostgreSQL 和 MySQL 属于后续版本计划，不能把 ORM 的跨数据库能力视为当前产品支持。
-
-本文对这些差异进行了统一，但字段级细节仍应同时查阅 migration、Entity 和 OpenAPI。
-
----
-
-## 18. 系统特点总结
+## 17. 系统特点总结
 
 MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把以下能力整合在一个轻量自托管系统中：
 
@@ -1122,7 +1088,7 @@ MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把
 
 ---
 
-## 19. 快速导航
+## 18. 快速导航
 
 - 启动配置：`config.example.toml`
 - API 在线文档：运行后访问 `/scalar`
@@ -1132,9 +1098,7 @@ MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把
 - 后端 API 权威目录：`src/api_endpoints.rs`
 - 启动装配：`src/main.rs`
 - 前端路由：`frontend/src/router/index.ts`
-- 网络资源说明：`docs/NETWORK_RESOURCES.md`
-- AI API：`docs/AI_API.md`
-- Docker 部署：`docs/DOCKER.md`
+- 配置说明：`docs/CONFIG.md`
 
 ---
 
