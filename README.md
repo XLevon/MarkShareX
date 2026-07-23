@@ -1,300 +1,251 @@
 # MarkShareX
 
-> 轻量自托管 Markdown 博客系统 — Rust + Vue 3 + SQLite
+> 轻量、自托管的 Markdown 博客与知识管理系统 — Rust + Vue 3 + SQLite
 
 [![Rust](https://img.shields.io/badge/Rust-1.95+-orange.svg)](https://www.rust-lang.org)
 [![Vue](https://img.shields.io/badge/Vue-3.x-4fc08d.svg)](https://vuejs.org)
-[![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)](https://github.com/XLevon/MarkShareX)
+[![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)](CHANGELOG.md)
+[![CI](https://github.com/XLevon/MarkShareX/actions/workflows/ci.yml/badge.svg)](https://github.com/XLevon/MarkShareX/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-MarkShareX 是一个面向技术创作者的轻量级自托管博客平台。高性能 Rust 后端配合现代化 Vue 3 管理后台，内置 AI 自动写作与资讯采集能力，数据完全由你掌控。
+MarkShareX 面向需要自行掌控内容、附件和运行数据的技术创作者。项目提供公开博客、管理后台、Markdown 编辑与导入导出、全文搜索、资源管理、评论与留言、访问统计、AI 对话和定时任务等能力。
 
----
+- GitHub：<https://github.com/XLevon/MarkShareX>
+- 配置参考：[docs/CONFIG.md](docs/CONFIG.md)
+- 系统全貌：[docs/MarkShareX系统全貌.md](docs/MarkShareX系统全貌.md)
+- 更新记录：[CHANGELOG.md](CHANGELOG.md)
 
-## 功能特性
+## 主要能力
 
-### 🤖 AI 写作与调度
-- 🧠 **多模型支持** — OpenAI 兼容 / DeepSeek / 硅基流动，统一管理 API 提供商
-- 🛠️ **工具系统** — 内置 web_search、web_extract、create_post、api_request 等工具，支持自定义扩展
-- 📋 **技能编排** — 可复用的技能描述模板，定义采集流程与创作规范
-- ⏰ **定时调度** — 内置 cron 调度器，自动执行资讯采集、知识创作等定时任务
-- 📊 **执行追踪** — 手动执行任务实时显示每轮 LLM 对话与工具调用详情
-- 💬 **AI 对话** — 管理后台内置 AI 聊天面板，支持多轮对话
-- 🔑 **API Key 托管** — AES-256-GCM 加密存储，Web 后台管理
+### 内容与阅读
 
-### 🔍 多源搜索
-- 🔗 **搜索降级链** — Tavily → Firecrawl → DuckDuckGo 三级自动降级
-- 🌐 **web_search / web_extract** — AI 工具调用搜索，网页正文提取
-- 📰 **资讯采集** — 自动搜索今日热点 + 去重 + 抓取全文 + 创建资讯草稿
+- Vditor Markdown 编辑器，支持草稿、发布、分类、标签、封面、文章类型和状态。
+- Markdown 与图片 ZIP 导入导出，支持 YAML Front Matter 和 CSDN 格式兼容。
+- Tantivy 全文搜索，支持文章、标签和作者检索。
+- 文章详情 SEO 服务端渲染，包含独立 slug、Canonical、Open Graph 等元数据。
+- 评论审核、嵌套回复、点赞、阅读日志、前后篇导航和访客留言板。
+- 独立资讯模块，可按题材维护、筛选、发布和撤回。
 
-### 内容创作
-- ✍️ **Vditor 编辑器** — IR 即时渲染模式，支持 Markdown 快捷输入、工具栏、全屏写作、暗色模式
-- 📝 **知识管理** — 文章草稿/发布状态、二级分类归属、标签关联、封面图设置、文章类型（原创/AI整理/教程/转载/翻译/随笔）
-- 📎 **本地资源** — 图片/文件上传、MD5 去重、批量操作、未引用文件检测清理
-- 🖼️ **网络资源** — 外链图片入库管理，URL 变更后全站引用自动同步，杜绝图片失效
-- 📥 **批导管理** — Markdown + 图片 ZIP 导入导出，兼容 CSDN 博客格式，YAML Front Matter 解析
-- 📢 **资讯管理** — 独立资讯模块（与文章分离），题材分类（时政/财经/科技等 9 类），筛选搜索、批量发布/撤回
+### 资源与管理
 
-### 阅读体验
-- 🔍 **全文搜索** — Tantivy 搜索引擎，CJK 中文分词，统一搜索文章/标签/作者
-- 🌐 **SEO 友好** — SSR 服务端渲染（Tera 模板），每篇文章独立 slug 路由，OG 标签
-- 🏷️ **多维度浏览** — 按分类（树形结构）、标签、作者筛选文章，热门文章/标签云/友链侧边栏
-- 💬 **评论系统** — 支持匿名/登录评论、嵌套回复、评论审核（pending/approved/deleted）
-- ❤️ **互动功能** — 文章点赞（toggle）、浏览统计、阅读日志记录、前后篇导航
-- 📋 **代码增强** — 自动代码复制按钮，登录保护
-- 📖 **留言板** — 访客留言 + 管理员回复，前台简洁展示
+- 本地文件上传、MD5 去重、批量操作和未引用文件检查。
+- 网络资源统一管理和引用溯源。
+- 四类角色：`admin`、`sub_admin`、`author`、`visitor`；后端按角色、资源所有权和操作类型执行权限检查。
+- 用户状态、作者申请、登录日志、阅读统计、站点设置和版本记录管理。
 
-### 管理后台
-- 📊 **仪表盘** — 已发布/草稿/阅读量/点赞量/评论数统计卡片，每日增量角标，快捷入口，存储用量，阅读趋势图
-- 📝 **知识库** — 文章/分类/标签管理，状态筛选、搜索、分页，角色权限控制
-- 📂 **资源库** — 本地资源/网络资源管理，拖拽上传，网格/列表视图，类型筛选，未用检查，批量删除
-- 👥 **用户管理** — RBAC 四角色（admin/sub_admin/author/visitor），状态管控（active/muted/banned），登录日志
-- 📝 **作者申请** — 访客提交申请，管理员审核通过/拒绝（附备注）
-- 📈 **阅读统计** — 文章阅读榜（含作者/点赞/评论），点击查看详细阅读日志，点赞记录列表
-- 📊 **评论管理** — 状态 Tab 筛选，审核操作，详情弹窗
-- 🎨 **明暗主题** — CSS 变量驱动，Vditor 编辑器跟随
-- ⚙️ **系统设置** — 站点Logo/标题/副标题/描述、友链 JSON、评论审核开关、侧栏分类折叠
-- 📋 **版本说明** — 更新日志增删改维护
-- 🔑 **API Key** — 每个用户独立 API Key，支持 X-API-Key 认证
+### AI 与自动化
 
-### 工程品质
-- 🔒 **安全认证** — JWT 双 Token（Access + Refresh），bcrypt 密码哈希，X-API-Key 双认证
-- 🔄 **Token 自动刷新** — 401 响应自动 refresh token 续期
-- 🛡️ **XSS 防护** — ammonia 净化 HTML，comrak 安全 Markdown 渲染
-- 🔄 **CORS 支持** — 跨域访问控制
-- 📦 **前后台分离** — 前台公开浏览 + 后台管理面板，各自独立路由和布局
-- 🗜️ **编译嵌入** — SQL 迁移 + 静态资源编译进二进制
-- 📚 **OpenAPI 文档** — Scalar UI 交互式 API 文档，162 个 operation 由权威端点目录统一生成
+- OpenAI 兼容 API Provider、模型、工具、技能、Agent、会话和定时任务管理。
+- 管理后台 AI 对话和任务执行追踪。
+- 可配置 Tavily、Firecrawl、SearXNG 或 DuckDuckGo 搜索 Provider 与降级 Provider。
+- API Key 使用应用加密密钥加密保存；密钥必须由部署者生成并长期固定。
 
----
+### 安全与工程
+
+- JWT Access/Refresh Token、bcrypt 密码哈希和 `X-API-Key` 认证。
+- Markdown/HTML 清理、请求体限制、CORS、可信代理、IP 规则和安全响应头。
+- SQLite 自动初始化和增量迁移；启动时检查并按需重建 Tantivy 索引。
+- Rust、前端、文档契约和容器构建由 GitHub Actions 持续验证。
 
 ## 技术栈
 
 | 层级 | 技术 |
-|------|------|
-| 后端框架 | Rust 2021 + Axum 0.7 |
-| ORM | SeaORM |
-| 数据库 | SQLite |
-| 搜索引擎 | Tantivy（CJK 中文分词） |
-| SSR 模板 | Tera |
-| Markdown | comrak + ammonia |
-| 前端框架 | Vue 3 + TypeScript |
-| UI 组件 | Naive UI |
-| 编辑器 | Vditor |
-| 样式 | Tailwind CSS v4 |
-| 认证 | JWT + bcrypt + X-API-Key |
-| 部署 | Docker / 单二进制 |
+|---|---|
+| 后端 | Rust 2021、Axum 0.7、Tokio |
+| 数据与 ORM | SQLite、SeaORM |
+| 搜索 | Tantivy（CJK 分词） |
+| Markdown / SSR | comrak、ammonia、Tera |
+| 前端 | Vue 3、TypeScript、Vite 6、Pinia |
+| UI / 编辑器 | Naive UI、Vditor、Tailwind CSS 4 |
+| 认证 | JWT、bcrypt、`X-API-Key` |
+| 部署 | Docker Compose 或原生构建产物 |
 
 当前版本仅支持 SQLite；PostgreSQL 和 MySQL 计划在后续版本支持。
 
----
-
 ## 快速开始
 
-### Docker 部署
+### 方式一：Docker Compose（推荐）
+
+前置条件：Git、Docker 和 Docker Compose v2。
 
 ```bash
 git clone https://github.com/XLevon/MarkShareX.git
 cd MarkShareX
-cp .env.example .env
-# 编辑 .env 设置 JWT_SECRET 等
-
-# 国外直接从 Docker Hub 拉取基础镜像进行构建并启动容器
-docker compose up -d
-
-# 国内推荐分步构建并启动容器
 ./scripts/start.sh
-
-# 从本地基础镜像进行构建并启动容器
-docker compose -f docker-compose.local.yml up -d
-
-# 删除容器
-docker compose down            # 停止并删除容器（数据保留，volume 还在）
-docker compose down -v         # 停止 + 删除容器 + 删除数据卷（⚠️ 清空数据库/上传文件）
 ```
 
-访问 `http://localhost:5023`，首次启动进入安装向导创建管理员账号。
+首次运行时，脚本会：
 
-### 单二进制部署
+1. 从 `.env.example` 创建本地 `.env`；
+2. 为 JWT secret 和 encryption key 生成随机值，并将 `.env` 权限设置为 `0600`；
+3. 构建镜像、启动容器并等待健康检查通过。
+
+访问 `http://localhost:5023`，按照初始化页面创建管理员。
+
+代码更新后强制重建：
 
 ```bash
-# 构建前端
-cd frontend && npm install && npm run build && cd ..
+./scripts/start.sh --rebuild
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+数据保存在 `marksharex_data` volume。以下命令会同时删除数据库、上传文件和其他持久化数据，请谨慎使用：
+
+```bash
+docker compose down -v
+```
+
+### 方式二：原生构建
+
+前置条件：Rust `1.95`、Node.js `22.14+`、npm、OpenSSL 和 SQLite 运行环境。
+
+```bash
+git clone https://github.com/XLevon/MarkShareX.git
+cd MarkShareX
+
+# 构建前端；产物写入 static/frontend
+cd frontend
+npm ci
+npm run build
+cd ..
 
 # 构建后端
-cargo build --release
+cargo build --release --locked
 
-# 配置文件
+# 初始化运行配置
 cp config.example.toml config.toml
+cp .env.example .env
+openssl rand -hex 32  # 填入 .env 的 MARKSHAREX_AUTH_JWT_SECRET
+openssl rand -hex 32  # 填入 .env 的 MARKSHAREX_AUTH_ENCRYPT_KEY
 
-# 运行
+# 必须从包含 config.toml 和 static/frontend 的项目目录运行
 ./target/release/marksharex
 ```
 
-首次启动自动创建 SQLite 数据库并执行迁移，无需手动初始化。
+首次启动会自动创建 SQLite 数据库、执行迁移并初始化搜索索引。
 
 ### 本地开发
 
+先按上面的方式创建 `config.toml` 和 `.env`，然后分别启动后端和 Vite：
+
 ```bash
-# 后端
+# 终端一：后端 http://127.0.0.1:5023
 cargo run
 
-# 前端（另一个终端）
+# 终端二：前端 http://127.0.0.1:5173
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-前端 `http://localhost:5173`，API 代理到后端 `http://localhost:5023`。
+Vite 开发服务器会把 API 请求代理到后端。完整配置字段、环境变量优先级和校验规则见 [docs/CONFIG.md](docs/CONFIG.md)。
 
-配置详情见 [docs/CONFIG.md](docs/CONFIG.md)。
+## 配置与数据
 
----
+配置优先级为：
 
-## API 端点
+```text
+环境变量 > config.toml
+```
 
-共 162 个 REST API operation。权威目录为 `src/api_endpoints.rs`，并从同一目录生成 Axum Router、OpenAPI paths 和端点发现信息。在线文档：启动后访问 `/scalar`。
+必须为每个部署生成独立随机值：
 
-| 模块 | 路径前缀 | 说明 |
-|------|---------|------|
-| 认证 | `/api/v1/auth` | 注册、登录、Token 刷新 |
-| 文章 | `/api/v1/posts` | CRUD、slug、搜索、点赞、浏览、作者、前后导航、阅读日志 |
-| 分类 | `/api/v1/categories` | 公开/管理列表、CRUD、拖拽排序 |
-| 标签 | `/api/v1/tags` | 含文章计数的列表、CRUD |
-| 文件 | `/api/v1/files` | 上传、批量上传、MD5 检查、列表、未引用、删除 |
-| 网络资源 | `/api/v1/network-resources` | CRUD、引用查询、批量解析、URL 确保 |
-| 评论 | `/api/v1/posts/:id/comments` | 发表、列表（树形嵌套）、管理、审核、待审计数 |
-| 留言板 | `/api/v1/guestbook` | 列表、发表、管理员回复、删除 |
-| 资讯 | `/api/v1/news` | 公开/管理列表、CRUD、题材列表、搜索筛选 |
-| 用户管理 | `/api/v1/admin/users` | 列表、创建、更新、角色/状态变更、删除、登录日志、阅读日志 |
-| 个人资料 | `/api/v1/profile` | 查看、更新、改密、API Key 管理、管理员信息 |
-| 作者申请 | `/api/v1/apply` | 提交、状态查询、审批通过/拒绝、待审计数 |
-| 数据分析 | `/api/v1/analytics` | 趋势、总计、今日增量、文章排行、点赞记录 |
-| 导入导出 | `/api/v1/(import\\|export)` | Markdown ZIP 导入/导出 |
-| 设置 | `/api/v1/settings` | 站点设置获取/更新 |
-| 初始化 | `/api/v1/setup` | 状态检查、创建管理员 |
-| 更新日志 | `/api/v1/changelogs` | 公开列表、最新版本、管理端 CRUD |
-| AI 对话 | `/api/v1/ai` / `/api/v1/admin/ai` | 聊天、提供商、模型、工具、技能、任务、Agent、会话 |
-| 运维 | `/api/v1/admin` | 运行日志、健康检查、系统统计 |
-| 系统 | `/api/v1` | 端点发现、OpenAPI JSON、健康检查、版本 |
+```bash
+MARKSHAREX_AUTH_JWT_SECRET="$(openssl rand -hex 32)"
+MARKSHAREX_AUTH_ENCRYPT_KEY="$(openssl rand -hex 32)"
+```
 
----
+`MARKSHAREX_AUTH_ENCRYPT_KEY` 用于加密已保存的 API Key；部署后不得随意更换，否则既有密文将无法解密。
 
-## 角色权限体系
+不要提交 `.env`、`config.toml`、数据库、上传目录、日志、搜索索引或备份。仓库中的 `.env.example` 和 `config.example.toml` 仅是无凭据模板。
 
-| 角色 | 权限范围 |
-|------|---------|
-| **admin** | 完全权限：管理用户、资源、内容，审核申请，系统设置，AI 调度 |
-| **sub_admin** | 管理权限：管理用户、资源、内容，审核申请 |
-| **author** | 创作权限：创建、编辑自己的文章和分类，管理自己文章的评论 |
-| **visitor** | 只读权限：浏览、评论，申请成为作者 |
+### 备份与升级
 
----
+升级前至少备份 SQLite 数据库、上传目录、`.env` 和实际使用的 `config.toml`。必须保留原 encryption key，否则已加密保存的 API Key 无法恢复。Docker 部署应备份 `marksharex_data` volume；Tantivy 搜索索引可以从数据库重建，但数据库和上传文件不可替代。
+
+升级后启动新版本时会自动执行尚未应用的数据库迁移。建议先在备份副本或测试环境验证升级与回滚流程。
+
+## API 与接口文档
+
+共 162 个 REST API operation。`src/api_endpoints.rs` 是路由、OpenAPI paths 和端点发现信息的权威目录。
+
+服务启动后访问：
+
+- Scalar UI（管理员认证后）：`/scalar`
+- OpenAPI JSON：`/api/v1/openapi.json`
+- 健康检查：`/api/v1/health`
+
+主要模块：
+
+| 模块 | 路径 |
+|---|---|
+| 认证 | `/api/v1/auth/*` |
+| 文章、分类、标签 | `/api/v1/posts/*`、`/api/v1/categories/*`、`/api/v1/tags/*` |
+| 文件与网络资源 | `/api/v1/files/*`、`/api/v1/network-resources/*` |
+| 评论、留言、资讯 | `/api/v1/posts/:id/comments/*`、`/api/v1/guestbook/*`、`/api/v1/news/*` |
+| 用户、统计、设置 | `/api/v1/admin/*`、`/api/v1/analytics/*`、`/api/v1/settings` |
+| 导入导出 | `/api/v1/import`、`/api/v1/export` |
+| 更新日志 | `/api/v1/changelogs/*` |
+| AI | `/api/v1/ai/*`、`/api/v1/admin/ai/*` |
+
+公开前端路由不代表授权边界；所有敏感操作均由后端认证和授权检查保护。
 
 ## 数据库模型
 
 共 29 张应用表：
 
-### 内容相关
-| 表 | 说明 |
-|----|------|
-| `posts` | 文章（title/slug/content/html/status/封面/计数/软删除/post_type/article_type） |
-| `categories` | 分类（树形 parent_id、封面、排序） |
-| `tags` | 标签（name/slug） |
-| `post_tags` | 文章-标签多对多关联 |
-| `likes` | 文章点赞关系（当前通过 SQL 使用） |
-| `comments` | 评论（树形 parent_id、状态、点赞计数） |
-| `guestbook` | 留言板（昵称/内容/邮箱/管理员回复） |
-| `news` | 资讯（标题/摘要/题材/状态/排序） |
-| `changelog` | 更新日志（版本号/内容） |
+- 内容：`posts`、`categories`、`tags`、`post_tags`、`likes`、`comments`、`guestbook`、`news`、`changelog`
+- 资源：`files`、`network_resources`
+- 用户：`users`、`refresh_tokens`、`author_applications`、`login_logs`、`read_logs`
+- AI：`ai_providers`、`ai_models`、`ai_tools`、`ai_skills`、`ai_tasks`、`ai_task_logs`、`ai_agent_config`、`ai_chat_sessions`、`ai_chat_messages`
+- 系统：`settings`、`article_types`、`article_statuses`、`_migrations`
 
-### 资源相关
-| 表 | 说明 |
-|----|------|
-| `files` | 文件（MD5/路径/类型/大小） |
-| `network_resources` | 网络资源（URL/标签/类型/引用计数） |
+初始 Schema 与后续增量迁移位于 `migrations/`；应用启动时自动执行尚未应用的迁移。生产升级前仍应先备份数据库和上传目录。
 
-### 用户相关
-| 表 | 说明 |
-|----|------|
-| `users` | 用户（username/email/password_hash/role/status/api_key） |
-| `refresh_tokens` | 刷新令牌 |
-| `author_applications` | 作者申请（理由/状态/审批备注） |
-| `login_logs` | 登录日志（IP/设备/方式/成功标记） |
-| `read_logs` | 阅读日志（文章/用户/IP/时长/来源） |
+## 质量检查
 
-### AI 相关
-| 表 | 说明 |
-|----|------|
-| `ai_providers` | AI 提供商（类型/API URL/API Key） |
-| `ai_models` | AI 模型（名称/标识/输入输出价格） |
-| `ai_tools` | AI 工具（函数名/描述/参数 Schema/执行器） |
-| `ai_skills` | AI 技能（名称/提示词模板） |
-| `ai_tasks` | 定时任务（cron/关联技能/提供商/最大轮次） |
-| `ai_task_logs` | 任务执行日志（追踪步骤/结果/错误） |
-| `ai_agent_config` | Agent 配置（系统提示词/默认模型/温度） |
-| `ai_chat_sessions` | AI 对话会话 |
-| `ai_chat_messages` | AI 对话消息历史 |
+### 后端
 
-### 系统相关
-| 表 | 说明 |
-|----|------|
-| `settings` | 站点设置（key-value） |
-| `article_types` | 文章类型字典（原创/AI整理/教程等） |
-| `article_statuses` | 文章状态字典（规划中/施工中/已完成等） |
-| `_migrations` | 数据库迁移追踪 |
-
----
-
-## 配置说明
-
-配置文件 `config.toml`，支持环境变量覆盖（格式 `MARKSHAREX_<SECTION>_<KEY>`）。
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 5023
-
-[database]
-url = "sqlite://./data/marksharex.db?mode=rwc"
-
-[auth]
-jwt_secret = ""  # 必填；部署时生成独立随机值
-encrypt_key = "" # 必填；部署后必须长期固定
-
-[ai.search]
-provider = "tavily"         # 主搜索: tavily | firecrawl
-api_key = ""
-fallback_provider = "firecrawl"  # 降级搜索
-fallback_api_key = ""
-# duckduckgo 免费兜底，无需 API Key
-
-[ai]
-max_tool_rounds = 8         # AI 工具调用最大轮次
-```
-
-环境变量覆盖示例：
 ```bash
-export MARKSHAREX_SERVER_PORT=8080
-export MARKSHAREX_AI_MAX_TOOL_ROUNDS=15
-export MARKSHAREX_AUTH_JWT_SECRET="$(openssl rand -base64 64)"
-export MARKSHAREX_AUTH_ENCRYPT_KEY="$(openssl rand -base64 32)"
+cargo fmt --all -- --check
+cargo check --all-targets --locked
+cargo clippy --all-targets --all-features --locked -- \
+  -D clippy::correctness -D clippy::suspicious -A clippy::misnamed_getters
+cargo test --all-targets --locked --no-fail-fast
 ```
 
-完整字段、全部环境变量、覆盖优先级和校验规则见
-[`docs/CONFIG.md`](docs/CONFIG.md)、`.env.example` 和 `config.example.toml`。
+### 前端
 
----
+```bash
+cd frontend
+npm ci
+npm run lint
+npm test
+npm run build
+npm audit --audit-level=high
+```
 
-## 部署方式
+### 文档契约
 
-| 方式 | 适用场景 | 说明 |
-|------|----------|------|
-| Docker Compose | 快速体验 / 中小规模 | 一键启动，数据卷持久化 |
-| 单二进制 + systemd | 生产环境 | 最小依赖，systemd 守护 |
+```bash
+python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+python3 scripts/check_doc_sync.py
+```
 
----
+## 参与项目
+
+- 提交 Bug 或功能建议前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 安全漏洞必须按 [SECURITY.md](SECURITY.md) 私下报告，不要公开提交真实利用细节。
+- 面向用户的版本变化记录在 [CHANGELOG.md](CHANGELOG.md)。
+- GitHub 提交入口由 [Issue 模板](.github/ISSUE_TEMPLATE/) 和 [PR 模板](.github/pull_request_template.md) 提供。
 
 ## License
 
-MIT © 2026 [XLevon](mailto:408251965@qq.com)
+MarkShareX 采用 [MIT License](LICENSE)。
+
+Copyright © 2026 XLevon.

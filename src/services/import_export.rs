@@ -308,12 +308,12 @@ pub(crate) async fn export_posts_archive(
 
         let md_path = format!("{}/index.md", dir_name);
         zip_writer.start_file(md_path, options)?;
-        zip_writer.write(full_content.as_bytes())?;
+        zip_writer.write_all(full_content.as_bytes())?;
 
         for (filename, data) in image_files {
             let img_path = format!("{}/uploads/{}", dir_name, filename);
             zip_writer.start_file(img_path, options)?;
-            zip_writer.write(&data)?;
+            zip_writer.write_all(&data)?;
         }
     }
 

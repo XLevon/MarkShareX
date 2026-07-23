@@ -1,1 +1,0 @@
-import{r as m}from"./index-Do9w3Z58.js";function s(t,n=!1){return m.get(`/posts/${t}/comments`,{params:n?{admin:"1"}:{}})}function o(t,n){return m.post(`/posts/${t}/comments`,n)}function a(t){return m.get("/admin/comments",{params:t})}function r(t,n){return m.put(`/admin/comments/${t}`,{status:n})}export{s as a,o as c,a as f,r as u};

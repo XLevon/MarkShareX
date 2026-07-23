@@ -92,7 +92,7 @@ pub async fn upload_file(
     auth: AdminUser,
     mut multipart: Multipart,
 ) -> Result<Json<ApiResponse<FileResponse>>, AppError> {
-    while let Ok(Some(field)) = multipart.next_field().await {
+    if let Ok(Some(field)) = multipart.next_field().await {
         let content_type = field
             .content_type()
             .unwrap_or("application/octet-stream")

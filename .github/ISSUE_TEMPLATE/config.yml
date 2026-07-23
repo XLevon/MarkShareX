@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私下报告安全漏洞
+    url: https://github.com/XLevon/MarkShareX/security/advisories/new
+    about: 请勿公开提交真实漏洞利用细节；使用 GitHub 私有漏洞报告渠道。

@@ -12,7 +12,7 @@
 #     -t marksharex .
 # ==============================================================================
 
-ARG FRONTEND_BASE=node:20-alpine
+ARG FRONTEND_BASE=node:22.14.0-alpine
 ARG BACKEND_BASE=rust:1.95-slim
 ARG RUNTIME_BASE=ubuntu:24.04
 

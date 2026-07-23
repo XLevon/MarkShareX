@@ -14,10 +14,8 @@ config.toml
 
 # 运行时文件（服务生成）
 data/
-#!data/templates/
 
 # 其他
-/images
 /Prototype
 .drone.yml
 *.log

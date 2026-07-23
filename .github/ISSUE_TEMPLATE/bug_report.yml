@@ -1,0 +1,78 @@
+name: Bug 报告
+description: 提交可复现的 MarkShareX 缺陷
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请搜索现有 Issue。安全漏洞请勿在此公开，请使用仓库 Security 页面中的私有漏洞报告渠道。
+  - type: input
+    id: version
+    attributes:
+      label: MarkShareX 版本
+      description: 请填写 Release 版本或 commit SHA。
+      placeholder: v0.4.2 / a210ab0
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 部署方式
+      options:
+        - Docker Compose
+        - 原生二进制
+        - cargo run
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 操作系统、浏览器、反向代理、Node/Rust 版本等；请勿包含凭据或生产数据。
+      placeholder: |
+        OS: Ubuntu 24.04
+        Browser: Chrome 版本号
+        Reverse proxy: Nginx 版本号
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清楚说明实际行为及其影响。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 观察到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 可选。粘贴前必须移除 Token、Cookie、API Key、邮箱、IP、数据库内容等敏感信息。
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue，未发现重复问题。
+          required: true
+        - label: 此报告不包含未公开漏洞利用细节或任何真实凭据、生产数据。
+          required: true
