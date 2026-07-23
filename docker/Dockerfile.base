@@ -11,7 +11,7 @@ FROM node:22.14.0-alpine AS frontend-base
 # RUN npm install -g npm@10
 
 # ── 后端构建基础镜像 ──
-FROM rust:1.95-slim AS backend-base
+FROM rust:1.97-slim AS backend-base
 RUN apt-get update && apt-get install -y \
     build-essential \
     libssl-dev \
