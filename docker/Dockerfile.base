@@ -5,7 +5,7 @@
 # ==============================================================================
 
 # ── 前端构建基础镜像 ──
-FROM node:22.14.0-alpine AS frontend-base
+FROM node:26.5.0-alpine AS frontend-base
 # Alpine 的 node 镜像已包含 npm，无需额外操作
 # 如果想锁定 npm 版本:
 # RUN npm install -g npm@10
