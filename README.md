@@ -4,7 +4,7 @@
 
 [![Rust](https://img.shields.io/badge/Rust-1.95+-orange.svg)](https://www.rust-lang.org)
 [![Vue](https://img.shields.io/badge/Vue-3.x-4fc08d.svg)](https://vuejs.org)
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/XLevon/MarkShareX)
+[![Version](https://img.shields.io/badge/version-0.4.2-blue.svg)](https://github.com/XLevon/MarkShareX)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 MarkShareX 是一个面向技术创作者的轻量级自托管博客平台。高性能 Rust 后端配合现代化 Vue 3 管理后台，内置 AI 自动写作与资讯采集能力，数据完全由你掌控。
@@ -64,7 +64,7 @@ MarkShareX 是一个面向技术创作者的轻量级自托管博客平台。高
 - 🔄 **CORS 支持** — 跨域访问控制
 - 📦 **前后台分离** — 前台公开浏览 + 后台管理面板，各自独立路由和布局
 - 🗜️ **编译嵌入** — SQL 迁移 + 静态资源编译进二进制
-- 📚 **OpenAPI 文档** — Scalar UI 交互式 API 文档，150+ 端点完整覆盖
+- 📚 **OpenAPI 文档** — Scalar UI 交互式 API 文档，162 个 operation 由权威端点目录统一生成
 
 ---
 
@@ -74,7 +74,7 @@ MarkShareX 是一个面向技术创作者的轻量级自托管博客平台。高
 |------|------|
 | 后端框架 | Rust 2021 + Axum 0.7 |
 | ORM | SeaORM |
-| 数据库 | SQLite（可选 PostgreSQL） |
+| 数据库 | SQLite |
 | 搜索引擎 | Tantivy（CJK 中文分词） |
 | SSR 模板 | Tera |
 | Markdown | comrak + ammonia |
@@ -84,6 +84,8 @@ MarkShareX 是一个面向技术创作者的轻量级自托管博客平台。高
 | 样式 | Tailwind CSS v4 |
 | 认证 | JWT + bcrypt + X-API-Key |
 | 部署 | Docker / 单二进制 |
+
+当前版本仅支持 SQLite；PostgreSQL 和 MySQL 计划在后续版本支持。
 
 ---
 
@@ -151,30 +153,30 @@ npm run dev
 
 ## API 端点
 
-共 150+ 个 REST API 端点，完整覆盖前后台功能。在线文档：启动后访问 `/scalar`。
+共 162 个 REST API operation。权威目录为 `src/api_endpoints.rs`，并从同一目录生成 Axum Router、OpenAPI paths 和端点发现信息。在线文档：启动后访问 `/scalar`。
 
-| 模块 | 路径前缀 | 端点数 | 说明 |
-|------|---------|--------|------|
-| 认证 | `/api/v1/auth` | 3 | 注册、登录、Token 刷新 |
-| 文章 | `/api/v1/posts` | 15 | CRUD、slug、搜索、点赞、浏览、作者、前后导航、阅读日志 |
-| 分类 | `/api/v1/categories` | 6 | 公开/管理列表、CRUD、拖拽排序 |
-| 标签 | `/api/v1/tags` | 4 | 含文章计数的列表、CRUD |
-| 文件 | `/api/v1/files` | 7 | 上传、批量上传、MD5 检查、列表、未引用、删除 |
-| 网络资源 | `/api/v1/network-resources` | 8 | CRUD、引用查询、批量解析、URL 确保 |
-| 评论 | `/api/v1/posts/:id/comments` | 5 | 发表、列表（树形嵌套）、管理、审核、待审计数 |
-| 留言板 | `/api/v1/guestbook` | 4 | 列表、发表、管理员回复、删除 |
-| 资讯 | `/api/v1/news` | 8 | 公开/管理列表、CRUD、题材列表、搜索筛选 |
-| 用户管理 | `/api/v1/admin/users` | 8 | 列表、创建、更新、角色/状态变更、删除、登录日志、阅读日志 |
-| 个人资料 | `/api/v1/profile` | 6 | 查看、更新、改密、API Key 管理、管理员信息 |
-| 作者申请 | `/api/v1/apply` | 5 | 提交、状态查询、审批通过/拒绝、待审计数 |
-| 数据分析 | `/api/v1/analytics` | 8 | 趋势、总计、今日增量、文章排行、点赞记录 |
-| 导入导出 | `/api/v1/(import\\|export)` | 2 | Markdown ZIP 导入/导出 |
-| 设置 | `/api/v1/settings` | 2 | 站点设置获取/更新 |
-| 初始化 | `/api/v1/setup` | 2 | 状态检查、创建管理员 |
-| 更新日志 | `/api/v1/changelogs` | 6 | 公开列表、最新版本、管理端 CRUD |
-| AI 对话 | `/api/v1/ai` / `/api/v1/admin/ai` | 30 | 聊天、提供商、模型、工具、技能、任务、Agent、会话 |
-| 运维 | `/api/v1/admin` | 3 | 运行日志、健康检查、系统统计 |
-| 系统 | `/api/v1` | 4 | 端点发现、OpenAPI JSON、健康检查、版本 |
+| 模块 | 路径前缀 | 说明 |
+|------|---------|------|
+| 认证 | `/api/v1/auth` | 注册、登录、Token 刷新 |
+| 文章 | `/api/v1/posts` | CRUD、slug、搜索、点赞、浏览、作者、前后导航、阅读日志 |
+| 分类 | `/api/v1/categories` | 公开/管理列表、CRUD、拖拽排序 |
+| 标签 | `/api/v1/tags` | 含文章计数的列表、CRUD |
+| 文件 | `/api/v1/files` | 上传、批量上传、MD5 检查、列表、未引用、删除 |
+| 网络资源 | `/api/v1/network-resources` | CRUD、引用查询、批量解析、URL 确保 |
+| 评论 | `/api/v1/posts/:id/comments` | 发表、列表（树形嵌套）、管理、审核、待审计数 |
+| 留言板 | `/api/v1/guestbook` | 列表、发表、管理员回复、删除 |
+| 资讯 | `/api/v1/news` | 公开/管理列表、CRUD、题材列表、搜索筛选 |
+| 用户管理 | `/api/v1/admin/users` | 列表、创建、更新、角色/状态变更、删除、登录日志、阅读日志 |
+| 个人资料 | `/api/v1/profile` | 查看、更新、改密、API Key 管理、管理员信息 |
+| 作者申请 | `/api/v1/apply` | 提交、状态查询、审批通过/拒绝、待审计数 |
+| 数据分析 | `/api/v1/analytics` | 趋势、总计、今日增量、文章排行、点赞记录 |
+| 导入导出 | `/api/v1/(import\\|export)` | Markdown ZIP 导入/导出 |
+| 设置 | `/api/v1/settings` | 站点设置获取/更新 |
+| 初始化 | `/api/v1/setup` | 状态检查、创建管理员 |
+| 更新日志 | `/api/v1/changelogs` | 公开列表、最新版本、管理端 CRUD |
+| AI 对话 | `/api/v1/ai` / `/api/v1/admin/ai` | 聊天、提供商、模型、工具、技能、任务、Agent、会话 |
+| 运维 | `/api/v1/admin` | 运行日志、健康检查、系统统计 |
+| 系统 | `/api/v1` | 端点发现、OpenAPI JSON、健康检查、版本 |
 
 ---
 
@@ -191,7 +193,7 @@ npm run dev
 
 ## 数据库模型
 
-共 25 张表：
+共 29 张应用表：
 
 ### 内容相关
 | 表 | 说明 |
@@ -200,6 +202,7 @@ npm run dev
 | `categories` | 分类（树形 parent_id、封面、排序） |
 | `tags` | 标签（name/slug） |
 | `post_tags` | 文章-标签多对多关联 |
+| `likes` | 文章点赞关系（当前通过 SQL 使用） |
 | `comments` | 评论（树形 parent_id、状态、点赞计数） |
 | `guestbook` | 留言板（昵称/内容/邮箱/管理员回复） |
 | `news` | 资讯（标题/摘要/题材/状态/排序） |
@@ -239,6 +242,7 @@ npm run dev
 | `settings` | 站点设置（key-value） |
 | `article_types` | 文章类型字典（原创/AI整理/教程等） |
 | `article_statuses` | 文章状态字典（规划中/施工中/已完成等） |
+| `_migrations` | 数据库迁移追踪 |
 
 ---
 

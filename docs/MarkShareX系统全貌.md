@@ -31,13 +31,13 @@ MarkShareX 是一个面向个人技术创作者和小型内容团队的轻量级
 
 按 v0.4.2 源码快照统计，排除 `.git`、`node_modules`、`target` 和构建产物后：
 
-- Rust 源文件：76 个，约 1.2 万行代码
-- Vue 单文件组件：54 个，约 1.6 万行代码
-- TypeScript：30 余个文件
-- 后端控制器模块：21 个
-- Axum 路由注册：约 140+ 处；部分路由同时注册多个 HTTP 方法，因此实际 API 操作数更多
-- 仅支持 SQLite 数据库作为生产后端
-- 业务及系统数据表：28 张，另有 `_migrations` 迁移追踪表
+- Rust 源文件：82 个，约 2.5 万行代码
+- Vue 单文件组件：55 个，约 2.1 万行代码
+- TypeScript：41 个文件，约 0.4 万行代码
+- 后端控制器模块：23 个
+- `/api/v1/*` API operation：162 个，由 `src/api_endpoints.rs` 权威目录统一生成
+- 当前版本仅支持 SQLite；PostgreSQL 和 MySQL 计划在后续版本支持。
+- 初始化 Schema：29 张应用表、27 个应用索引（包含 `_migrations` 迁移追踪表）
 
 这些数字用于描述当前规模，不作为稳定 API 承诺。
 
@@ -65,7 +65,7 @@ MarkShareX 是一个面向个人技术创作者和小型内容团队的轻量级
                 │              │              │
                 ▼              ▼              ▼
           SeaORM / SQL     Tantivy 索引     本地文件系统
-          SQLite/PG        data/search_index data/uploads
+          SQLite           data/search_index data/uploads
                 │
                 ▼
       文章、资讯、用户、配置、AI 元数据与日志
@@ -632,7 +632,7 @@ Authorization: Bearer <access-token>
 
 #### X-API-Key
 
-- 每个用户可生成独立 API Key
+- 管理员用户可生成 API Key
 - 请求头为 `X-API-Key`
 - 后端查询处于 active 状态且 Key 匹配的用户
 - 用于 CLI、脚本和外部 AI Agent 集成
@@ -688,8 +688,8 @@ AI 管理资源与用户会话采用两条独立边界：
 
 - Provider、Model、Agent Config、Skill、Tool、Task、Task Log、供应商测试和任务执行仅允许当前数据库角色为 active admin 的用户。
 - `AdminUser` 和 `PrivilegedUser` 会回查数据库，因此 JWT 中过期的高权限角色声明不能继续授权；用户被降权、禁用或删除后，敏感接口立即拒绝。
-- AI 会话是严格的 owner-only 资源：列表固定过滤 `auth.user_id`，详情、删除、聊天和 slash command 都校验所有者。
-- admin、sub_admin 没有跨用户会话查看例外；跨用户访问统一返回 404，避免确认会话是否存在。
+- AI 会话列表按数据库当前角色分流：admin 可查看全员会话并获得用户名显示字段；sub_admin、author、visitor 只查看本人会话且不显示用户名前缀。
+- 会话详情和删除允许 owner 或数据库当前角色为 admin 的用户；sub_admin 及其他角色访问他人会话返回 404。聊天续接与 slash command 对所有角色（包括 admin）都保持严格 owner-only，禁止继续他人的对话。
 
 ### 10.6 状态与访问控制
 
@@ -699,7 +699,7 @@ AI 管理资源与用户会话采用两条独立边界：
 
 ## 11. 数据库全貌
 
-默认数据库为 SQLite，SeaORM 同时编译了 PostgreSQL 驱动。当前产品体验、迁移 SQL 和 Docker 默认配置以 SQLite 为主。
+当前版本仅支持 SQLite；PostgreSQL 和 MySQL 计划在后续版本支持。Cargo 当前只启用 SeaORM 的 `sqlx-sqlite`，迁移、PRAGMA、Docker 默认配置和持久化验收均以 SQLite 为正式边界；未来数据库支持必须先补齐对应驱动、迁移方言、事务语义和完整回归测试。
 
 ### 11.1 表分组
 
@@ -747,7 +747,7 @@ AI 管理资源与用户会话采用两条独立边界：
 
 - `_migrations`
 
-共 28 张业务及系统表，外加 1 张迁移追踪表。`likes` 目前通过 SQL 使用，没有对应 SeaORM Entity；其余主要业务表均有 Entity。
+共 29 张应用表：28 张业务及系统表，加 1 张 `_migrations` 迁移追踪表。`likes` 目前通过 SQL 使用，没有对应 SeaORM Entity；其余主要业务表均有 Entity。
 
 ### 11.2 关系摘要
 
@@ -829,7 +829,7 @@ duckduckgo_url = ""
 `.env.example` 和 `docs/CONFIG.md` 由自动化测试要求精确一致；整数解析失败、未知或废弃
 TOML 字段都会阻止启动，不再静默退回默认值。列表变量使用英文逗号分隔。
 
-完整的 25 个环境变量、字段映射、类型、校验和兼容别名见
+完整的 24 个环境变量、字段映射、类型、校验和兼容别名见
 [`docs/CONFIG.md`](CONFIG.md)。新部署使用 `MARKSHAREX_AUTH_ENCRYPT_KEY`；
 旧 `MARKSHAREX_ENCRYPT_KEY` 仅作为兼容别名保留。已删除的 `server.base_url` 不再出现在
 公开示例或启动脚本中。
@@ -1032,46 +1032,44 @@ API 返回 401
 ### 后端
 
 ```bash
-cargo test --no-fail-fast
-cargo fmt --check
+cargo fmt --all -- --check
+cargo check --all-targets
+cargo test --all-targets --no-fail-fast
 cargo build
 ```
 
-使用 `axum-test`、Tokio 测试及模块内单元测试，当前覆盖了部分 SSR、路由、标题/描述算法、响应行为和权限策略。
-
-截至本次权限封口工作树快照，`cargo test --no-fail-fast` 为 30/30 通过。新增回归范围包括：
-
-- admin 与 admin/sub_admin extractor 的角色矩阵
-- author 只能更新本人文章且不能转移作者
-- author 只能删除本人草稿
-- 非特权后台文章列表不能通过 `author_id` 越权
-- 公开列表固定为 `published`，草稿只对所有者或特权用户可见
-- AI 会话对所有角色均严格限制为当前所有者
+使用 `axum-test`、Tokio 测试及模块内单元测试，覆盖 Router/OpenAPI/端点发现一致性、实时数据库角色、文章与 AI 会话权限、公开内容可见性、上传与删除补偿、迁移可靠性、SSRF、安全响应头和搜索索引一致性。测试数量会随功能演进，不在文档中固化易漂移的通过数；发布结论以当前命令的真实输出为准。
 
 ### 前端
 
 ```bash
 cd frontend
 npm test
-npm run build
 npm run type-check
+npm run build
 npm run lint
 ```
 
-当前 `npm test` 使用 Node 的 TypeScript strip-types 测试纯函数和关键源码约束。对于路由竞态、组件卸载和异步响应顺序，后续仍适合补充 Vue 挂载级行为测试。
+`npm test` 串行执行 Node 源码/脚本契约测试和非 watch Vitest；Vitest 包含 Vue 挂载级行为测试，覆盖认证存储与 refresh、ArticleFilter/PostDetail 路由竞态、组件卸载以及评论/回复晚响应。`npm run build` 固定先执行 `vue-tsc --noEmit`，类型检查失败时不会启动 Vite。
 
-截至同一工作树快照，前端 `npm test` 为 9/9 通过，`npm run build` 成功；本批权限封口没有修改前端源码。
+### 文档同步门禁
 
-当前 `npm run build` 可以成功生成生产包，但构建脚本不会先运行 `vue-tsc`；独立执行 `npm run type-check` 仍有较多既有类型错误。因此“Vite 能构建”不等于“TypeScript 类型健康”，发布门禁应逐步把类型检查纳入并先偿还现有类型债。
+```bash
+python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+python3 scripts/check_doc_sync.py
+```
+
+`scripts/check_doc_sync.py` 从 Cargo、前端 package、API 权威目录、端点描述、配置绑定表和初始化 SQLite migration 读取事实，核对 README 与系统文档中的版本、数据库支持边界、API operation 数、环境变量映射以及表/索引摘要。`.github/workflows/documentation-sync.yml` 在 push 和 pull request 中执行同一检查，并运行相关 Rust 契约测试。
 
 ### 发布前建议
 
 1. 前端测试和生产构建通过。
 2. Rust 测试、格式和 release 构建通过。
 3. `git diff --check` 通过。
-4. 使用真实浏览器验证首页、文章、搜索、登录和后台核心流程。
-5. 备份数据库和上传文件。
-6. 部署后检查 systemd/Docker 状态、端口、健康接口和首页 HTTP 状态。
+4. 文档同步门禁通过。
+5. 使用真实浏览器验证首页、文章、搜索、登录和后台核心流程。
+6. 备份数据库和上传文件。
+7. 部署后检查 systemd/Docker 状态、端口、健康接口和首页 HTTP 状态。
 
 ---
 
@@ -1084,9 +1082,9 @@ npm run lint
 | `INTRODUCTION.md` | 产品理念和早期功能介绍 |
 | `SYSTEM.md` | v0.2/v0.3 阶段系统模块说明 |
 | `REQUIREMENTS.md` | 原始需求、规格和设计记录 |
-| `DATABASE.md` | 字段级数据库说明；部分统计已落后于 v0.4.1 |
+| `DATABASE.md` | 字段级数据库说明；Schema 数量以初始化 migration 和同步门禁为准 |
 | `NETWORK_RESOURCES.md` | `nr:{id}` 网络资源机制专题 |
-| `CONFIG.md` | 配置入门；环境变量列表需以当前源码为准 |
+| `CONFIG.md` | 配置与环境变量契约；映射由源码测试和同步门禁校验 |
 | `DOCKER.md` | Docker 详细部署 |
 | `DOCKER_QUICKREF.md` | Docker 常用命令速查 |
 | `AI_API.md` | AI 模块接口和数据结构 |
@@ -1095,15 +1093,15 @@ npm run lint
 
 旧文档中常见的过时信息包括：
 
-- 版本仍写作 v0.2.x 或 v0.3.x；当前 Cargo 与前端版本为 v0.4.1。
-- 数据表统计仍为 14 或 25 张；当前初始化 Schema 为 28 张业务及系统表，另有迁移追踪表。
+- 版本仍写作 v0.2.x 或 v0.3.x；当前 Cargo 与前端版本为 v0.4.2。
+- 数据表统计仍为 14、25 或 28 张。初始化 Schema 当前包含 29 张应用表和 27 个应用索引。
 - 控制器、服务和前端页面数量低于当前实际值。
 - “所有环境变量自动映射配置”的描述超出当前显式实现。
 - “单二进制包含所有前端静态资源”的表述不完全准确；当前生产运行还需要 `static/frontend/`。
 - 部分旧路由仍写作 `/post/:id`；当前公开文章路由以 `/post/:slug` 为准。
 - `AI_API.md` 中的独立 Python MCP Server 仍是待实现方案，不能与仓库中已经落地的内置 AI Agent 子系统混为一谈。
 - `NETWORK_RESOURCES.md` 早期使用 `/nr/:id`，当前正文与封面主要使用 `nr:{id}`/`nr:ID` 语义。
-- Cargo 虽启用了 PostgreSQL 驱动，但迁移包含 PRAGMA、`INSERT OR IGNORE` 和 SQLite 时间函数；当前不能承诺无缝切换 PostgreSQL。
+- 当前 Cargo 只启用 SQLite 驱动。PostgreSQL 和 MySQL 属于后续版本计划，不能把 ORM 的跨数据库能力视为当前产品支持。
 
 本文对这些差异进行了统一，但字段级细节仍应同时查阅 migration、Entity 和 OpenAPI。
 
@@ -1131,7 +1129,7 @@ MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把
 - OpenAPI JSON：`/api/v1/openapi.json`
 - 健康检查：`/api/v1/health`
 - 数据库定义：`migrations/0000000000_init_schema.sql`
-- 后端路由：`src/controllers/mod.rs`
+- 后端 API 权威目录：`src/api_endpoints.rs`
 - 启动装配：`src/main.rs`
 - 前端路由：`frontend/src/router/index.ts`
 - 网络资源说明：`docs/NETWORK_RESOURCES.md`
@@ -1140,4 +1138,4 @@ MarkShareX 的整体价值并不只在“能发布 Markdown”，而在于它把
 
 ---
 
-*本文档按 MarkShareX v0.4.1 当前源码整理。系统继续演进时，应优先同步版本、路由、权限边界、数据表、配置覆盖、AI 工具和部署边界。*
+*本文档按 MarkShareX v0.4.2 当前源码整理。系统继续演进时，应优先同步版本、路由、权限边界、数据表、配置覆盖、AI 工具和部署边界。*
