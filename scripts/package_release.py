@@ -160,7 +160,7 @@ def package_release(args: argparse.Namespace) -> tuple[Path, Path]:
         create_package_tree(args, package)
         temporary_archive = Path(directory) / destination.name
         create_archive(package, temporary_archive, args.archive)
-        os.replace(temporary_archive, destination)
+        shutil.move(str(temporary_archive), str(destination))
 
     checksum = write_checksum(destination)
     return destination, checksum
