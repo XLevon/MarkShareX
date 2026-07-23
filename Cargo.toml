@@ -73,7 +73,7 @@ zip = { version = "0.6", features = ["deflate"] }
 thiserror = "2"
 anyhow = "1"
 async-trait = "0.1"
-validator = { version = "0.18", features = ["derive"] }
+validator = { version = "0.20", features = ["derive"] }
 toml = "0.8"
 md-5 = "0.7"
 
