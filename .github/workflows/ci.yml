@@ -140,8 +140,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            xlevon/marksharex:latest
-            xlevon/marksharex:git-${{ github.sha }}
+            xworkman/marksharex:latest
+            xworkman/marksharex:git-${{ github.sha }}
 
       - name: Check whitespace
         run: git diff --check
