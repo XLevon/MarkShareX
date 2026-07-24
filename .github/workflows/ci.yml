@@ -111,7 +111,7 @@ jobs:
       - name: Check Dockerfile
         run: docker build --check .
 
-      # === 非 main 分支：仅验证单架构能构建（不推送） ===
+# === 非 main 分支：仅验证单架构能构建（不推送） ===
       - name: Build production image (dry-run)
         if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         run: docker build --tag marksharex:ci .
