@@ -17,7 +17,7 @@ ARG BACKEND_BASE=rust:1.95-slim
 ARG RUNTIME_BASE=ubuntu:24.04
 
 # ------------------------------ 阶段 1: 构建前端 ------------------------------
-FROM ${FRONTEND_BASE} AS frontend-builder
+FROM --platform=$BUILDPLATFORM ${FRONTEND_BASE} AS frontend-builder
 
 WORKDIR /app
 
