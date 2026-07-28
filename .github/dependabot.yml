@@ -7,7 +7,7 @@ updates:
       day: monday
       time: "03:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -15,6 +15,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: npm
     directory: /frontend
@@ -23,7 +27,7 @@ updates:
       day: monday
       time: "03:30"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(deps)"
     groups:
@@ -31,6 +35,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
@@ -39,9 +47,18 @@ updates:
       day: monday
       time: "04:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: docker
     directory: /
@@ -50,9 +67,18 @@ updates:
       day: monday
       time: "04:30"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      docker-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: docker
     directory: /docker
@@ -61,6 +87,15 @@ updates:
       day: monday
       time: "05:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      docker-base-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
